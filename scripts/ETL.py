@@ -102,7 +102,7 @@ def generar_datos_ml_optimizados():
             'cantidad_reservada': 0.0
         })
     df_existencias = pd.DataFrame(existencias_list)
-    df_existencias.to_sql('existencia', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000)
+    df_existencias.to_sql('existencia', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000, dtype={'id_lote': PG_UUID(as_uuid=True)})
 
     print("Generando Ventas Detalle (> 500,000 registros con estacionalidad, clima y control de stock)...")
     

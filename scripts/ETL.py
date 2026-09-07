@@ -38,7 +38,7 @@ def generar_datos_ml_optimizados():
 
     # Proveedores (~40)
     proveedores = pd.DataFrame({
-        'rfc': [fake.company_vat()[:13].ljust(13, 'X') for _ in range(40)],
+        'rfc': [fake.rfc()[:13].ljust(13, 'X') for _ in range(40)],
         'razon_social': [fake.company() for _ in range(40)],
         'lead_time_dias': np.random.randint(1, 10, size=40)
     })

@@ -5,9 +5,10 @@ from sqlalchemy import create_engine
 import datetime
 import uuid
 import random
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 # Configuración de conexión a PostgreSQL en GCP
-DB_URL = "postgresql+psycopg://app_backend:999@34.51.43.145:5432/retail_perecederos"
+DB_URL = "postgresql+psycopg://app_backend:999@localhost:5432/retail_perecederos"
 engine = create_engine(DB_URL)
 fake = Faker('es_MX')
 
@@ -47,7 +48,6 @@ def generar_datos_ml_optimizados():
 
     # Usuarios (~80)
     usuarios = pd.DataFrame({
-        'id_usuario': [str(uuid.uuid4()) for _ in range(80)],
         'id_rol': np.random.choice(roles_db['id_rol'], size=80),
         'id_locacion': np.random.choice(locs_db['id_locacion'], size=80),
         'nombre_completo': [fake.name() for _ in range(80)],
@@ -81,14 +81,14 @@ def generar_datos_ml_optimizados():
         f_cad = f_elab + datetime.timedelta(days=int(sku_row['vida_util_estandar']))
         
         lotes_list.append({
-            'id_lote': str(uuid.uuid4()),
+            'id_lote': uuid.uuid4(),
             'id_sku': sku_row['id_sku'],
             'id_proveedor': np.random.choice(provs_db['id_proveedor']),
             'codigo_lote_prov': f"LOT-{fake.bothify(text='###-??')}",
             'fecha_caducidad': f_cad
         })
     df_lotes = pd.DataFrame(lotes_list)
-    df_lotes.to_sql('lote', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000)
+    df_lotes.to_sql('lote', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000, dtype={'id_lote': PG_UUID(as_uuid=True)})
 
     print("Generando Existencias iniciales (~150,000 registros)...")
     existencias_list = []
@@ -96,7 +96,6 @@ def generar_datos_ml_optimizados():
     for _ in range(150000):
         lote = np.random.choice(lotes_sample)
         existencias_list.append({
-            'id_existencia': str(uuid.uuid4()),
             'id_lote': lote['id_lote'],
             'id_locacion': np.random.choice(tiendas_ids),
             'cantidad_disponible': round(np.random.uniform(10.0, 100.0), 2),
@@ -134,7 +133,6 @@ def generar_datos_ml_optimizados():
         cantidad_final = round(cantidad_base * factor_estacionalidad, 2)
         
         ventas_list.append({
-            'id_venta': str(uuid.uuid4()),
             'id_lote': lote_elegido['id_lote'],
             'id_locacion': tienda,
             'cantidad': cantidad_final,
@@ -163,7 +161,6 @@ def generar_datos_ml_optimizados():
         if f_merma < START_DATE: f_merma = START_DATE + datetime.timedelta(days=np.random.randint(0, 30))
 
         mermas_list.append({
-            'id_merma': str(uuid.uuid4()),
             'id_lote': lote_sample['id_lote'],
             'id_usuario': np.random.choice(usuarios_db['id_usuario']),
             'cantidad': round(np.random.uniform(0.5, 15.0), 2),

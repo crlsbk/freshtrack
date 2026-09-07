@@ -141,11 +141,11 @@ def generar_datos_ml_optimizados():
         
         # Inserción en bloques para optimizar RAM
         if len(ventas_list) >= 20000:
-            pd.DataFrame(ventas_list).to_sql('venta_detalle', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000)
+            pd.DataFrame(ventas_list).to_sql('venta_detalle', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000, dtype={'id_lote': PG_UUID(as_uuid=True)})
             ventas_list = []
 
     if ventas_list:
-        pd.DataFrame(ventas_list).to_sql('venta_detalle', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000)
+        pd.DataFrame(ventas_list).to_sql('venta_detalle', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=10000, dtype={'id_lote': PG_UUID(as_uuid=True)})
 
     print("Generando Mermas (~15,000 registros correlacionados con caducidad)...")
     mermas_list = []
@@ -157,7 +157,7 @@ def generar_datos_ml_optimizados():
         # [ML Consideration 4: Probabilidad de Merma Dependiente de la Vida Útil]
         # La fecha de merma ocurre de forma muy cercana o posterior a la fecha de caducidad del lote
         dias_cercania = np.random.choice([0, 1, 2, -1], p=[0.5, 0.3, 0.15, 0.05])
-        f_merma = f_cad + datetime.timedelta(days=int(dias_ercania))
+        f_merma = f_cad + datetime.timedelta(days=int(dias_cercania))
         if f_merma < START_DATE: f_merma = START_DATE + datetime.timedelta(days=np.random.randint(0, 30))
 
         mermas_list.append({
@@ -169,11 +169,11 @@ def generar_datos_ml_optimizados():
         })
         
         if len(mermas_list) >= 5000:
-            pd.DataFrame(mermas_list).to_sql('merma', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=5000)
+            pd.DataFrame(mermas_list).to_sql('merma', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=5000, dtype={'id_lote': PG_UUID(as_uuid=True), 'id_usuario': PG_UUID(as_uuid=True)})
             mermas_list = []
 
     if mermas_list:
-        pd.DataFrame(mermas_list).to_sql('merma', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=5000)
+        pd.DataFrame(mermas_list).to_sql('merma', engine, schema='operacion', if_exists='append', index=False, method='multi', chunksize=5000, dtype={'id_lote': PG_UUID(as_uuid=True), 'id_usuario': PG_UUID(as_uuid=True)})
 
     print("Generación de datos ML-Ready completada con éxito en PostgreSQL")
 

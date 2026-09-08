@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 from functools import wraps
-from data.mock_data import (
+from data.repository import (
     USUARIOS, ROLE_KEY_MAP, ROLE_KEYS, ROLE_VIEWS, ROLE_DEFAULT_VIEW,
     ROLE_ACCENT, NAV_SECTIONS, LOCACIONES, PROVEEDORES, PRODUCTOS,
     LOTES, EXISTENCIAS, VENTAS, MERMAS, CAUSA_MERMA_OPTS, BITACORA,
     REPLENISHMENT, TRANSFERS, ALERTS, DISCOUNTS, FORECAST_DATA,
     SALES_MONTHLY, CATEGORY_WASTE, SAVINGS_DATA, MICROSERVICES,
+    get_login_users, get_products_catalog, get_inventory_report, get_sales_report,
 )
 
 app = Flask(__name__)
@@ -102,18 +103,19 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        user = next((u for u in USUARIOS if u["email"].lower() == email and u["password"] == password), None)
+        users = get_login_users() or USUARIOS
+        user = next((u for u in users if str(u.get("email", "")).lower() == email and str(u.get("password", "")) == password), None)
         if not user:
             error = "Correo o contraseña incorrectos."
-        elif not user["estado_activo"]:
+        elif not user.get("estado_activo", True):
             error = "Esta cuenta está desactivada. Contacta al administrador."
         else:
-            role = ROLE_KEY_MAP.get(user["id_rol"], "auditor")
-            session["user_id"] = user["id_usuario"]
+            role = ROLE_KEY_MAP.get(user.get("id_rol"), "auditor")
+            session["user_id"] = user.get("id_usuario")
             session["role"] = role
-            session["user_name"] = user["nombre_completo"]
+            session["user_name"] = user.get("nombre_completo")
             return redirect(url_for(ROLE_DEFAULT_VIEW.get(role, "dashboard")))
-    return render_template("login.html", error=error, usuarios=USUARIOS, role_keys=ROLE_KEYS)
+    return render_template("login.html", error=error, usuarios=get_login_users() or USUARIOS, role_keys=ROLE_KEYS)
 
 
 @app.route("/logout")
@@ -149,10 +151,19 @@ def dashboard():
 @login_required
 @role_required("products")
 def products():
+    catalog = get_products_catalog() or PRODUCTOS
     enriched = []
-    for p in PRODUCTOS:
-        prov = next((pr for pr in PROVEEDORES if pr["id_proveedor"] == p["id_proveedor"]), {})
-        enriched.append({**p, "proveedor_nombre": prov.get("razon_social", "—")})
+    for p in catalog:
+        prov = next((pr for pr in PROVEEDORES if pr.get("id_proveedor") == p.get("id_proveedor")), {})
+        row = dict(p)
+        row["proveedor_nombre"] = p.get("proveedor_nombre") or prov.get("razon_social", "—")
+        row["categoria"] = p.get("categoria", "")
+        row["precio_costo"] = p.get("precio_costo", 0)
+        row["precio_venta"] = p.get("precio_venta", 0)
+        row["unidad"] = p.get("unidad", "")
+        row["stock_min"] = p.get("stock_min", 0)
+        row["punto_reorden"] = p.get("punto_reorden", 0)
+        enriched.append(row)
     return render_template("products.html", active="products", productos=enriched)
 
 
@@ -192,11 +203,17 @@ def batches():
 @role_required("inventory")
 def inventory():
     enriched = []
-    for ex in EXISTENCIAS:
-        lote = next((l for l in LOTES if l["id_lote"] == ex["id_lote"]), {})
-        prod = next((p for p in PRODUCTOS if p["id_sku"] == lote.get("id_sku")), {})
-        loc  = next((l for l in LOCACIONES if l["id_locacion"] == ex["id_locacion"]), {})
-        enriched.append({**ex, "producto": prod.get("nombre",""), "lote_codigo": lote.get("codigo_lote_prov",""), "locacion": loc.get("nombre",""), "fecha_caducidad": lote.get("fecha_caducidad","")})
+    rows = get_inventory_report() or EXISTENCIAS
+    for ex in rows:
+        lote = next((l for l in LOTES if str(l.get("id_lote")) == str(ex.get("id_lote"))), {})
+        prod = next((p for p in PRODUCTOS if p.get("id_sku") == lote.get("id_sku")), {})
+        loc = next((l for l in LOCACIONES if l.get("id_locacion") == ex.get("id_locacion")), {})
+        row = dict(ex)
+        row["producto"] = ex.get("producto") or prod.get("nombre", "")
+        row["lote_codigo"] = lote.get("codigo_lote_prov", "")
+        row["locacion"] = ex.get("locacion") or loc.get("nombre", "")
+        row["fecha_caducidad"] = ex.get("fecha_caducidad") or lote.get("fecha_caducidad", "")
+        enriched.append(row)
     return render_template("inventory.html", active="inventory", existencias=enriched, locaciones=LOCACIONES)
 
 
@@ -204,24 +221,29 @@ def inventory():
 @login_required
 @role_required("sales")
 def sales():
+    rows = get_sales_report() or VENTAS
     enriched = []
     total_units = total_revenue = 0
-    for v in VENTAS:
-        lote = next((l for l in LOTES if l["id_lote"] == v["id_lote"]), {})
-        prod = next((p for p in PRODUCTOS if p["id_sku"] == lote.get("id_sku")), {})
-        loc  = next((l for l in LOCACIONES if l["id_locacion"] == v["id_locacion"]), {})
-        total = v["cantidad"] * prod.get("precio_venta", 0)
-        total_units   += v["cantidad"]
+    for v in rows:
+        lote = next((l for l in LOTES if str(l.get("id_lote")) == str(v.get("id_lote"))), {})
+        prod = next((p for p in PRODUCTOS if p.get("id_sku") == lote.get("id_sku")), {})
+        loc = next((l for l in LOCACIONES if l.get("id_locacion") == v.get("id_locacion")), {})
+        qty = float(v.get("cantidad", 0) or 0)
+        unit_price = float(prod.get("precio_venta", 0) or 0)
+        total = qty * unit_price
+        total_units += qty
         total_revenue += total
-        enriched.append({**v, "producto": prod.get("nombre",""), "lote_codigo": lote.get("codigo_lote_prov",""), "locacion": loc.get("nombre",""), "precio_unit": prod.get("precio_venta",0), "total": total})
+        row = dict(v)
+        row["producto"] = v.get("producto") or prod.get("nombre", "")
+        row["lote_codigo"] = lote.get("codigo_lote_prov", "")
+        row["locacion"] = v.get("locacion") or loc.get("nombre", "")
+        row["precio_unit"] = unit_price
+        row["total"] = total
+        enriched.append(row)
     return render_template("sales.html", active="sales", ventas=enriched,
         total_units=total_units, total_revenue=total_revenue,
-        ticket_prom=round(total_units/len(VENTAS),1) if VENTAS else 0,
-        n_transacciones=len(VENTAS), sales_monthly=SALES_MONTHLY)
-
-
-@app.route("/forecast")
-@login_required
+        ticket_prom=round(total_units/len(enriched),1) if enriched else 0,
+        n_transacciones=len(enriched), sales_monthly=SALES_MONTHLY)
 @role_required("forecast")
 def forecast():
     return render_template("forecast.html", active="forecast", forecast_data=FORECAST_DATA, replenishment=REPLENISHMENT)

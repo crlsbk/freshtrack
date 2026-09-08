@@ -36,7 +36,7 @@ make setup
 Si cuentas con un archivo de respaldo en formato SQL plano comprimido (dump_perecederos.sql.gz), cárgalo directamente al contenedor con:
 
 ```bash
-gunzip -c dump_perecederos.sql.gz | docker exec -i retail_db psql -U postgres -d retail_pereceder
+gunzip -c dump_perecederos.sql.gz | docker exec -i retail_db psql -U postgres -d retail_perecederos
 ```
 
 ### Comandos Útiles (Makefile)

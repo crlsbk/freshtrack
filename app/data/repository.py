@@ -368,16 +368,66 @@ MICROSERVICES = TableProxy("SELECT NULL::text AS nombre WHERE FALSE")
 def authenticate_user(user_id, password):
     if password != os.getenv("APP_LOGIN_PASSWORD", "freshtrack"):
         return None
+    val = (user_id or "").strip()
+
+    # 1. Direct UUID
     rows = query(
         """
          SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
              u.nombre_completo, u.estado_activo, r.nombre_rol
          FROM operacion.usuario u
          JOIN operacion.rol r ON r.id_rol = u.id_rol
-         WHERE u.id_usuario::text = :user_id
+         WHERE u.id_usuario::text = :val
     """,
-        user_id=user_id,
+        val=val,
     )
+
+    # 2. Match by email or role keyword: e.g. "gerente@freshtrack.mx", "admin@...", "comprador"
+    if not rows:
+        val_clean = val.lower().split("@")[0].replace("_", "").replace(" ", "").replace("-", "")
+        role_search_map = {
+            "gerente": "Gerente de Tienda",
+            "store": "Gerente de Tienda",
+            "almacen": "Operador de Almac%",
+            "bodega": "Operador de Almac%",
+            "warehouse": "Operador de Almac%",
+            "compr": "Comprador",
+            "buyer": "Comprador",
+            "plan": "Planeador%",
+            "audit": "Auditor%",
+            "admin": "Administrador%",
+        }
+        for kw, pat in role_search_map.items():
+            if kw in val_clean:
+                rows = query(
+                    """
+                    SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
+                           u.nombre_completo, u.estado_activo, r.nombre_rol
+                    FROM operacion.usuario u
+                    JOIN operacion.rol r ON r.id_rol = u.id_rol
+                    WHERE r.nombre_rol ILIKE :pat AND u.estado_activo = true
+                    ORDER BY u.nombre_completo LIMIT 1
+                """,
+                    pat=pat,
+                )
+                if rows:
+                    break
+
+    # 3. Match by name: e.g. "Rebeca"
+    if not rows:
+        name_clean = val.split("@")[0].strip()
+        rows = query(
+            """
+            SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
+                   u.nombre_completo, u.estado_activo, r.nombre_rol
+            FROM operacion.usuario u
+            JOIN operacion.rol r ON r.id_rol = u.id_rol
+            WHERE u.nombre_completo ILIKE :pat AND u.estado_activo = true
+            ORDER BY u.nombre_completo LIMIT 1
+        """,
+            pat=f"%{name_clean}%",
+        )
+
     if not rows:
         return None
     user = rows[0]

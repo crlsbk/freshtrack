@@ -5,13 +5,13 @@ setup:
 	@echo "Archivo .env inicializado."
 
 up: setup
-	docker compose up -d
+	sudo docker compose up -d
 
 down:
-	docker compose down
+	sudo docker compose down
 
 clean:
-	docker compose down -v
+	sudo docker compose down -v
 
 populate:
 	python3 -m venv .venv

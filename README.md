@@ -40,13 +40,13 @@ gunzip -c dump_perecederos.sql.gz | docker exec -i retail_db psql -U postgres -d
 ```
 
 ### Comandos Útiles (Makefile)
-make up: Despliega el contenedor en segundo plano.
-make down: Detiene los contenedores preservando el volumen de datos.
-make clean: Destruye los contenedores y limpia por completo el volumen de la base de datos para un reinicio limpio.
-make populate: Configura el entorno virtual de Python e instala las dependencias del ETL.
+- `make up`: Despliega el contenedor en segundo plano.
+- `make down`: Detiene los contenedores preservando el volumen de datos.
+- `make clean`: Destruye los contenedores y limpia por completo el volumen de la base de datos para un reinicio limpio.
+- `make populate`: Configura el entorno virtual de Python e instala las dependencias del ETL.
 
 ### Arquitectura de Base de Datos
 Esquema operacion: Contiene catálogos maestros (rol, locacion, proveedor, producto) y el núcleo transaccional (usuario, lote, existencia, venta_detalle, merma) con tipado estricto en UUIDs y restricciones de integridad.  
 
 ### Esquema auditoria 
-Almacena la bitácora centralizada de eventos mediante estructuras JSONB y funciones PL/pgSQL que capturan de manera dinámica los cambios (INSERT, UPDATE, DELETE) junto con disparadores de protección contra modificaciones indebidas[cite: 1].
+Almacena la bitácora centralizada de eventos mediante estructuras JSONB y funciones PL/pgSQL que capturan de manera dinámica los cambios (INSERT, UPDATE, DELETE) junto con disparadores de protección contra modificaciones indebidas.

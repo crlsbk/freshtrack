@@ -244,6 +244,10 @@ def sales():
         total_units=total_units, total_revenue=total_revenue,
         ticket_prom=round(total_units/len(enriched),1) if enriched else 0,
         n_transacciones=len(enriched), sales_monthly=SALES_MONTHLY)
+
+
+@app.route("/forecast")
+@login_required
 @role_required("forecast")
 def forecast():
     return render_template("forecast.html", active="forecast", forecast_data=FORECAST_DATA, replenishment=REPLENISHMENT)

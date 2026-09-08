@@ -10,5 +10,6 @@ dependencies = [
     "numpy>=2.5.3",
     "pandas>=3.0.5",
     "psycopg[binary]>=3.3.5",
+    "python-dotenv>=1.0.0",
     "sqlalchemy>=2.0.52",
 ]

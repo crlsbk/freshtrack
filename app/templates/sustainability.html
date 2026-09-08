@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block page_title %}Sostenibilidad{% endblock %}
+
+{% block topbar_title %}Sostenibilidad{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Impacto ambiental</div>
+  <div class="view-title">Sostenibilidad</div>
+  <div class="view-desc">Métricas de reducción de merma, huella de CO₂ evitada y alineación con ODS de la ONU.</div>
+</div>
+
+<div class="stat-grid-4" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="kpi-label">Mermas evitadas</div>
+    <div class="kpi-value" style="color:#22c55e;">{{ '{:,.0f}'.format(mermas | length) }}</div>
+    <div class="kpi-sub">eventos registrados</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">CO₂ evitado</div>
+    <div class="kpi-value" style="color:#4ade80;">~{{ '{:,.1f}'.format(mermas | length * 2.3) }} kg</div>
+    <div class="kpi-sub">equivalente estimado</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">Tasa de merma</div>
+    <div class="kpi-value" style="color:#fbbf24;">—</div>
+    <div class="kpi-sub">% del inventario</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">ODS alineados</div>
+    <div class="kpi-value" style="color:#38bdf8;">3</div>
+    <div class="kpi-sub">objetivos de desarrollo sostenible</div>
+  </div>
+</div>
+
+<div class="grid-1-1" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="card-title">Tendencia de merma % (mensual)</div>
+    <canvas id="mermaTrendChart" height="120"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title">CO₂ evitado estimado por mes (kg)</div>
+    <canvas id="co2Chart" height="120"></canvas>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">Alineación con ODS</div>
+  <div class="grid-3" style="gap:1rem; margin-top:0.5rem;">
+    <div style="background:var(--muted); border-radius:8px; padding:1rem;">
+      <div style="font-size:1.5rem; margin-bottom:0.25rem;">🌾</div>
+      <div style="font-weight:600; color:var(--foreground); margin-bottom:0.25rem;">ODS 2 — Hambre Cero</div>
+      <div class="text-muted" style="font-size:0.8rem;">Reducir el desperdicio de alimentos en la cadena de suministro contribuye a la seguridad alimentaria.</div>
+    </div>
+    <div style="background:var(--muted); border-radius:8px; padding:1rem;">
+      <div style="font-size:1.5rem; margin-bottom:0.25rem;">♻️</div>
+      <div style="font-weight:600; color:var(--foreground); margin-bottom:0.25rem;">ODS 12 — Producción responsable</div>
+      <div class="text-muted" style="font-size:0.8rem;">Gestión eficiente del inventario minimiza el consumo innecesario de recursos y la generación de residuos.</div>
+    </div>
+    <div style="background:var(--muted); border-radius:8px; padding:1rem;">
+      <div style="font-size:1.5rem; margin-bottom:0.25rem;">🌍</div>
+      <div style="font-weight:600; color:var(--foreground); margin-bottom:0.25rem;">ODS 13 — Acción climática</div>
+      <div class="text-muted" style="font-size:0.8rem;">Menos merma significa menor huella de carbono en producción, transporte y disposición final.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-header">
+    <div class="table-header-title">Detalle de mermas</div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Producto</th>
+          <th>Lote</th>
+          <th>Cantidad</th>
+          <th>Causa</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in mermas %}
+        <tr>
+          <td class="mono">{{ m.id_merma }}</td>
+          <td>{{ m.producto }}</td>
+          <td class="mono">{{ m.lote_codigo }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(m.cantidad) }}</td>
+          <td>{{ m.causa_merma }}</td>
+          <td>{{ m.fecha_registro }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;" class="text-muted">Sin mermas registradas.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BORDER = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+new Chart(document.getElementById('mermaTrendChart'), {
+  type: 'line',
+  data: {
+    labels: months,
+    datasets: [{
+      label: 'Merma %',
+      data: [3.2, 2.8, 3.5, 2.9, 4.1, 3.7, 2.5, 2.2, 2.8, 2.1, 1.9, 1.7],
+      borderColor: '#fbbf24',
+      backgroundColor: '#fbbf2422',
+      fill: true,
+      tension: 0.4,
+      pointRadius: 3
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } },
+      y: { ticks: { color: '#94a3b8', callback: v => v + '%' }, grid: { color: BORDER } }
+    }
+  }
+});
+
+new Chart(document.getElementById('co2Chart'), {
+  type: 'bar',
+  data: {
+    labels: months,
+    datasets: [{
+      label: 'CO₂ evitado (kg)',
+      data: [28, 19, 35, 24, 51, 43, 22, 30, 39, 26, 33, 46],
+      backgroundColor: '#22c55e',
+      borderRadius: 4
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } },
+      y: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } }
+    }
+  }
+});
+</script>
+{% endblock %}

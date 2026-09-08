@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block page_title %}Reabastecimiento{% endblock %}
+
+{% block topbar_title %}Reabastecimiento{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Gestión de pedidos</div>
+  <div class="view-title">Reabastecimiento sugerido</div>
+  <div class="view-desc">SKUs que han alcanzado o superado su punto de reorden. Cantidades calculadas con el modelo Newsvendor.</div>
+</div>
+
+{% set prioridades = items | map(attribute='prioridad') | unique | list %}
+<div class="card">
+  <div class="tabs" id="rep-tabs">
+    <button class="tab active" data-panel="all"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterRep('all')">
+      Todos
+    </button>
+    {% for p in prioridades %}
+    <button class="tab" data-panel="{{ p }}"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterRep('{{ p }}')">
+      {{ p | capitalize }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <div class="table-wrap">
+    <table id="rep-table">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Producto</th>
+          <th>Locación</th>
+          <th>Stock actual</th>
+          <th>P. Reorden</th>
+          <th>Dem. pron.</th>
+          <th>Q* sugerido</th>
+          <th>Proveedor</th>
+          <th>Lead time</th>
+          <th>Costo est.</th>
+          <th>Prioridad</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr data-prioridad="{{ it.prioridad | lower }}">
+          <td class="mono">{{ it.id_sku }}</td>
+          <td>{{ it.producto }}</td>
+          <td>{{ it.locacion }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(it.stock_actual) }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(it.punto_reorden) }}</td>
+          <td class="mono">{{ '{:,.1f}'.format(it.demanda_pron) }}</td>
+          <td class="mono" style="color:#22c55e; font-weight:600;">{{ '{:,.0f}'.format(it.q_sugerido) }}</td>
+          <td>{{ it.proveedor }}</td>
+          <td class="mono">{{ it.lead_time_dias }} días</td>
+          <td class="mono">${{ '{:,.2f}'.format(it.costo_est) }}</td>
+          <td>
+            {% set p = it.prioridad | lower %}
+            {% if p == 'alta' or p == 'high' %}
+              <span class="badge badge-danger">Alta</span>
+            {% elif p == 'media' or p == 'medium' %}
+              <span class="badge badge-warning">Media</span>
+            {% else %}
+              <span class="badge badge-success">Baja</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="11" style="text-align:center;" class="text-muted">Sin items de reabastecimiento.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if items %}
+  <div style="padding:1rem 1.25rem; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:0.5rem; align-items:center;">
+    <span class="text-muted" style="font-size:0.875rem;">Costo estimado total:</span>
+    <span class="mono" style="font-size:1.1rem; font-weight:700; color:#22c55e;">
+      ${{ '{:,.2f}'.format(items | sum(attribute='costo_est')) }}
+    </span>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterRep(prioridad) {
+  document.querySelectorAll('#rep-table tbody tr[data-prioridad]').forEach(row => {
+    row.style.display = (prioridad === 'all' || row.dataset.prioridad === prioridad) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

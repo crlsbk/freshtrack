@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block page_title %}Ahorro Generado{% endblock %}
+
+{% block topbar_title %}Ahorro Generado{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Impacto económico</div>
+  <div class="view-title">Ahorro Generado</div>
+  <div class="view-desc">Valor recuperado mediante descuentos, transferencias y merma evitada.</div>
+</div>
+
+<div class="savings-hero" style="margin-bottom:1.5rem;">
+  <div style="text-align:center; padding:2rem 1rem;">
+    <div class="kpi-label" style="font-size:0.875rem; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:0.5rem;">Ahorro total acumulado</div>
+    <div style="font-size:3rem; font-weight:800; color:#22c55e; line-height:1;">${{ '{:,.0f}'.format(total) }}</div>
+    <div class="text-muted" style="margin-top:0.5rem;">MXN — suma de descuentos + transferencias + merma evitada</div>
+  </div>
+  <div class="stat-grid-3" style="padding:0 1rem 1.5rem;">
+    <div style="text-align:center;">
+      <div class="kpi-label">Descuentos</div>
+      <div class="kpi-value" style="color:#38bdf8;">${{ '{:,.0f}'.format(savings_data | sum(attribute='descuentos')) }}</div>
+    </div>
+    <div style="text-align:center;">
+      <div class="kpi-label">Transferencias</div>
+      <div class="kpi-value" style="color:#a78bfa;">${{ '{:,.0f}'.format(savings_data | sum(attribute='transferencias')) }}</div>
+    </div>
+    <div style="text-align:center;">
+      <div class="kpi-label">Merma evitada</div>
+      <div class="kpi-value" style="color:#22c55e;">${{ '{:,.0f}'.format(savings_data | sum(attribute='merma_evitada')) }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">Ahorro mensual por categoría</div>
+  <canvas id="savingsChart" height="90"></canvas>
+</div>
+
+<div class="stat-grid-3">
+  <div class="card">
+    <div class="card-title">Descuentos por caducidad</div>
+    <div class="kpi-value" style="color:#38bdf8; font-size:1.75rem;">${{ '{:,.0f}'.format(savings_data | sum(attribute='descuentos')) }}</div>
+    <div class="kpi-sub">ingresos recuperados de lotes próximos a vencer</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Transferencias estratégicas</div>
+    <div class="kpi-value" style="color:#a78bfa; font-size:1.75rem;">${{ '{:,.0f}'.format(savings_data | sum(attribute='transferencias')) }}</div>
+    <div class="kpi-sub">valor redistribuido entre locaciones</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Merma evitada</div>
+    <div class="kpi-value" style="color:#22c55e; font-size:1.75rem;">${{ '{:,.0f}'.format(savings_data | sum(attribute='merma_evitada')) }}</div>
+    <div class="kpi-sub">pérdida prevenida gracias a FEFO y alertas</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const savingsData = {{ savings_data | tojson }};
+const BORDER = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+
+const labels = savingsData.map(d => d.mes);
+
+new Chart(document.getElementById('savingsChart'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: 'Descuentos',
+        data: savingsData.map(d => d.descuentos),
+        backgroundColor: '#38bdf8',
+        borderRadius: 4,
+        stack: 'savings'
+      },
+      {
+        label: 'Transferencias',
+        data: savingsData.map(d => d.transferencias),
+        backgroundColor: '#a78bfa',
+        borderRadius: 4,
+        stack: 'savings'
+      },
+      {
+        label: 'Merma evitada',
+        data: savingsData.map(d => d.merma_evitada),
+        backgroundColor: '#22c55e',
+        borderRadius: 4,
+        stack: 'savings'
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { labels: { color: '#94a3b8' } } },
+    scales: {
+      x: { stacked: true, ticks: { color: '#94a3b8' }, grid: { color: BORDER } },
+      y: { stacked: true, ticks: { color: '#94a3b8' }, grid: { color: BORDER } }
+    }
+  }
+});
+</script>
+{% endblock %}

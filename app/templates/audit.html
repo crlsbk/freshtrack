@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block page_title %}Auditoría{% endblock %}
+
+{% block topbar_title %}Bitácora de Auditoría{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Cumplimiento</div>
+  <div class="view-title">Bitácora de auditoría</div>
+  <div class="view-desc">Registro inmutable de todas las operaciones del sistema.</div>
+</div>
+
+<div class="alert-item alert-info" style="margin-bottom:1rem; display:flex; align-items:center; gap:0.75rem;">
+  <span style="font-size:1.1rem;">🔒</span>
+  <div>
+    <strong>Inmutabilidad garantizada.</strong>
+    <span class="text-muted"> Los registros de esta bitácora son de solo lectura. Ninguna operación del sistema puede modificar o eliminar eventos ya registrados.</span>
+  </div>
+</div>
+
+{% set operaciones = bitacora | map(attribute='tipo_operacion') | unique | list %}
+<div class="card">
+  <div class="tabs" id="audit-tabs">
+    <button class="tab active" data-panel="all"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterAudit('all')">
+      Todas
+    </button>
+    {% for op in operaciones %}
+    <button class="tab" data-panel="{{ op }}"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterAudit('{{ op }}')">
+      {{ op }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <div class="table-wrap">
+    <table id="audit-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Tabla</th>
+          <th>Operación</th>
+          <th>Usuario</th>
+          <th>Descripción</th>
+          <th>Fecha</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in bitacora %}
+        <tr data-op="{{ ev.tipo_operacion }}" id="audit-row-{{ ev.id_evento }}">
+          <td class="mono">{{ ev.id_evento }}</td>
+          <td class="mono" style="font-size:0.8rem;">{{ ev.nombre_tabla }}</td>
+          <td>
+            {% set op = ev.tipo_operacion | upper %}
+            {% if op == 'INSERT' %}
+              <span class="badge badge-success">INSERT</span>
+            {% elif op == 'UPDATE' %}
+              <span class="badge badge-warning">UPDATE</span>
+            {% elif op == 'DELETE' %}
+              <span class="badge badge-danger">DELETE</span>
+            {% else %}
+              <span class="badge badge-neutral">{{ ev.tipo_operacion }}</span>
+            {% endif %}
+          </td>
+          <td>{{ ev.user_name or ev.id_usuario_app }}</td>
+          <td class="text-muted" style="font-size:0.8rem; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ ev.descripcion }}</td>
+          <td class="text-muted" style="font-size:0.8rem; white-space:nowrap;">{{ ev.fecha_evento }}</td>
+          <td>
+            <button class="btn btn-ghost btn-sm" onclick="toggleAuditRow('{{ ev.id_evento }}')">Ver</button>
+          </td>
+        </tr>
+        <tr id="audit-detail-{{ ev.id_evento }}" style="display:none;" data-op="{{ ev.tipo_operacion }}">
+          <td colspan="7" style="padding:0.75rem 1rem; background:var(--muted);">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+              <div>
+                <div class="form-label" style="margin-bottom:0.5rem;">Estado anterior</div>
+                <pre class="json-viewer">{{ ev.estado_anterior | tojson(indent=2) if ev.estado_anterior else 'null' }}</pre>
+              </div>
+              <div>
+                <div class="form-label" style="margin-bottom:0.5rem;">Estado nuevo</div>
+                <pre class="json-viewer">{{ ev.estado_nuevo | tojson(indent=2) if ev.estado_nuevo else 'null' }}</pre>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align:center;" class="text-muted">Sin eventos registrados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleAuditRow(id) {
+  const detail = document.getElementById('audit-detail-' + id);
+  if (detail) {
+    detail.style.display = detail.style.display === 'none' ? '' : 'none';
+  }
+}
+
+function filterAudit(op) {
+  document.querySelectorAll('#audit-table tbody tr[data-op]').forEach(row => {
+    row.style.display = (op === 'all' || row.dataset.op === op) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

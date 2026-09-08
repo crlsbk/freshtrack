@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block page_title %}Ventas{% endblock %}
+
+{% block topbar_title %}Ventas{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Transacciones</div>
+  <div class="view-title">Ventas</div>
+  <div class="view-desc">Historial de ventas, ingresos y análisis mensual.</div>
+</div>
+
+<div class="stat-grid-4" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="kpi-label">Transacciones</div>
+    <div class="kpi-value">{{ '{:,.0f}'.format(n_transacciones) }}</div>
+    <div class="kpi-sub">total registradas</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">Unidades vendidas</div>
+    <div class="kpi-value">{{ '{:,.0f}'.format(total_units) }}</div>
+    <div class="kpi-sub">unidades</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">Ingresos totales</div>
+    <div class="kpi-value">${{ '{:,.0f}'.format(total_revenue) }}</div>
+    <div class="kpi-sub">MXN</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">Ticket promedio</div>
+    <div class="kpi-value">${{ '{:,.2f}'.format(ticket_prom) }}</div>
+    <div class="kpi-sub">por transacción</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">Ventas vs Merma mensual</div>
+  <canvas id="salesChart" height="90"></canvas>
+</div>
+
+<div class="card">
+  <div class="table-header">
+    <div class="table-header-title">Transacciones</div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Producto</th>
+          <th>Lote</th>
+          <th>Locación</th>
+          <th>Cantidad</th>
+          <th>Precio Unit.</th>
+          <th>Total</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in ventas %}
+        <tr>
+          <td class="mono">{{ v.id_venta }}</td>
+          <td>{{ v.producto }}</td>
+          <td class="mono">{{ v.lote_codigo }}</td>
+          <td>{{ v.locacion }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(v.cantidad) }}</td>
+          <td class="mono">${{ '{:,.2f}'.format(v.precio_unit) }}</td>
+          <td class="mono">${{ '{:,.2f}'.format(v.total) }}</td>
+          <td>{{ v.fecha_transaccion }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align:center;" class="text-muted">Sin ventas registradas.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const salesMonthly = {{ sales_monthly | tojson }};
+const labels = salesMonthly.map(d => d.mes || d.month || d.label || '');
+const ventasData = salesMonthly.map(d => d.ventas || d.venta || 0);
+const mermaData = salesMonthly.map(d => d.merma || 0);
+const BORDER = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+
+new Chart(document.getElementById('salesChart'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: 'Ventas',
+        data: ventasData,
+        backgroundColor: '#22c55e',
+        borderRadius: 4,
+      },
+      {
+        label: 'Merma',
+        data: mermaData,
+        backgroundColor: '#f87171',
+        borderRadius: 4,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { labels: { color: '#94a3b8' } }
+    },
+    scales: {
+      x: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } },
+      y: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } }
+    }
+  }
+});
+</script>
+{% endblock %}

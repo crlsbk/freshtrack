@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block page_title %}Locaciones{% endblock %}
+
+{% block topbar_title %}Locaciones{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Red de distribución</div>
+  <div class="view-title">Locaciones</div>
+  <div class="view-desc">Tiendas y centros de distribución conectados a la red.</div>
+</div>
+
+<div class="grid-3">
+  {% for loc in locaciones %}
+  <div class="card">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+      <div class="card-title" style="margin-bottom:0;">{{ loc.nombre }}</div>
+      {% if loc.tipo_locacion == 'Tienda' %}
+        <span class="badge badge-info">Tienda</span>
+      {% elif loc.tipo_locacion == 'CEDIS' %}
+        <span class="badge badge-success">CEDIS</span>
+      {% else %}
+        <span class="badge badge-neutral">{{ loc.tipo_locacion }}</span>
+      {% endif %}
+    </div>
+    <div class="text-muted" style="font-size:0.75rem; margin-bottom:1rem;">ID: <span class="mono">{{ loc.id_locacion }}</span></div>
+    <div class="stat-grid-3" style="gap:0.5rem;">
+      <div>
+        <div class="kpi-label">SKUs activos</div>
+        <div class="kpi-value" style="font-size:1.25rem;">—</div>
+      </div>
+      <div>
+        <div class="kpi-label">Lotes vigentes</div>
+        <div class="kpi-value" style="font-size:1.25rem;">—</div>
+      </div>
+      <div>
+        <div class="kpi-label">Alertas</div>
+        <div class="kpi-value" style="font-size:1.25rem;">—</div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="grid-column:1/-1; text-align:center;" class="text-muted">Sin locaciones registradas.</div>
+  {% endfor %}
+</div>
+{% endblock %}

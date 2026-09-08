@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block page_title %}Usuarios{% endblock %}
+
+{% block topbar_title %}Usuarios{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Administración</div>
+  <div class="view-title">Usuarios</div>
+  <div class="view-desc">Gestión de accesos, roles y locaciones del sistema.</div>
+</div>
+
+<div class="card">
+  <div class="table-header">
+    <div class="table-header-title">Usuarios del sistema</div>
+    <div class="table-actions">
+      {% if role_keys %}
+      <select class="input" id="role-filter" onchange="filterByRole()" style="width:180px;">
+        <option value="">Todos los roles</option>
+        {% for r in role_keys %}
+        <option value="{{ r }}">{{ r }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      <a href="#" class="btn btn-primary btn-sm">+ Nuevo Usuario</a>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="users-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Email</th>
+          <th>Rol</th>
+          <th>Locación</th>
+          <th>Estado</th>
+          <th>Último acceso</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+        <tr data-rol="{{ u.rol_label }}">
+          <td class="mono">{{ u.id_usuario }}</td>
+          <td>{{ u.nombre_completo }}</td>
+          <td class="mono" style="font-size:0.8rem;">{{ u.email }}</td>
+          <td>
+            <span class="badge" style="background:{{ u.rol_color }}22; color:{{ u.rol_color }}; border:1px solid {{ u.rol_color }}44;">
+              {{ u.rol_label }}
+            </span>
+          </td>
+          <td>{{ u.locacion_nombre }}</td>
+          <td>
+            {% if u.estado_activo %}
+              <span class="status-dot dot-ok"></span> <span class="text-success" style="font-size:0.8rem;">Activo</span>
+            {% else %}
+              <span class="status-dot dot-error"></span> <span class="text-danger" style="font-size:0.8rem;">Inactivo</span>
+            {% endif %}
+          </td>
+          <td class="text-muted" style="font-size:0.8rem;">{{ u.ultimo_acceso }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align:center;" class="text-muted">Sin usuarios registrados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterByRole() {
+  const val = document.getElementById('role-filter').value;
+  document.querySelectorAll('#users-table tbody tr[data-rol]').forEach(row => {
+    row.style.display = (!val || row.dataset.rol === val) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

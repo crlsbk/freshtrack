@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block page_title %}Proveedores{% endblock %}
+
+{% block topbar_title %}Proveedores{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Cadena de suministro</div>
+  <div class="view-title">Proveedores</div>
+  <div class="view-desc">Directorio de proveedores, lead times y métricas de confiabilidad.</div>
+</div>
+
+<div class="card">
+  <div class="table-header">
+    <div class="table-header-title">Proveedores registrados</div>
+    <div class="table-actions">
+      <a href="#" class="btn btn-primary btn-sm">+ Nuevo Proveedor</a>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>RFC</th>
+          <th>Razón Social</th>
+          <th>Lead Time (días)</th>
+          <th>Contacto</th>
+          <th>Confiabilidad</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in proveedores %}
+        <tr>
+          <td class="mono">{{ p.id_proveedor }}</td>
+          <td class="mono">{{ p.rfc }}</td>
+          <td>{{ p.razon_social }}</td>
+          <td class="mono">{{ p.lead_time_dias }}</td>
+          <td>{{ p.contacto }}</td>
+          <td style="min-width:160px;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <div class="progress-bar" style="flex:1;">
+                <div class="progress-fill" style="width:{{ p.confiabilidad }}%; background:#4ade80;"></div>
+              </div>
+              <span class="mono" style="font-size:0.75rem; min-width:36px;">{{ p.confiabilidad }}%</span>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;" class="text-muted">Sin proveedores registrados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

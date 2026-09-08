@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block page_title %}Transferencias{% endblock %}
+
+{% block topbar_title %}Transferencias{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Movimientos internos</div>
+  <div class="view-title">Transferencias</div>
+  <div class="view-desc">Movimientos de inventario entre locaciones y centros de distribución.</div>
+</div>
+
+<div class="card">
+  <div class="table-header">
+    <div class="table-header-title">Historial de transferencias</div>
+    <div class="table-actions">
+      <a href="#" class="btn btn-primary btn-sm">+ Nueva Transferencia</a>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Producto</th>
+          <th>Origen</th>
+          <th>Destino</th>
+          <th>Cantidad</th>
+          <th>Motivo</th>
+          <th>Status</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in transfers %}
+        <tr>
+          <td class="mono">{{ t.id }}</td>
+          <td>{{ t.producto }}</td>
+          <td>{{ t.origen }}</td>
+          <td>{{ t.destino }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(t.cantidad) }}</td>
+          <td>{{ t.motivo }}</td>
+          <td>
+            {% set s = t.status | lower %}
+            {% if s == 'pendiente' %}
+              <span class="badge badge-warning">Pendiente</span>
+            {% elif s == 'aprobada' %}
+              <span class="badge badge-info">Aprobada</span>
+            {% elif s == 'ejecutada' %}
+              <span class="badge badge-success">Ejecutada</span>
+            {% else %}
+              <span class="badge badge-neutral">{{ t.status }}</span>
+            {% endif %}
+          </td>
+          <td>{{ t.fecha }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align:center;" class="text-muted">Sin transferencias registradas.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

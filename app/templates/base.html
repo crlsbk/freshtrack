@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FreshTrack — {% block page_title %}Vista{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <style>:root { --role-accent: {{ role_accent }}; }</style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+      </div>
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-name">FreshTrack</div>
+        <div class="sidebar-brand-sub">Perecederos · IA</div>
+      </div>
+      <button class="sidebar-toggle" id="sidebar-toggle" title="Colapsar">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar-role">
+      <div class="sidebar-role-pill">
+        <span class="sidebar-role-dot"></span>
+        <span class="sidebar-role-label">{{ role_label }}</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      {% for section in nav_sections %}
+        <div class="sidebar-section-label">{{ section.label }}</div>
+        {% for item in section['items'] %}
+          <a href="{{ url_for(item.id) }}" class="sidebar-link {% if active == item.id %}active{% endif %}">
+            <svg viewBox="0 0 20 20">{{ nav_icons[item.id] | safe }}</svg>
+            <span>{{ item.label }}</span>
+          </a>
+        {% endfor %}
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="topbar" style="box-shadow: 0 1px 0 0 {{ role_accent }}28;">
+      <div class="topbar-breadcrumb">
+        <span class="parent">FreshTrack</span>
+        <span class="sep">›</span>
+        <span class="current">{% block topbar_title %}Vista{% endblock %}</span>
+      </div>
+      <div class="topbar-db">
+        <span class="topbar-db-dot"></span>
+        retail_perecederos
+      </div>
+      <div class="topbar-search">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+        <input type="text" placeholder="Buscar producto, lote, SKU..."/>
+      </div>
+      <a href="{{ url_for('alerts') if 'alerts' in allowed_views else '#' }}" class="topbar-bell">
+        <svg viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z"/></svg>
+        <span class="topbar-badge">{{ notifications }}</span>
+      </a>
+      <div class="topbar-role-pill" style="border:1px solid {{ role_accent }}40; background:{{ role_accent }}0d; color:{{ role_accent }};">
+        <span style="width:5px;height:5px;border-radius:50%;background:{{ role_accent }};display:inline-block;margin-right:2px;"></span>
+        {{ role_label }}
+      </div>
+      <div class="topbar-avatar" style="background:{{ role_accent }}20; border:1.5px solid {{ role_accent }}50; color:{{ role_accent }};" title="{{ user_name }}">
+        {{ user_initials }}
+      </div>
+      <a href="{{ url_for('logout') }}" class="topbar-logout">Salir</a>
+    </header>
+
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

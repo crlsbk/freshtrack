@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block page_title %}Cola FEFO{% endblock %}
+
+{% block topbar_title %}Cola FEFO{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Despacho inteligente</div>
+  <div class="view-title">Cola FEFO</div>
+  <div class="view-desc">First Expired, First Out — orden de despacho para minimizar vencimientos y mermas.</div>
+</div>
+
+<div class="card" style="margin-bottom:1rem; padding:1rem 1.25rem; display:flex; gap:1rem; align-items:flex-start; background:var(--card); border:1px solid var(--border);">
+  <div>
+    <div style="font-weight:600; color:#38bdf8; margin-bottom:0.25rem;">¿Qué es FEFO?</div>
+    <div class="text-muted" style="font-size:0.875rem; margin-bottom:0.5rem;">
+      First Expired, First Out ordena el despacho priorizando los lotes con menor vida útil restante. Reduce mermas y garantiza rotación correcta del inventario.
+    </div>
+    <div style="background:var(--muted); border-radius:6px; padding:0.6rem 0.9rem; display:inline-block;">
+      <span class="mono text-muted" style="font-size:0.78rem;">
+        SELECT * FROM existencias ORDER BY fecha_caducidad ASC NULLS LAST;
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-header">
+    <div class="table-header-title">Lotes en cola de despacho</div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>ID Lote</th>
+          <th>Código Prov.</th>
+          <th>Producto</th>
+          <th>Locación</th>
+          <th>Días rest.</th>
+          <th>Disponible</th>
+          <th>Urgencia</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in queue %}
+        <tr>
+          <td class="mono text-muted">{{ loop.index }}</td>
+          <td class="mono">{{ item.id_lote }}</td>
+          <td class="mono">{{ item.codigo_lote_prov }}</td>
+          <td>{{ item.producto }}</td>
+          <td>{{ item.locacion }}</td>
+          <td class="mono {% if item.dias_restantes is not none and item.dias_restantes <= 0 %}text-danger{% elif item.dias_restantes is not none and item.dias_restantes <= 7 %}text-danger{% elif item.dias_restantes is not none and item.dias_restantes <= 30 %}text-warning{% else %}text-success{% endif %}">
+            {{ item.dias_restantes if item.dias_restantes is not none else '—' }}
+          </td>
+          <td class="mono">{{ '{:,.0f}'.format(item.disponible) }}</td>
+          <td>
+            {% set s = item.status | lower %}
+            {% if s == 'critico' or s == 'crítico' %}
+              <span class="badge badge-danger">Crítico</span>
+            {% elif s == 'advertencia' %}
+              <span class="badge badge-warning">Advertencia</span>
+            {% elif s == 'ok' %}
+              <span class="badge badge-success">OK</span>
+            {% elif s == 'vencido' %}
+              <span class="badge badge-neutral">Vencido</span>
+            {% else %}
+              <span class="badge badge-neutral">{{ item.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align:center;" class="text-muted">Cola vacía.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

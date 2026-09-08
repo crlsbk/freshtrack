@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FreshTrack — Iniciar sesión</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+</head>
+<body>
+<div class="login-page">
+
+  <!-- Form panel -->
+  <div class="login-panel">
+    <div class="login-logo">
+      <div class="login-logo-mark">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+      </div>
+      <div>
+        <div class="login-brand-name">FreshTrack</div>
+        <div class="login-brand-sub">PERECEDEROS · IA</div>
+      </div>
+    </div>
+
+    <div class="login-title">Inicia sesión</div>
+    <div class="login-subtitle">Ingresa tus credenciales para acceder al sistema.</div>
+
+    <form class="login-form" method="POST" action="{{ url_for('login') }}">
+      {% if error %}
+        <div class="login-error">{{ error }}</div>
+      {% endif %}
+
+      <div>
+        <label class="form-label" for="login-email">Correo electrónico</label>
+        <input class="input" type="email" id="login-email" name="email" autocomplete="email" placeholder="usuario@freshtrack.mx" required/>
+      </div>
+      <div>
+        <label class="form-label" for="login-password">Contraseña</label>
+        <input class="input" type="password" id="login-password" name="password" autocomplete="current-password" placeholder="••••••••" required/>
+      </div>
+      <button type="submit" class="login-submit">Iniciar sesión</button>
+    </form>
+
+    <button class="login-hint-btn" id="hints-toggle-btn" onclick="toggleHints()">Ver credenciales de demostración</button>
+
+    <div class="login-hints" id="login-hints" style="display:none;">
+      {% for u in usuarios %}
+        {% if u.estado_activo %}
+          <button class="hint-row" onclick="fillLogin('{{ u.email }}', '{{ u.password }}')">
+            <div>
+              <div class="hint-email">{{ u.email }}</div>
+              <div class="hint-meta">{{ u.nombre_completo }} · <span class="hint-pass">{{ u.password }}</span></div>
+            </div>
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="#2e4232"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"/></svg>
+          </button>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="login-footer">retail_perecederos · PostgreSQL 16 · scram-sha-256</div>
+  </div>
+
+  <!-- Roles panel -->
+  <div class="login-roles-panel">
+    <div class="login-roles-label">Perfiles del sistema</div>
+    {% for r in role_keys %}
+      <div class="login-role-row">
+        <span class="login-role-dot" style="background:{{ r.color }};"></span>
+        <span class="login-role-name">{{ r.label }}</span>
+        <span class="login-role-id">id_rol {{ r.id_rol }}</span>
+      </div>
+    {% endfor %}
+  </div>
+
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

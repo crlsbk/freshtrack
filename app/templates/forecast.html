@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block page_title %}Pronóstico{% endblock %}
+
+{% block topbar_title %}Pronóstico de Demanda{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Demand Planning</div>
+  <div class="view-title">Pronóstico de Demanda</div>
+  <div class="view-desc">Modelo Holt-Winters con intervalos de confianza y cantidad óptima de pedido (Newsvendor).</div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">Demanda real vs pronóstico semanal</div>
+  <canvas id="forecastChart" height="90"></canvas>
+</div>
+
+<div class="grid-2-1" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="card-title">Datos de pronóstico</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Semana</th>
+            <th>Real</th>
+            <th>Pronóstico</th>
+            <th>IC Sup.</th>
+            <th>IC Inf.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in forecast_data %}
+          <tr>
+            <td class="mono">{{ row.semana }}</td>
+            <td class="mono">{{ row.real if row.real is not none else '—' }}</td>
+            <td class="mono">{{ '{:,.1f}'.format(row.pronostico) if row.pronostico is not none else '—' }}</td>
+            <td class="mono">{{ '{:,.1f}'.format(row.ic_sup) if row.ic_sup is not none else '—' }}</td>
+            <td class="mono">{{ '{:,.1f}'.format(row.ic_inf) if row.ic_inf is not none else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-muted" style="text-align:center;">Sin datos.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="align-self:start;">
+    <div class="card-title">Modelo Newsvendor</div>
+    <p class="text-muted" style="font-size:0.875rem; margin-bottom:1rem;">
+      Calcula la cantidad óptima de pedido Q* que balancea el costo de exceso (Co) contra el costo de faltante (Cu).
+    </p>
+    <div style="background:var(--muted); border-radius:8px; padding:1rem; text-align:center; margin-bottom:1rem;">
+      <div class="mono" style="font-size:1.1rem; color:#38bdf8;">Q* = F⁻¹(Cu / (Cu + Co))</div>
+    </div>
+    <div style="font-size:0.8rem;" class="text-muted">
+      <div style="margin-bottom:0.4rem;"><strong style="color:var(--foreground);">Cu</strong> — Costo de substock (margen perdido + penalización)</div>
+      <div style="margin-bottom:0.4rem;"><strong style="color:var(--foreground);">Co</strong> — Costo de sobrestock (merma + holding)</div>
+      <div><strong style="color:var(--foreground);">F⁻¹</strong> — Inversa de la distribución de demanda</div>
+    </div>
+    {% if replenishment %}
+    <div style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
+      <div class="kpi-label">Q* sugerido</div>
+      <div class="kpi-value" style="font-size:1.5rem; color:#22c55e;">{{ replenishment | length }}</div>
+      <div class="kpi-sub">unidades</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const forecastData = {{ forecast_data | tojson }};
+const BORDER = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+
+const labels = forecastData.map(d => d.semana);
+const real = forecastData.map(d => d.real);
+const pron = forecastData.map(d => d.pronostico);
+const icSup = forecastData.map(d => d.ic_sup);
+const icInf = forecastData.map(d => d.ic_inf);
+
+new Chart(document.getElementById('forecastChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: 'Real',
+        data: real,
+        borderColor: '#22c55e',
+        backgroundColor: 'transparent',
+        pointRadius: 3,
+        tension: 0.3,
+      },
+      {
+        label: 'Pronóstico',
+        data: pron,
+        borderColor: '#38bdf8',
+        borderDash: [5, 4],
+        backgroundColor: 'transparent',
+        pointRadius: 2,
+        tension: 0.3,
+      },
+      {
+        label: 'IC Superior',
+        data: icSup,
+        borderColor: '#38bdf822',
+        backgroundColor: '#38bdf822',
+        fill: '+1',
+        pointRadius: 0,
+        tension: 0.3,
+      },
+      {
+        label: 'IC Inferior',
+        data: icInf,
+        borderColor: '#38bdf822',
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        tension: 0.3,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { color: '#94a3b8' } } },
+    scales: {
+      x: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } },
+      y: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } }
+    }
+  }
+});
+</script>
+{% endblock %}

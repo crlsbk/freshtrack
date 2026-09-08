@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block page_title %}Alertas{% endblock %}
+
+{% block topbar_title %}Alertas{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Sistema de alertas</div>
+  <div class="view-title">Alertas activas</div>
+  <div class="view-desc">Notificaciones del sistema sobre caducidades, stock bajo, reabastecimiento y transferencias.</div>
+</div>
+
+{% set tipos = alerts | map(attribute='tipo') | unique | list %}
+<div class="card">
+  <div class="tabs" id="alert-tabs">
+    <button class="tab active" data-panel="all"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterAlerts('all')">
+      Todas ({{ alerts | length }})
+    </button>
+    {% for tipo in tipos %}
+    <button class="tab" data-panel="{{ tipo }}"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterAlerts('{{ tipo }}')">
+      {{ tipo | capitalize }} ({{ alerts | selectattr('tipo', 'equalto', tipo) | list | length }})
+    </button>
+    {% endfor %}
+  </div>
+
+  <div id="alerts-container" style="padding:0.5rem 0;">
+    {% for a in alerts %}
+    {% set t = a.tipo | lower %}
+    <div class="alert-item {% if t == 'caducidad' or t == 'stock' %}alert-danger{% elif t == 'reorden' or t == 'transferencia' %}alert-warning{% else %}alert-info{% endif %}"
+         data-tipo="{{ a.tipo }}">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem;">
+        <div style="flex:1;">
+          <div style="font-weight:600; margin-bottom:0.25rem; color:var(--foreground);">{{ a.mensaje }}</div>
+          <div class="text-muted" style="font-size:0.8rem; display:flex; gap:1rem; flex-wrap:wrap;">
+            {% if a.id_sku %}<span>SKU: <span class="mono">{{ a.id_sku }}</span></span>{% endif %}
+            {% if a.id_locacion %}<span>Locación: <span class="mono">{{ a.id_locacion }}</span></span>{% endif %}
+            {% if a.dias_restantes is not none %}<span>Días restantes: <strong>{{ a.dias_restantes }}</strong></span>{% endif %}
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.4rem;">
+          <span class="badge {% if t == 'caducidad' or t == 'stock' %}badge-danger{% elif t == 'reorden' %}badge-warning{% else %}badge-info{% endif %}">
+            {{ a.tipo }}
+          </span>
+          {% if a.accion %}
+          <a href="#" class="btn btn-ghost btn-sm">{{ a.accion }}</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:2rem;" class="text-muted">Sin alertas activas. El sistema está operando normalmente.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterAlerts(tipo) {
+  document.querySelectorAll('#alerts-container .alert-item[data-tipo]').forEach(el => {
+    el.style.display = (tipo === 'all' || el.dataset.tipo === tipo) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block page_title %}Descuentos{% endblock %}
+
+{% block topbar_title %}Descuentos por Caducidad{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Recuperación de valor</div>
+  <div class="view-title">Descuentos por caducidad</div>
+  <div class="view-desc">Precios reducidos para lotes próximos a vencer. Estrategia para recuperar ingresos y reducir merma.</div>
+</div>
+
+<div class="stat-grid-4" style="margin-bottom:1.5rem;">
+  <div class="card" style="grid-column:span 2;">
+    <div class="kpi-label">Ingreso potencial recuperable</div>
+    <div class="kpi-value" style="font-size:2rem; color:#22c55e;">${{ '{:,.2f}'.format(total_potencial) }}</div>
+    <div class="kpi-sub">si se aplican todos los descuentos pendientes</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">Descuentos pendientes</div>
+    <div class="kpi-value">{{ discounts | selectattr('status', 'equalto', 'pendiente') | list | length }}</div>
+    <div class="kpi-sub">por aplicar</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">SKUs afectados</div>
+    <div class="kpi-value">{{ discounts | length }}</div>
+    <div class="kpi-sub">lotes en programa</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-header">
+    <div class="table-header-title">Descuentos activos</div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Producto</th>
+          <th>Lote</th>
+          <th>Días rest.</th>
+          <th>Precio normal</th>
+          <th>Descuento</th>
+          <th>Precio nuevo</th>
+          <th>Cantidad</th>
+          <th>Ingreso pot.</th>
+          <th>Status</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in discounts %}
+        <tr>
+          <td class="mono">{{ d.id_sku }}</td>
+          <td>{{ d.producto }}</td>
+          <td class="mono">{{ d.codigo_lote_prov }}</td>
+          <td class="mono {% if d.dias_restantes <= 7 %}text-danger{% elif d.dias_restantes <= 30 %}text-warning{% else %}text-success{% endif %}">
+            {{ d.dias_restantes }}
+          </td>
+          <td class="mono">${{ '{:,.2f}'.format(d.precio_normal) }}</td>
+          <td class="mono text-warning">{{ d.descuento_pct }}%</td>
+          <td class="mono text-success">${{ '{:,.2f}'.format(d.precio_nuevo) }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(d.cantidad) }}</td>
+          <td class="mono">${{ '{:,.2f}'.format(d.ingreso_potencial) }}</td>
+          <td>
+            {% if d.status == 'pendiente' %}
+              <span class="badge badge-warning">Pendiente</span>
+            {% elif d.status == 'aplicado' %}
+              <span class="badge badge-success">Aplicado</span>
+            {% else %}
+              <span class="badge badge-neutral">{{ d.status }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if d.status == 'pendiente' %}
+            <a href="#" class="btn btn-primary btn-sm">Aplicar</a>
+            {% else %}
+            <span class="text-muted" style="font-size:0.75rem;">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="11" style="text-align:center;" class="text-muted">Sin descuentos registrados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block page_title %}Mermas{% endblock %}
+
+{% block topbar_title %}Mermas{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Control de pérdidas</div>
+  <div class="view-title">Mermas</div>
+  <div class="view-desc">Registro y análisis de mermas por causa, producto y responsable.</div>
+</div>
+
+{% if message %}
+<div class="alert-item alert-info" style="margin-bottom:1rem;">{{ message }}</div>
+{% endif %}
+
+<div class="stat-grid-3" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="kpi-label">Total mermas registradas</div>
+    <div class="kpi-value">{{ mermas | length }}</div>
+    <div class="kpi-sub">eventos</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">Cantidad total</div>
+    <div class="kpi-value">{{ '{:,.0f}'.format(total_cantidad) }}</div>
+    <div class="kpi-sub">unidades perdidas</div>
+  </div>
+  <div class="card">
+    <div class="kpi-label">Valor total perdido</div>
+    <div class="kpi-value text-danger">${{ '{:,.2f}'.format(total_valor) }}</div>
+    <div class="kpi-sub">MXN</div>
+  </div>
+</div>
+
+<div class="grid-1-1" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="card-title">Cantidad mensual de mermas</div>
+    <canvas id="mermaQtyChart" height="120"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title">Valor mensual de mermas</div>
+    <canvas id="mermaValChart" height="120"></canvas>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="table-header">
+    <div class="table-header-title">Registro de mermas</div>
+    <div class="table-actions">
+      <button class="btn btn-ghost btn-sm" onclick="toggleForm()">+ Registrar merma</button>
+    </div>
+  </div>
+
+  <div id="merma-form-wrap" style="display:none; padding:1rem 1.25rem; border-bottom:1px solid var(--border);">
+    <form method="POST" class="form-card" style="background:transparent; padding:0; border:none;">
+      <div class="form-grid-3">
+        <div>
+          <label class="form-label">Producto</label>
+          <select name="id_sku" class="input">
+            <option value="">Seleccionar…</option>
+            {% for p in productos %}
+            <option value="{{ p.id_sku }}">{{ p.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Lote</label>
+          <select name="id_lote" class="input">
+            <option value="">Seleccionar…</option>
+            {% for l in lotes %}
+            <option value="{{ l.id_lote }}">{{ l.codigo_lote_prov }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Responsable</label>
+          <select name="id_usuario" class="input">
+            <option value="">Seleccionar…</option>
+            {% for u in usuarios %}
+            <option value="{{ u.id_usuario }}">{{ u.nombre_completo }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Causa</label>
+          <select name="causa_merma" class="input">
+            {% for c in causa_opts %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Cantidad</label>
+          <input type="number" name="cantidad" class="input" min="1" placeholder="0">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-danger">Registrar merma</button>
+        <button type="button" class="btn btn-ghost" onclick="toggleForm()">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Producto</th>
+          <th>Lote</th>
+          <th>Responsable</th>
+          <th>Cantidad</th>
+          <th>Causa</th>
+          <th>Valor</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in mermas %}
+        <tr>
+          <td class="mono">{{ m.id_merma }}</td>
+          <td>{{ m.producto }}</td>
+          <td class="mono">{{ m.lote_codigo }}</td>
+          <td>{{ m.responsable }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(m.cantidad) }}</td>
+          <td>{{ m.causa_merma }}</td>
+          <td class="mono text-danger">${{ '{:,.2f}'.format(m.valor) }}</td>
+          <td>{{ m.fecha_registro }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align:center;" class="text-muted">Sin mermas registradas.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleForm() {
+  const w = document.getElementById('merma-form-wrap');
+  w.style.display = w.style.display === 'none' ? '' : 'none';
+}
+
+const BORDER = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+// Hardcoded monthly breakdown for charts
+const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const monthlyQty = [12, 8, 15, 10, 22, 18, 9, 13, 17, 11, 14, 20];
+const monthlyVal = [3200, 2100, 4100, 2800, 5900, 4700, 2400, 3500, 4500, 3000, 3800, 5200];
+
+new Chart(document.getElementById('mermaQtyChart'), {
+  type: 'bar',
+  data: {
+    labels: months,
+    datasets: [{ label: 'Cantidad', data: monthlyQty, backgroundColor: '#f87171', borderRadius: 4 }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } },
+      y: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } }
+    }
+  }
+});
+
+new Chart(document.getElementById('mermaValChart'), {
+  type: 'bar',
+  data: {
+    labels: months,
+    datasets: [{ label: 'Valor ($)', data: monthlyVal, backgroundColor: '#fbbf24', borderRadius: 4 }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } },
+      y: { ticks: { color: '#94a3b8' }, grid: { color: BORDER } }
+    }
+  }
+});
+</script>
+{% endblock %}

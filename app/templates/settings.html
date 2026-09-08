@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block page_title %}Configuración{% endblock %}
+
+{% block topbar_title %}Configuración{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Sistema</div>
+  <div class="view-title">Configuración</div>
+  <div class="view-desc">Estado de microservicios, base de datos, umbrales y notificaciones.</div>
+</div>
+
+<div class="tabs" id="settings-tabs" style="margin-bottom:1rem;">
+  <button class="tab active" data-panel="microservicios"
+    onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); document.querySelectorAll('[data-panel-id]').forEach(p=>{p.style.display=p.dataset.panelId===this.dataset.panel?'':'none'})" data-panel="microservicios">
+    Microservicios
+  </button>
+  <button class="tab" data-panel="basedatos"
+    onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); document.querySelectorAll('[data-panel-id]').forEach(p=>{p.style.display=p.dataset.panelId===this.dataset.panel?'':'none'})" data-panel="basedatos">
+    Base de Datos
+  </button>
+  <button class="tab" data-panel="umbrales"
+    onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); document.querySelectorAll('[data-panel-id]').forEach(p=>{p.style.display=p.dataset.panelId===this.dataset.panel?'':'none'})" data-panel="umbrales">
+    Umbrales
+  </button>
+  <button class="tab" data-panel="notificaciones"
+    onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); document.querySelectorAll('[data-panel-id]').forEach(p=>{p.style.display=p.dataset.panelId===this.dataset.panel?'':'none'})" data-panel="notificaciones">
+    Notificaciones
+  </button>
+  <button class="tab" data-panel="errores"
+    onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); document.querySelectorAll('[data-panel-id]').forEach(p=>{p.style.display=p.dataset.panelId===this.dataset.panel?'':'none'})" data-panel="errores">
+    Log de Errores
+  </button>
+</div>
+
+<!-- Panel: Microservicios -->
+<div data-panel-id="microservicios">
+  <div class="card">
+    <div class="table-header">
+      <div class="table-header-title">Estado de microservicios</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Microservicio</th>
+            <th>Descripción</th>
+            <th>Puerto</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ms in microservices %}
+          <tr>
+            <td style="font-weight:600;">{{ ms.nombre }}</td>
+            <td class="text-muted" style="font-size:0.875rem;">{{ ms.desc }}</td>
+            <td class="mono">:{{ ms.puerto }}</td>
+            <td>
+              {% set s = ms.status | lower %}
+              {% if s == 'up' or s == 'ok' or s == 'running' %}
+                <span class="status-dot dot-ok"></span> <span class="text-success" style="font-size:0.875rem;">UP</span>
+              {% elif s == 'warning' or s == 'degraded' %}
+                <span class="status-dot dot-warning"></span> <span class="text-warning" style="font-size:0.875rem;">Warning</span>
+              {% else %}
+                <span class="status-dot dot-error"></span> <span class="text-danger" style="font-size:0.875rem;">DOWN</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="4" style="text-align:center;" class="text-muted">Sin microservicios configurados.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Panel: Base de Datos -->
+<div data-panel-id="basedatos" style="display:none;">
+  <div class="card">
+    <div class="card-title">Configuración de PostgreSQL</div>
+    <div class="grid-2-1" style="gap:1rem; margin-top:0.5rem;">
+      <div>
+        <div class="form-grid-3" style="gap:0.75rem;">
+          <div>
+            <div class="form-label">Host</div>
+            <div class="mono" style="color:var(--foreground);">localhost</div>
+          </div>
+          <div>
+            <div class="form-label">Puerto</div>
+            <div class="mono" style="color:var(--foreground);">5432</div>
+          </div>
+          <div>
+            <div class="form-label">Base de datos</div>
+            <div class="mono" style="color:var(--foreground);">inventario_db</div>
+          </div>
+          <div>
+            <div class="form-label">Schemas</div>
+            <div class="mono" style="color:var(--foreground);">public, audit</div>
+          </div>
+          <div>
+            <div class="form-label">Extensiones</div>
+            <div class="mono" style="color:var(--foreground);">pgcrypto, uuid-ossp</div>
+          </div>
+          <div>
+            <div class="form-label">Autenticación</div>
+            <div class="mono" style="color:var(--foreground);">scram-sha-256</div>
+          </div>
+        </div>
+        <div style="margin-top:1rem;">
+          <div class="form-label">Roles configurados</div>
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.25rem;">
+            <span class="badge badge-info">app_admin</span>
+            <span class="badge badge-success">app_gerente</span>
+            <span class="badge badge-neutral">app_operador</span>
+            <span class="badge badge-neutral">app_readonly</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:0.5rem;">Connection string (redactada)</div>
+        <pre class="json-viewer">postgresql://app_admin:***@localhost:5432/inventario_db</pre>
+        <div class="form-note" style="margin-top:0.75rem;">La contraseña se gestiona mediante variables de entorno. Nunca se almacena en texto plano.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Panel: Umbrales -->
+<div data-panel-id="umbrales" style="display:none;">
+  <div class="card">
+    <div class="card-title">Umbrales de alerta</div>
+    <div class="form-card" style="background:transparent; border:none; padding:0; margin-top:0.5rem;">
+      <div class="form-grid-3">
+        <div>
+          <label class="form-label">Días críticos caducidad</label>
+          <input type="number" class="input" value="7" disabled>
+          <div class="form-note">Alerta roja por debajo de este umbral.</div>
+        </div>
+        <div>
+          <label class="form-label">Días advertencia caducidad</label>
+          <input type="number" class="input" value="30" disabled>
+          <div class="form-note">Alerta amarilla por debajo de este umbral.</div>
+        </div>
+        <div>
+          <label class="form-label">% descuento automático</label>
+          <input type="number" class="input" value="30" disabled>
+          <div class="form-note">Descuento sugerido para lotes críticos.</div>
+        </div>
+        <div>
+          <label class="form-label">Stock mínimo % buffer</label>
+          <input type="number" class="input" value="10" disabled>
+          <div class="form-note">Buffer de seguridad sobre stock mínimo.</div>
+        </div>
+        <div>
+          <label class="form-label">Ciclo pronóstico (semanas)</label>
+          <input type="number" class="input" value="4" disabled>
+          <div class="form-note">Horizonte de pronóstico Holt-Winters.</div>
+        </div>
+        <div>
+          <label class="form-label">Confiabilidad mínima prov.</label>
+          <input type="number" class="input" value="75" disabled>
+          <div class="form-note">% mínimo para alertar proveedor.</div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" disabled>Guardar cambios</button>
+        <span class="form-note">Edición de umbrales requiere rol admin.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Panel: Notificaciones -->
+<div data-panel-id="notificaciones" style="display:none;">
+  <div class="card">
+    <div class="card-title">Canales de notificación</div>
+    <div style="margin-top:1rem; display:flex; flex-direction:column; gap:0.75rem;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem; background:var(--muted); border-radius:8px;">
+        <div>
+          <div style="font-weight:600; margin-bottom:0.15rem;">Email</div>
+          <div class="text-muted" style="font-size:0.8rem;">Alertas críticas y resumen diario</div>
+        </div>
+        <span class="badge badge-success">Activo</span>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem; background:var(--muted); border-radius:8px;">
+        <div>
+          <div style="font-weight:600; margin-bottom:0.15rem;">Webhook</div>
+          <div class="text-muted" style="font-size:0.8rem;">Integración con sistemas externos</div>
+        </div>
+        <span class="badge badge-neutral">Inactivo</span>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem; background:var(--muted); border-radius:8px;">
+        <div>
+          <div style="font-weight:600; margin-bottom:0.15rem;">SMS</div>
+          <div class="text-muted" style="font-size:0.8rem;">Alertas de emergencia</div>
+        </div>
+        <span class="badge badge-neutral">No configurado</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Panel: Log de Errores -->
+<div data-panel-id="errores" style="display:none;">
+  <div class="card">
+    <div class="card-title">Log de errores recientes</div>
+    <div style="margin-top:0.75rem;" class="text-muted">
+      <div style="text-align:center; padding:2rem;">Sin errores recientes. El sistema opera normalmente.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

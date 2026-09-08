@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block page_title %}Productos{% endblock %}
+
+{% block topbar_title %}Productos{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Catálogo</div>
+  <div class="view-title">Productos</div>
+  <div class="view-desc">Gestión del catálogo de SKUs y parámetros de inventario.</div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="table-header">
+    <div class="table-header-title">SKUs registrados</div>
+    <div class="table-actions">
+      <input id="search-input" class="input" type="text" placeholder="Buscar producto, GTIN, categoría…" style="width:260px;" oninput="filterTable()">
+      <a href="#" class="btn btn-primary btn-sm">+ Nuevo Producto</a>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="products-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>GTIN</th>
+          <th>Nombre</th>
+          <th>Categoría</th>
+          <th>Vida Útil (días)</th>
+          <th>Costo</th>
+          <th>Precio Venta</th>
+          <th>Unidad</th>
+          <th>Stock Mín.</th>
+          <th>P. Reorden</th>
+          <th>Proveedor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in productos %}
+        <tr>
+          <td class="mono">{{ p.id_sku }}</td>
+          <td class="mono">{{ p.codigo_gtin }}</td>
+          <td>{{ p.nombre }}</td>
+          <td>{{ p.categoria }}</td>
+          <td>{{ p.vida_util_estandar }}</td>
+          <td class="mono">${{ '{:,.2f}'.format(p.precio_costo) }}</td>
+          <td class="mono">${{ '{:,.2f}'.format(p.precio_venta) }}</td>
+          <td>{{ p.unidad }}</td>
+          <td class="mono">{{ p.stock_min }}</td>
+          <td class="mono">{{ p.punto_reorden }}</td>
+          <td>{{ p.proveedor_nombre }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="11" style="text-align:center;" class="text-muted">Sin productos registrados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterTable() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  document.querySelectorAll('#products-table tbody tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

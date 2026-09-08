@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block page_title %}Lotes{% endblock %}
+
+{% block topbar_title %}Lotes{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Control de caducidad</div>
+  <div class="view-title">Lotes</div>
+  <div class="view-desc">Trazabilidad de lotes y monitoreo de vida útil restante. El sistema aplica política <strong>FEFO</strong> automáticamente.</div>
+</div>
+
+<div class="card" style="margin-bottom:0.75rem; padding:0.75rem 1rem; display:flex; align-items:center; gap:0.5rem; background:var(--card); border:1px solid var(--border);">
+  <span class="badge badge-info">FEFO</span>
+  <span class="text-muted" style="font-size:0.875rem;">Las ventas y transferencias despachan siempre el lote de menor vida útil restante para minimizar mermas.</span>
+</div>
+
+<div class="card">
+  <div class="tabs" id="batch-tabs">
+    <button class="tab active" data-panel="all"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterBatches('all')">
+      Todos
+    </button>
+    <button class="tab" data-panel="critico"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterBatches('critico')">
+      Críticos
+    </button>
+    <button class="tab" data-panel="advertencia"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterBatches('advertencia')">
+      Advertencia
+    </button>
+    <button class="tab" data-panel="ok"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterBatches('ok')">
+      OK
+    </button>
+    <button class="tab" data-panel="vencido"
+      onclick="this.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); this.classList.add('active'); filterBatches('vencido')">
+      Vencidos
+    </button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="batches-table">
+      <thead>
+        <tr>
+          <th>Lote</th>
+          <th>Código Prov.</th>
+          <th>Producto</th>
+          <th>Locación</th>
+          <th>Recepción</th>
+          <th>Caducidad</th>
+          <th>Días rest.</th>
+          <th>Vida útil</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lotes %}
+        <tr data-status="{{ l.status | lower }}">
+          <td class="mono">{{ l.id_lote }}</td>
+          <td class="mono">{{ l.codigo_lote_prov }}</td>
+          <td>{{ l.producto }}</td>
+          <td>{{ l.locacion }}</td>
+          <td>{{ l.fecha_recepcion }}</td>
+          <td>{{ l.fecha_caducidad }}</td>
+          <td class="mono
+            {% if l.dias_restantes is not none and l.dias_restantes <= 0 %} text-danger
+            {% elif l.dias_restantes is not none and l.dias_restantes <= 7 %} text-danger
+            {% elif l.dias_restantes is not none and l.dias_restantes <= 30 %} text-warning
+            {% else %} text-success
+            {% endif %}">
+            {{ l.dias_restantes if l.dias_restantes is not none else '—' }}
+          </td>
+          <td style="min-width:120px;">
+            <div class="progress-bar">
+              {% set pct = [0, [100, l.pct_vida | default(0)] | min] | max %}
+              <div class="progress-fill" style="width:{{ pct }}%;
+                background:{% if pct < 20 %}#f87171{% elif pct < 50 %}#fbbf24{% else %}#4ade80{% endif %};"></div>
+            </div>
+          </td>
+          <td>
+            {% set s = l.status | lower %}
+            {% if s == 'critico' or s == 'crítico' %}
+              <span class="badge badge-danger">Crítico</span>
+            {% elif s == 'advertencia' %}
+              <span class="badge badge-warning">Advertencia</span>
+            {% elif s == 'ok' %}
+              <span class="badge badge-success">OK</span>
+            {% elif s == 'vencido' %}
+              <span class="badge badge-neutral">Vencido</span>
+            {% else %}
+              <span class="badge badge-neutral">{{ l.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" style="text-align:center;" class="text-muted">Sin lotes registrados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterBatches(status) {
+  document.querySelectorAll('#batches-table tbody tr[data-status]').forEach(row => {
+    if (status === 'all') {
+      row.style.display = '';
+    } else {
+      const s = row.dataset.status;
+      row.style.display = (s === status || s === status.normalize('NFD').replace(/[̀-ͯ]/g,'')) ? '' : 'none';
+    }
+  });
+}
+</script>
+{% endblock %}

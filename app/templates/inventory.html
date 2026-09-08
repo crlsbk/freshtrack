@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block page_title %}Inventario{% endblock %}
+
+{% block topbar_title %}Inventario{% endblock %}
+
+{% block content %}
+<div class="view">
+  <div class="view-eyebrow">Existencias</div>
+  <div class="view-title">Inventario en tiempo real</div>
+  <div class="view-desc">Disponibilidad y reservas por lote y locación.</div>
+</div>
+
+<div class="card" style="margin-bottom:1rem;">
+  <div class="table-header">
+    <div class="table-header-title">Existencias</div>
+    <div class="table-actions">
+      {% if locaciones %}
+      <select class="input" id="loc-filter" onchange="filterByLoc()" style="width:200px;">
+        <option value="">Todas las locaciones</option>
+        {% for loc in locaciones %}
+        <option value="{{ loc.nombre }}">{{ loc.nombre }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="inv-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Producto</th>
+          <th>Lote</th>
+          <th>Locación</th>
+          <th>Disponible</th>
+          <th>Reservado</th>
+          <th>Caducidad</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in existencias %}
+        <tr data-loc="{{ e.locacion }}">
+          <td class="mono">{{ e.id_existencia }}</td>
+          <td>{{ e.producto }}</td>
+          <td class="mono">{{ e.lote_codigo }}</td>
+          <td>{{ e.locacion }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(e.cantidad_disponible) }}</td>
+          <td class="mono">{{ '{:,.0f}'.format(e.cantidad_reservada) }}</td>
+          <td>{{ e.fecha_caducidad }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align:center;" class="text-muted">Sin existencias registradas.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterByLoc() {
+  const val = document.getElementById('loc-filter').value;
+  document.querySelectorAll('#inv-table tbody tr[data-loc]').forEach(row => {
+    row.style.display = (!val || row.dataset.loc === val) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

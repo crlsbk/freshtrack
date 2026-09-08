@@ -1,0 +1,14 @@
+# Directories
+/data/
+.venv/
+/sql/
+
+/uv.lock
+
+.env
+
+.env
+.venv/
+__pycache__/
+*.dump
+*.sql.gz

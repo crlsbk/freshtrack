@@ -158,7 +158,8 @@ def generar_datos_ml_optimizados():
         # La fecha de merma ocurre de forma muy cercana o posterior a la fecha de caducidad del lote
         dias_cercania = np.random.choice([0, 1, 2, -1], p=[0.5, 0.3, 0.15, 0.05])
         f_merma = f_cad + datetime.timedelta(days=int(dias_cercania))
-        if f_merma < START_DATE: f_merma = START_DATE + datetime.timedelta(days=np.random.randint(0, 30))
+        if f_merma.date() < START_DATE: 
+            f_merma = pd.Timestamp(START_DATE) + pd.Timedelta(days=int(np.random.randint(0, 30)))
 
         mermas_list.append({
             'id_lote': lote_sample['id_lote'],

@@ -4,7 +4,7 @@ Infraestructura como código (IaC) estandarizada y reproducible para el proyecto
 
 ## Estructura del Repositorio
 
-```text
+````text
 ├── .env.example
 ├── .gitattributes
 ├── Makefile
@@ -25,9 +25,10 @@ Infraestructura como código (IaC) estandarizada y reproducible para el proyecto
 ```bash
 git clone [https://github.com/tu-usuario/iac-proyecto.git](https://github.com/tu-usuario/iac-proyecto.git)
 cd iac-proyecto
-```
+````
 
 **2. Inicializar entorno de variables:**
+
 ```bash
 make setup
 ```
@@ -40,13 +41,26 @@ gunzip -c dump_perecederos.sql.gz | docker exec -i retail_db psql -U postgres -d
 ```
 
 ### Comandos Útiles (Makefile)
+
 - `make up`: Despliega el contenedor en segundo plano.
 - `make down`: Detiene los contenedores preservando el volumen de datos.
 - `make clean`: Destruye los contenedores y limpia por completo el volumen de la base de datos para un reinicio limpio.
 - `make populate`: Configura el entorno virtual de Python e instala las dependencias del ETL.
 
 ### Arquitectura de Base de Datos
-Esquema operacion: Contiene catálogos maestros (rol, locacion, proveedor, producto) y el núcleo transaccional (usuario, lote, existencia, venta_detalle, merma) con tipado estricto en UUIDs y restricciones de integridad.  
 
-### Esquema auditoria 
+Esquema operacion: Contiene catálogos maestros (rol, locacion, proveedor, producto) y el núcleo transaccional (usuario, lote, existencia, venta_detalle, merma) con tipado estricto en UUIDs y restricciones de integridad.
+
+### Esquema auditoria
+
 Almacena la bitácora centralizada de eventos mediante estructuras JSONB y funciones PL/pgSQL que capturan de manera dinámica los cambios (INSERT, UPDATE, DELETE) junto con disparadores de protección contra modificaciones indebidas.
+
+### Ejecutar la aplicación Flask contra PostgreSQL
+
+La aplicación consulta directamente las tablas del esquema `operacion` definidas en `docs/BD_Diseño.docx`. Copia `env.example` a `.env`, ajusta `DATABASE_URL` y define `APP_LOGIN_PASSWORD`. El login usa `id_usuario` (UUID) porque el diseño de la tabla `usuario` no incluye correo ni contraseña.
+
+```bash
+export DATABASE_URL='postgresql+psycopg://app_backend:backend_secure_pass@localhost:5432/retail_perecederos'
+export APP_LOGIN_PASSWORD='una-credencial-segura'
+python run.py
+```

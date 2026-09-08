@@ -1,64 +1,103 @@
-{% extends "base.html" %}
-{% block page_title %}Panel de Control{% endblock %}
-{% block topbar_title %}Panel de Control{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block page_title %}Panel de Control{% endblock %}
+{% block topbar_title %}Panel de Control{% endblock %} {% block content %}
 <div class="view">
   <div class="view-eyebrow">Panel de Control — Semana 37 · 2026</div>
   <h1 class="view-title">Resumen Operativo</h1>
 
   <!-- KPIs -->
-  <div class="stat-grid-6" style="margin-bottom:24px;">
-    {% set kpis = [
-      ("Desperdicio evitado (mes)", "$47,230", "+12% vs mes anterior", "var(--success)", "🌿"),
-      ("Alertas activas",           "6",       "3 críticas · 2 advertencias","var(--danger)", "🚨"),
-      ("Lotes próx. a vencer",      "4",       "en los próximos 5 días","var(--warning)","⏳"),
-      ("Cobertura promedio",        "8.4 días","sobre 5 locaciones activas","var(--info)","📦"),
-      ("Tasa de merma",             "2.1%",    "Meta: < 2.5% ✓","var(--success)","📉"),
-      ("Ahorro acumulado 2026",     "$318,450","vs $300,000 meta anual","var(--role-accent)","💰"),
-    ] %}
-    {% for label, value, sub, color, icon in kpis %}
-      <div class="card" style="border-left:3px solid {{ color }};">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;">
-          <div>
-            <div class="kpi-label">{{ label }}</div>
-            <div class="kpi-value" style="font-size:24px;">{{ value }}</div>
-            <div class="kpi-sub">{{ sub }}</div>
-          </div>
-          <span style="font-size:22px;">{{ icon }}</span>
+  <div class="stat-grid-6" style="margin-bottom: 24px">
+    {% set kpis = [ ("Unidades mermadas",
+    "{:,.1f}".format(dashboard_metrics.waste_units), "desde operacion.merma",
+    "var(--success)", "🌿"), ("Alertas activas",
+    "{:,.0f}".format(dashboard_metrics.urgent_replenishment), "reabastecimiento
+    urgente", "var(--danger)", "🚨"), ("Lotes próx. a vencer",
+    "{:,.0f}".format(dashboard_metrics.critical_lotes), "en los próximos 5
+    días", "var(--warning)", "⏳"), ("Inventario disponible",
+    "{:,.1f}".format(dashboard_metrics.inventory_units), "unidades en
+    existencia", "var(--info)", "📦"), ("Unidades vendidas",
+    "{:,.1f}".format(dashboard_metrics.sales_units), "desde venta_detalle",
+    "var(--success)", "📉"), ("Locaciones activas",
+    "{:,.0f}".format(dashboard_metrics.active_locations), "desde
+    operacion.locacion", "var(--role-accent)", "💰"), ] %} {% for label, value,
+    sub, color, icon in kpis %}
+    <div class="card" style="border-left:3px solid {{ color }};">
+      <div
+        style="
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+        "
+      >
+        <div>
+          <div class="kpi-label">{{ label }}</div>
+          <div class="kpi-value" style="font-size: 24px">{{ value }}</div>
+          <div class="kpi-sub">{{ sub }}</div>
         </div>
+        <span style="font-size: 22px">{{ icon }}</span>
       </div>
+    </div>
     {% endfor %}
   </div>
 
   <!-- Charts row 1 -->
-  <div class="grid-2-1" style="margin-bottom:20px;">
+  <div class="grid-2-1" style="margin-bottom: 20px">
     <div class="card">
       <div class="card-title">Ventas vs Merma Mensual ($)</div>
-      <div class="chart-wrap"><canvas id="chartSales" height="200"></canvas></div>
+      <div class="chart-wrap">
+        <canvas id="chartSales" height="200"></canvas>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">Desperdicio por Categoría</div>
-      <div class="chart-wrap"><canvas id="chartWaste" height="200"></canvas></div>
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;">
+      <div class="chart-wrap">
+        <canvas id="chartWaste" height="200"></canvas>
+      </div>
+      <div
+        style="
+          margin-top: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        "
+      >
         {% for c in category_waste %}
-          <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;">
-            <span style="width:8px;height:8px;border-radius:2px;background:{{ c.fill }};flex-shrink:0;display:inline-block;"></span>
-            <span class="text-muted" style="flex:1;">{{ c.name }}</span>
-            <span class="mono" style="font-weight:600;">{{ c.value }}%</span>
-          </div>
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11.5px;
+          "
+        >
+          <span
+            style="width:8px;height:8px;border-radius:2px;background:{{ c.fill }};flex-shrink:0;display:inline-block;"
+          ></span>
+          <span class="text-muted" style="flex: 1">{{ c.name }}</span>
+          <span class="mono" style="font-weight: 600">{{ c.value }}%</span>
+        </div>
         {% endfor %}
       </div>
     </div>
   </div>
 
   <!-- Forecast -->
-  <div class="card" style="margin-bottom:20px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:0;">Pronóstico de Demanda — Próximas 3 Semanas</div>
+  <div class="card" style="margin-bottom: 20px">
+    <div
+      style="
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      "
+    >
+      <div class="card-title" style="margin-bottom: 0">
+        Pronóstico de Demanda — Próximas 3 Semanas
+      </div>
       <span class="badge badge-info">Modelo: Newsvendor + ARIMA</span>
     </div>
-    <div class="chart-wrap"><canvas id="chartForecast" height="160"></canvas></div>
+    <div class="chart-wrap">
+      <canvas id="chartForecast" height="160"></canvas>
+    </div>
   </div>
 
   <!-- Bottom panels -->
@@ -66,19 +105,30 @@
     <!-- Critical lotes -->
     <div class="card">
       <div class="card-title">Lotes Críticos</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display: flex; flex-direction: column; gap: 10px">
         {% for lote in critical_lotes %}
-          <div class="alert-item {{ 'alert-danger' if lote.status == 'critical' else '' }}" style="{% if lote.status == 'expired' %}background:var(--muted);border-color:var(--muted-foreground);{% endif %}">
-            <div style="flex:1;">
-              <div style="font-size:13px;font-weight:600;">{{ lote.producto }}</div>
-              <div class="text-muted" style="font-size:11px;">{{ lote.codigo_lote_prov }} · {{ lote.locacion.split(' — ')[0] }} · Vence: {{ lote.fecha_caducidad }}</div>
+        <div
+          class="alert-item {{ 'alert-danger' if lote.status == 'critical' else '' }}"
+          style="{% if lote.status == 'expired' %}background:var(--muted);border-color:var(--muted-foreground);{% endif %}"
+        >
+          <div style="flex: 1">
+            <div style="font-size: 13px; font-weight: 600">
+              {{ lote.producto }}
             </div>
-            <span class="badge {{ 'badge-neutral' if lote.status == 'expired' else 'badge-danger' }}">
-              {{ 'Vencido' if lote.status == 'expired' else (lote.dias_restantes | string + 'd') }}
-            </span>
+            <div class="text-muted" style="font-size: 11px">
+              {{ lote.codigo_lote_prov }} · {{ lote.locacion.split(' — ')[0] }}
+              · Vence: {{ lote.fecha_caducidad }}
+            </div>
           </div>
+          <span
+            class="badge {{ 'badge-neutral' if lote.status == 'expired' else 'badge-danger' }}"
+          >
+            {{ 'Vencido' if lote.status == 'expired' else (lote.dias_restantes |
+            string + 'd') }}
+          </span>
+        </div>
         {% else %}
-          <p class="text-muted" style="font-size:13px;">Sin lotes críticos.</p>
+        <p class="text-muted" style="font-size: 13px">Sin lotes críticos.</p>
         {% endfor %}
       </div>
     </div>
@@ -86,63 +136,70 @@
     <!-- Urgent replenishment -->
     <div class="card">
       <div class="card-title">Reabastecimiento Urgente</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display: flex; flex-direction: column; gap: 8px">
         {% for r in urgent_repl %}
-          <div class="alert-item alert-warning">
-            <div style="flex:1;">
-              <div style="font-size:13px;font-weight:600;">{{ r.producto }}</div>
-              <div class="text-muted" style="font-size:11px;">{{ r.locacion.split(' — ')[0] }} · Stock: {{ r.stock_actual }} · Q*: {{ r.q_sugerido }} uds</div>
+        <div class="alert-item alert-warning">
+          <div style="flex: 1">
+            <div style="font-size: 13px; font-weight: 600">
+              {{ r.producto }}
             </div>
-            <span class="mono" style="font-size:13px;font-weight:600;color:var(--warning)">${{ '{:,}'.format(r.costo_est) }}</span>
+            <div class="text-muted" style="font-size: 11px">
+              {{ r.locacion.split(' — ')[0] }} · Stock: {{ r.stock_actual }} ·
+              Q*: {{ r.q_sugerido }} uds
+            </div>
           </div>
+          <span
+            class="mono"
+            style="font-size: 13px; font-weight: 600; color: var(--warning)"
+            >${{ '{:,}'.format(r.costo_est) }}</span
+          >
+        </div>
         {% endfor %}
       </div>
     </div>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-const BORDER = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
-const MUTED  = getComputedStyle(document.documentElement).getPropertyValue('--muted-foreground').trim();
+  const BORDER = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+  const MUTED  = getComputedStyle(document.documentElement).getPropertyValue('--muted-foreground').trim();
 
-// Sales chart
-new Chart(document.getElementById('chartSales'), {
-  type: 'bar',
-  data: {
-    labels: {{ sales_monthly | map(attribute='mes') | list | tojson }},
-    datasets: [
-      { label: 'Ventas', data: {{ sales_monthly | map(attribute='ventas') | list | tojson }}, backgroundColor: '#22c55e', borderRadius: 4 },
-      { label: 'Merma',  data: {{ sales_monthly | map(attribute='merma_valor') | list | tojson }}, backgroundColor: '#f87171', borderRadius: 4 },
-    ]
-  },
-  options: { responsive: true, plugins: { legend: { labels: { color: MUTED, font: { size: 11 } } } }, scales: { x: { ticks: { color: MUTED, font: { size: 11 } }, grid: { display: false } }, y: { ticks: { color: MUTED, font: { size: 11 }, callback: v => '$' + (v/1000).toFixed(0) + 'k' }, grid: { color: BORDER } } } }
-});
+  // Sales chart
+  new Chart(document.getElementById('chartSales'), {
+    type: 'bar',
+    data: {
+      labels: {{ sales_monthly | map(attribute='mes') | list | tojson }},
+      datasets: [
+        { label: 'Ventas', data: {{ sales_monthly | map(attribute='ventas') | list | tojson }}, backgroundColor: '#22c55e', borderRadius: 4 },
+        { label: 'Merma',  data: {{ sales_monthly | map(attribute='merma_valor') | list | tojson }}, backgroundColor: '#f87171', borderRadius: 4 },
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { labels: { color: MUTED, font: { size: 11 } } } }, scales: { x: { ticks: { color: MUTED, font: { size: 11 } }, grid: { display: false } }, y: { ticks: { color: MUTED, font: { size: 11 }, callback: v => '$' + (v/1000).toFixed(0) + 'k' }, grid: { color: BORDER } } } }
+  });
 
-// Waste pie
-new Chart(document.getElementById('chartWaste'), {
-  type: 'doughnut',
-  data: {
-    labels: {{ category_waste | map(attribute='name') | list | tojson }},
-    datasets: [{ data: {{ category_waste | map(attribute='value') | list | tojson }}, backgroundColor: {{ category_waste | map(attribute='fill') | list | tojson }}, borderWidth: 0 }]
-  },
-  options: { responsive: true, cutout: '55%', plugins: { legend: { display: false } } }
-});
+  // Waste pie
+  new Chart(document.getElementById('chartWaste'), {
+    type: 'doughnut',
+    data: {
+      labels: {{ category_waste | map(attribute='name') | list | tojson }},
+      datasets: [{ data: {{ category_waste | map(attribute='value') | list | tojson }}, backgroundColor: {{ category_waste | map(attribute='fill') | list | tojson }}, borderWidth: 0 }]
+    },
+    options: { responsive: true, cutout: '55%', plugins: { legend: { display: false } } }
+  });
 
-// Forecast chart
-const fd = {{ forecast_data | tojson }};
-new Chart(document.getElementById('chartForecast'), {
-  type: 'line',
-  data: {
-    labels: fd.map(d => d.semana),
-    datasets: [
-      { label: 'Real', data: fd.map(d => d.real), borderColor: '#d8e8da', borderWidth: 2, pointRadius: 3, tension: .3, fill: false },
-      { label: 'Pronóstico', data: fd.map(d => d.pronostico), borderColor: '#22c55e', borderWidth: 2, borderDash: [5,3], pointRadius: 3, tension: .3, fill: false },
-      { label: 'IC Superior', data: fd.map(d => d.ic_sup), borderColor: 'transparent', backgroundColor: 'rgba(34,197,94,0.08)', fill: '+1', pointRadius: 0 },
-    ]
-  },
-  options: { responsive: true, plugins: { legend: { labels: { color: MUTED, font: { size: 11 } } } }, scales: { x: { ticks: { color: MUTED, font: { size: 11 } }, grid: { display: false } }, y: { ticks: { color: MUTED, font: { size: 11 } }, grid: { color: BORDER } } } }
-});
+  // Forecast chart
+  const fd = {{ forecast_data | tojson }};
+  new Chart(document.getElementById('chartForecast'), {
+    type: 'line',
+    data: {
+      labels: fd.map(d => d.semana),
+      datasets: [
+        { label: 'Real', data: fd.map(d => d.real), borderColor: '#d8e8da', borderWidth: 2, pointRadius: 3, tension: .3, fill: false },
+        { label: 'Pronóstico', data: fd.map(d => d.pronostico), borderColor: '#22c55e', borderWidth: 2, borderDash: [5,3], pointRadius: 3, tension: .3, fill: false },
+        { label: 'IC Superior', data: fd.map(d => d.ic_sup), borderColor: 'transparent', backgroundColor: 'rgba(34,197,94,0.08)', fill: '+1', pointRadius: 0 },
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { labels: { color: MUTED, font: { size: 11 } } } }, scales: { x: { ticks: { color: MUTED, font: { size: 11 } }, grid: { display: false } }, y: { ticks: { color: MUTED, font: { size: 11 } }, grid: { color: BORDER } } } }
+  });
 </script>
 {% endblock %}

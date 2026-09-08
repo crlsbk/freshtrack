@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 import os
+import unicodedata
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -175,6 +176,27 @@ def query(sql, **params):
         ) from exc
 
 
+def role_key_from_name(role_name):
+    normalized = unicodedata.normalize("NFKD", role_name or "")
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = normalized.casefold().strip()
+    if "admin" in normalized:
+        return "admin"
+    if "compr" in normalized:
+        return "buyer"
+    if "plane" in normalized:
+        return "planner"
+    if "gerente" in normalized and "tienda" in normalized:
+        return "store_manager"
+    if "almacen" in normalized or "warehouse" in normalized:
+        return "warehouse"
+    if "proveedor" in normalized or "supplier" in normalized:
+        return "supplier"
+    if "auditor" in normalized:
+        return "auditor"
+    return "auditor"
+
+
 class TableProxy:
     def __init__(self, sql):
         self.sql = sql
@@ -302,10 +324,16 @@ def authenticate_user(user_id, password):
         return None
     rows = query(
         """
-        SELECT id_usuario::text AS id_usuario, id_rol, id_locacion,
-               nombre_completo, estado_activo
-        FROM operacion.usuario WHERE id_usuario::text = :user_id
+         SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
+             u.nombre_completo, u.estado_activo, r.nombre_rol
+         FROM operacion.usuario u
+         JOIN operacion.rol r ON r.id_rol = u.id_rol
+         WHERE u.id_usuario::text = :user_id
     """,
         user_id=user_id,
     )
-    return rows[0] if rows else None
+    if not rows:
+        return None
+    user = rows[0]
+    user["role_key"] = role_key_from_name(user["nombre_rol"])
+    return user

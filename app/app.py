@@ -21,7 +21,6 @@ from data.repository import (
     REPLENISHMENT,
     ROLE_ACCENT,
     ROLE_DEFAULT_VIEW,
-    ROLE_KEY_MAP,
     ROLE_KEYS,
     ROLE_VIEWS,
     SALES_MONTHLY,
@@ -140,7 +139,7 @@ def login():
         elif not user["estado_activo"]:
             error = "Esta cuenta está desactivada. Contacta al administrador."
         else:
-            role = ROLE_KEY_MAP.get(user["id_rol"], "auditor")
+            role = user["role_key"]
             session["user_id"] = user["id_usuario"]
             session["role"] = role
             session["user_name"] = user["nombre_completo"]

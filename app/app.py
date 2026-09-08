@@ -103,7 +103,9 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        users = get_login_users() or USUARIOS
+        users = get_login_users()
+        if users is None:
+            return render_template("login.html", error="No se pudo conectar a PostgreSQL para validar usuarios.", usuarios=[], role_keys=ROLE_KEYS)
         user = next((u for u in users if str(u.get("email", "")).lower() == email and str(u.get("password", "")) == password), None)
         if not user:
             error = "Correo o contraseña incorrectos."
@@ -115,7 +117,7 @@ def login():
             session["role"] = role
             session["user_name"] = user.get("nombre_completo")
             return redirect(url_for(ROLE_DEFAULT_VIEW.get(role, "dashboard")))
-    return render_template("login.html", error=error, usuarios=get_login_users() or USUARIOS, role_keys=ROLE_KEYS)
+    return render_template("login.html", error=error, usuarios=get_login_users() or [], role_keys=ROLE_KEYS)
 
 
 @app.route("/logout")

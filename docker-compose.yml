@@ -38,7 +38,7 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
-      
+
   app:
     build:
       context: .
@@ -52,8 +52,9 @@ services:
       - mongodb
       - redis
     volumes:
-      - .:/app
-
+      - .:/app:z
+    command: ["sleep", "infinity"]
+    
 volumes:
   postgres_data:
   mongo_data:

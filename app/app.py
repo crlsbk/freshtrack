@@ -7,6 +7,7 @@ from data.repository import (
     REPLENISHMENT, TRANSFERS, ALERTS, DISCOUNTS, FORECAST_DATA,
     SALES_MONTHLY, CATEGORY_WASTE, SAVINGS_DATA, MICROSERVICES,
     get_login_users, get_products_catalog, get_inventory_report, get_sales_report,
+    authenticate_user, get_sample_accounts,
 )
 
 app = Flask(__name__)
@@ -100,24 +101,28 @@ def login():
     if "user_id" in session:
         return redirect(url_for("index"))
     error = None
+    sample_accounts = get_sample_accounts()
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
+        identifier = request.form.get("email", "").strip()
         password = request.form.get("password", "")
-        users = get_login_users()
-        if users is None:
-            return render_template("login.html", error="No se pudo conectar a PostgreSQL para validar usuarios.", usuarios=[], role_keys=ROLE_KEYS)
-        user = next((u for u in users if str(u.get("email", "")).lower() == email and str(u.get("password", "")) == password), None)
+        user = authenticate_user(identifier, password)
         if not user:
-            error = "Correo o contraseña incorrectos."
+            error = "Identificador o contraseña incorrectos."
         elif not user.get("estado_activo", True):
             error = "Esta cuenta está desactivada. Contacta al administrador."
         else:
-            role = ROLE_KEY_MAP.get(user.get("id_rol"), "auditor")
+            role = user.get("role_key") or ROLE_KEY_MAP.get(user.get("id_rol"), "auditor")
             session["user_id"] = user.get("id_usuario")
             session["role"] = role
             session["user_name"] = user.get("nombre_completo")
             return redirect(url_for(ROLE_DEFAULT_VIEW.get(role, "dashboard")))
-    return render_template("login.html", error=error, usuarios=get_login_users() or [], role_keys=ROLE_KEYS)
+    return render_template(
+        "login.html",
+        error=error,
+        usuarios=get_login_users() or [],
+        role_keys=ROLE_KEYS,
+        sample_accounts=sample_accounts,
+    )
 
 
 @app.route("/logout")

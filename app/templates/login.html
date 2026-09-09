@@ -22,7 +22,7 @@
     </div>
 
     <div class="login-title">Inicia sesión</div>
-    <div class="login-subtitle">Ingresa tus credenciales para acceder al sistema.</div>
+    <div class="login-subtitle">Ingresa tus credenciales o selecciona un rol para probar las vistas.</div>
 
     <form class="login-form" method="POST" action="{{ url_for('login') }}">
       {% if error %}
@@ -30,22 +30,22 @@
       {% endif %}
 
       <div>
-        <label class="form-label" for="login-email">Correo electrónico</label>
-        <input class="input" type="email" id="login-email" name="email" autocomplete="email" placeholder="usuario@freshtrack.mx" required/>
+        <label class="form-label" for="login-email">Correo electrónico, rol o ID</label>
+        <input class="input" type="text" id="login-email" name="email" autocomplete="username" placeholder="ej. admin@freshtrack.mx o rol" value="admin@freshtrack.mx" required/>
       </div>
       <div>
         <label class="form-label" for="login-password">Contraseña</label>
-        <input class="input" type="password" id="login-password" name="password" autocomplete="current-password" placeholder="••••••••" required/>
+        <input class="input" type="password" id="login-password" name="password" autocomplete="current-password" placeholder="••••••••" value="freshtrack" required/>
       </div>
       <button type="submit" class="login-submit">Iniciar sesión</button>
     </form>
 
-    <button class="login-hint-btn" id="hints-toggle-btn" onclick="toggleHints()">Ver credenciales de demostración</button>
+    <button class="login-hint-btn" id="hints-toggle-btn" onclick="toggleHints()">Ver más cuentas de usuarios del sistema</button>
 
     <div class="login-hints" id="login-hints" style="display:none;">
       {% for u in usuarios %}
         {% if u.estado_activo %}
-          <button class="hint-row" onclick="fillLogin('{{ u.email }}', '{{ u.password }}')">
+          <button class="hint-row" type="button" onclick="quickLogin('{{ u.email }}', '{{ u.password }}')">
             <div>
               <div class="hint-email">{{ u.email }}</div>
               <div class="hint-meta">{{ u.nombre_completo }} · <span class="hint-pass">{{ u.password }}</span></div>
@@ -56,22 +56,67 @@
       {% endfor %}
     </div>
 
-    <div class="login-footer">retail_perecederos · PostgreSQL 16 · scram-sha-256</div>
+    <div class="login-footer">retail_perecederos · PostgreSQL 15/16 · Arquitectura IaC</div>
   </div>
 
-  <!-- Roles panel -->
+  <!-- Roles & Sample Accounts panel -->
   <div class="login-roles-panel">
-    <div class="login-roles-label">Perfiles del sistema</div>
-    {% for r in role_keys %}
-      <div class="login-role-row">
-        <span class="login-role-dot" style="background:{{ r.color }};"></span>
-        <span class="login-role-name">{{ r.label }}</span>
-        <span class="login-role-id">id_rol {{ r.id_rol }}</span>
+    <div class="login-roles-label">
+      <span>Cuentas muestra por rol único</span>
+      <span style="font-size: 10px; color: #536b57;">7 Roles</span>
+    </div>
+    <div class="login-roles-desc">
+      Haz clic en cualquier cuenta para iniciar sesión instantáneamente y verificar los permisos y vistas correspondientes a cada perfil.
+    </div>
+
+    {% for acc in sample_accounts %}
+      <div class="sample-role-card" onclick="quickLogin('{{ acc.email }}', '{{ acc.password }}')" style="border-left: 3px solid {{ acc.color }};">
+        <div class="sample-role-header">
+          <div class="sample-role-title">
+            <span class="sample-role-dot" style="background: {{ acc.color }};"></span>
+            <span class="sample-role-label">{{ acc.role_label }}</span>
+          </div>
+          <span class="sample-role-badge">Vista: {{ acc.default_view }}</span>
+        </div>
+        <div class="sample-role-meta">
+          <span class="sample-role-user">👤 {{ acc.user_name }}</span>
+          <span class="sample-role-email">{{ acc.email }}</span>
+        </div>
+        <div class="sample-role-scope">{{ acc.scope }}</div>
+        <div class="sample-role-action">
+          <button type="button" class="sample-role-btn" style="background: {{ acc.color }}15; color: {{ acc.color }}; border-color: {{ acc.color }}40;">
+            Probar vista como {{ acc.role_label }} →
+          </button>
+        </div>
       </div>
     {% endfor %}
   </div>
 
 </div>
+
+<script>
+  function quickLogin(email, password) {
+    var emailInput = document.getElementById('login-email');
+    var passInput = document.getElementById('login-password');
+    if (emailInput && passInput) {
+      emailInput.value = email;
+      passInput.value = password || 'freshtrack';
+      document.querySelector('.login-form').submit();
+    }
+  }
+
+  function toggleHints() {
+    var hints = document.getElementById('login-hints');
+    var btn = document.getElementById('hints-toggle-btn');
+    if (hints.style.display === 'none') {
+      hints.style.display = 'block';
+      btn.textContent = 'Ocultar cuentas de usuarios';
+    } else {
+      hints.style.display = 'none';
+      btn.textContent = 'Ver más cuentas de usuarios del sistema';
+    }
+  }
+</script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

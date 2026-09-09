@@ -6,3 +6,4 @@ numpy
 Faker
 SQLAlchemy
 psycopg[binary]
+python-dotenv

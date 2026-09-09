@@ -228,16 +228,73 @@ def dashboard():
     )
 
 
-@app.route("/products")
+@app.route("/products", methods=["GET", "POST"])
 @login_required
 @role_required("products")
 def products():
+    message = None
+    if request.method == "POST":
+        nombre = request.form.get("nombre", "").strip()
+        gtin = request.form.get("codigo_gtin", "").strip()
+        vida_util = int(request.form.get("vida_util_estandar", 15) or 15)
+        id_proveedor = int(request.form.get("id_proveedor", 1) or 1)
+        if not gtin:
+            import random
+            gtin = f"750{random.randint(10000000000, 99999999999)}"
+        if nombre:
+            try:
+                import uuid
+                from sqlalchemy import text
+                from data.repository import get_engine
+                with get_engine().begin() as conn:
+                    res = conn.execute(
+                        text("""
+                            INSERT INTO operacion.producto (codigo_gtin, nombre, vida_util_estandar)
+                            VALUES (:gtin, :nombre, :vida_util)
+                            RETURNING id_sku
+                        """),
+                        {"gtin": gtin[:14], "nombre": nombre, "vida_util": vida_util},
+                    )
+                    new_sku = res.scalar()
+                    # Vincular con el proveedor en operacion.lote
+                    lote_id = str(uuid.uuid4())
+                    conn.execute(
+                        text("""
+                            INSERT INTO operacion.lote (id_lote, id_sku, id_proveedor, codigo_lote_prov, fecha_caducidad)
+                            VALUES (:id_lote, :id_sku, :id_proveedor, :codigo_lote, CURRENT_DATE + (:vida_util || ' days')::interval)
+                        """),
+                        {
+                            "id_lote": lote_id,
+                            "id_sku": new_sku,
+                            "id_proveedor": id_proveedor,
+                            "codigo_lote": f"LOT-{new_sku}-PROV",
+                            "vida_util": str(vida_util),
+                        },
+                    )
+                    # Registrar existencia inicial de 100 unidades
+                    conn.execute(
+                        text("""
+                            INSERT INTO operacion.existencia (id_lote, id_locacion, cantidad_disponible, cantidad_reservada)
+                            VALUES (:id_lote, 1, 100.0, 0.0)
+                        """),
+                        {"id_lote": lote_id},
+                    )
+                message = f"Producto '{nombre}' registrado y vinculado al proveedor en PostgreSQL con lote inicial."
+            except Exception as e:
+                message = f"Error al guardar producto: {e}"
+
     prov_map = {pr["id_proveedor"]: pr for pr in PROVEEDORES}
     enriched = []
     for p in PRODUCTOS:
         prov = prov_map.get(p.get("id_proveedor"), {})
         enriched.append({**p, "proveedor_nombre": prov.get("razon_social", "—")})
-    return render_template("products.html", active="products", productos=enriched)
+    return render_template(
+        "products.html",
+        active="products",
+        productos=enriched,
+        proveedores=PROVEEDORES,
+        message=message,
+    )
 
 
 @app.route("/stores")
@@ -247,12 +304,42 @@ def stores():
     return render_template("stores.html", active="stores", locaciones=LOCACIONES)
 
 
-@app.route("/suppliers")
+@app.route("/suppliers", methods=["GET", "POST"])
 @login_required
 @role_required("suppliers")
 def suppliers():
+    message = None
+    if request.method == "POST":
+        razon_social = request.form.get("razon_social", "").strip()
+        rfc = request.form.get("rfc", "").strip().upper()
+        lead_time = int(request.form.get("lead_time_dias", 3) or 3)
+        if not rfc:
+            import random
+            rfc = f"PRV{random.randint(100000, 999999)}XXX"
+        if razon_social:
+            try:
+                from sqlalchemy import text
+                from data.repository import get_engine
+                with get_engine().begin() as conn:
+                    conn.execute(
+                        text("""
+                            INSERT INTO operacion.proveedor (rfc, razon_social, lead_time_dias)
+                            VALUES (:rfc, :razon_social, :lead_time)
+                        """),
+                        {
+                            "rfc": rfc[:13].ljust(13, "X"),
+                            "razon_social": razon_social,
+                            "lead_time": lead_time,
+                        },
+                    )
+                message = f"Proveedor '{razon_social}' guardado exitosamente en PostgreSQL."
+            except Exception as e:
+                message = f"Error al registrar proveedor: {e}"
     return render_template(
-        "suppliers.html", active="suppliers", proveedores=PROVEEDORES
+        "suppliers.html",
+        active="suppliers",
+        proveedores=PROVEEDORES,
+        message=message,
     )
 
 
@@ -328,8 +415,8 @@ def sales():
         lote = lote_map.get(v["id_lote"], {})
         prod = prod_map.get(lote.get("id_sku"), {})
         loc = loc_map.get(v["id_locacion"], {})
-        price = prod.get("precio_venta") or 45.0
-        total = float(v["cantidad"]) * price
+        price = float(prod.get("precio_venta") or 45.0)
+        total = round(float(v["cantidad"]) * price, 2)
         enriched.append(
             {
                 **v,
@@ -347,7 +434,7 @@ def sales():
     """)[0]
     total_units = float(m["total_units"])
     n_trans = int(m["n_transacciones"])
-    total_revenue = total_units * 45.0
+    total_revenue = round(total_units * 45.0, 2)
     return render_template(
         "sales.html",
         active="sales",

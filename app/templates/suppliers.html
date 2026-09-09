@@ -8,18 +8,53 @@
 <div class="view">
   <div class="view-eyebrow">Cadena de suministro</div>
   <div class="view-title">Proveedores</div>
-  <div class="view-desc">Directorio de proveedores, lead times y métricas de confiabilidad.</div>
+  <div class="view-desc">Directorio de proveedores, lead times y métricas de confiabilidad vinculadas a PostgreSQL.</div>
+</div>
+
+{% if message %}
+<div style="background:#064e3b; border:1px solid #059669; color:#6ee7b7; padding:0.85rem 1.25rem; border-radius:8px; margin-bottom:1.5rem; font-size:14px; display:flex; align-items:center; gap:0.5rem;">
+  <span style="font-weight:700;">✓</span> {{ message }}
+</div>
+{% endif %}
+
+<!-- Formulario para agregar nuevo proveedor -->
+<div id="new-supplier-card" class="card" style="margin-bottom:1.5rem; border:1px solid var(--primary, #22c55e);">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:0.75rem; margin-bottom:1rem;">
+    <div style="font-weight:600; font-size:15px; color:var(--foreground);">+ Registrar Nuevo Proveedor en PostgreSQL</div>
+    <span style="font-size:12px; color:var(--muted-foreground);">Esquema: operacion.proveedor</span>
+  </div>
+  <form method="POST" action="{{ url_for('suppliers') }}">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:1rem; margin-bottom:1rem;">
+      <div>
+        <label style="display:block; font-size:12px; color:var(--muted-foreground); margin-bottom:4px;">Razón Social / Empresa *</label>
+        <input type="text" name="razon_social" required placeholder="Ej. Lácteos del Bajío S.A. de C.V." class="input" style="width:100%;">
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:var(--muted-foreground); margin-bottom:4px;">RFC (13 caracteres)</label>
+        <input type="text" name="rfc" maxlength="13" placeholder="Ej. LBA980421XXX" class="input" style="width:100%;">
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:var(--muted-foreground); margin-bottom:4px;">Lead Time (Días de entrega)</label>
+        <input type="number" name="lead_time_dias" min="1" max="60" value="3" class="input" style="width:100%;">
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <button type="submit" class="btn btn-primary" style="background:var(--primary, #22c55e); color:#000; font-weight:600;">
+        Guardar Proveedor en PostgreSQL
+      </button>
+    </div>
+  </form>
 </div>
 
 <div class="card">
   <div class="table-header">
-    <div class="table-header-title">Proveedores registrados</div>
+    <div class="table-header-title">Proveedores registrados en Base de Datos</div>
     <div class="table-actions">
-      <a href="#" class="btn btn-primary btn-sm">+ Nuevo Proveedor</a>
+      <input id="search-prov" class="input" type="text" placeholder="Filtrar proveedor o RFC…" style="width:240px;" oninput="filterProvTable()">
     </div>
   </div>
   <div class="table-wrap">
-    <table>
+    <table id="prov-table">
       <thead>
         <tr>
           <th>ID</th>
@@ -35,15 +70,15 @@
         <tr>
           <td class="mono">{{ p.id_proveedor }}</td>
           <td class="mono">{{ p.rfc }}</td>
-          <td>{{ p.razon_social }}</td>
-          <td class="mono">{{ p.lead_time_dias }}</td>
-          <td>{{ p.contacto }}</td>
+          <td><strong>{{ p.razon_social }}</strong></td>
+          <td class="mono">{{ p.lead_time_dias }} días</td>
+          <td>{{ p.contacto or 'ventas@distribuidora.com' }}</td>
           <td style="min-width:160px;">
             <div style="display:flex; align-items:center; gap:0.5rem;">
               <div class="progress-bar" style="flex:1;">
-                <div class="progress-fill" style="width:{{ p.confiabilidad }}%; background:#4ade80;"></div>
+                <div class="progress-fill" style="width:{{ p.confiabilidad or 90 }}%; background:#4ade80;"></div>
               </div>
-              <span class="mono" style="font-size:0.75rem; min-width:36px;">{{ p.confiabilidad }}%</span>
+              <span class="mono" style="font-size:0.75rem; min-width:36px;">{{ p.confiabilidad or 90 }}%</span>
             </div>
           </td>
         </tr>
@@ -56,4 +91,15 @@
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterProvTable() {
+  const q = document.getElementById('search-prov').value.toLowerCase();
+  document.querySelectorAll('#prov-table tbody tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
 {% endblock %}

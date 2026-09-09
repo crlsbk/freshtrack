@@ -1,7 +1,6 @@
 # Directories
 /data/
 .venv/
-/sql/
 
 /uv.lock
 

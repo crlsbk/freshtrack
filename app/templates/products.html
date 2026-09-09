@@ -8,32 +8,71 @@
 <div class="view">
   <div class="view-eyebrow">Catálogo</div>
   <div class="view-title">Productos</div>
-  <div class="view-desc">Gestión del catálogo de SKUs y parámetros de inventario.</div>
+  <div class="view-desc">Gestión del catálogo de SKUs y vinculación de proveedores en PostgreSQL.</div>
+</div>
+
+{% if message %}
+<div style="background:#064e3b; border:1px solid #059669; color:#6ee7b7; padding:0.85rem 1.25rem; border-radius:8px; margin-bottom:1.5rem; font-size:14px; display:flex; align-items:center; gap:0.5rem;">
+  <span style="font-weight:700;">✓</span> {{ message }}
+</div>
+{% endif %}
+
+<!-- Formulario para agregar y ligar producto con proveedor -->
+<div id="new-product-card" class="card" style="margin-bottom:1.5rem; border:1px solid var(--primary, #22c55e);">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:0.75rem; margin-bottom:1rem;">
+    <div style="font-weight:600; font-size:15px; color:var(--foreground);">+ Registrar Nuevo Producto y Ligar a Proveedor</div>
+    <span style="font-size:12px; color:var(--muted-foreground);">Esquemas: operacion.producto + operacion.lote</span>
+  </div>
+  <form method="POST" action="{{ url_for('products') }}">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
+      <div>
+        <label style="display:block; font-size:12px; color:var(--muted-foreground); margin-bottom:4px;">Nombre del Producto / SKU *</label>
+        <input type="text" name="nombre" required placeholder="Ej. Yogur Griego Natural 1L" class="input" style="width:100%;">
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:var(--muted-foreground); margin-bottom:4px;">Proveedor Asignado *</label>
+        <select name="id_proveedor" class="input" style="width:100%;" required>
+          {% for pr in proveedores %}
+          <option value="{{ pr.id_proveedor }}">{{ pr.razon_social }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:var(--muted-foreground); margin-bottom:4px;">Código GTIN (14 dígitos opcional)</label>
+        <input type="text" name="codigo_gtin" maxlength="14" placeholder="Auto-generado si está vacío" class="input" style="width:100%;">
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:var(--muted-foreground); margin-bottom:4px;">Vida Útil Estándar (Días) *</label>
+        <input type="number" name="vida_util_estandar" min="1" max="180" value="15" class="input" style="width:100%;" required>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <button type="submit" class="btn btn-primary" style="background:var(--primary, #22c55e); color:#000; font-weight:600;">
+        Guardar Producto y Ligar a Proveedor
+      </button>
+    </div>
+  </form>
 </div>
 
 <div class="card" style="margin-bottom:1.5rem;">
   <div class="table-header">
-    <div class="table-header-title">SKUs registrados</div>
+    <div class="table-header-title">SKUs registrados en PostgreSQL</div>
     <div class="table-actions">
-      <input id="search-input" class="input" type="text" placeholder="Buscar producto, GTIN, categoría…" style="width:260px;" oninput="filterTable()">
-      <a href="#" class="btn btn-primary btn-sm">+ Nuevo Producto</a>
+      <input id="search-input" class="input" type="text" placeholder="Buscar producto, GTIN, proveedor…" style="width:260px;" oninput="filterTable()">
     </div>
   </div>
   <div class="table-wrap">
     <table id="products-table">
       <thead>
         <tr>
-          <th>ID</th>
+          <th>ID SKU</th>
           <th>GTIN</th>
           <th>Nombre</th>
           <th>Categoría</th>
           <th>Vida Útil (días)</th>
-          <th>Costo</th>
+          <th>Costo Est.</th>
           <th>Precio Venta</th>
-          <th>Unidad</th>
-          <th>Stock Mín.</th>
-          <th>P. Reorden</th>
-          <th>Proveedor</th>
+          <th>Proveedor Vinculado</th>
         </tr>
       </thead>
       <tbody>
@@ -41,19 +80,16 @@
         <tr>
           <td class="mono">{{ p.id_sku }}</td>
           <td class="mono">{{ p.codigo_gtin }}</td>
-          <td>{{ p.nombre }}</td>
+          <td><strong>{{ p.nombre }}</strong></td>
           <td>{{ p.categoria }}</td>
-          <td>{{ p.vida_util_estandar }}</td>
+          <td>{{ p.vida_util_estandar }} días</td>
           <td class="mono">${{ '{:,.2f}'.format(p.precio_costo) }}</td>
           <td class="mono">${{ '{:,.2f}'.format(p.precio_venta) }}</td>
-          <td>{{ p.unidad }}</td>
-          <td class="mono">{{ p.stock_min }}</td>
-          <td class="mono">{{ p.punto_reorden }}</td>
-          <td>{{ p.proveedor_nombre }}</td>
+          <td><span class="badge" style="background:#1e293b; color:#38bdf8; border:1px solid #0284c7; padding:2px 8px; border-radius:4px;">{{ p.proveedor_nombre }}</span></td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="11" style="text-align:center;" class="text-muted">Sin productos registrados.</td>
+          <td colspan="8" style="text-align:center;" class="text-muted">Sin productos registrados.</td>
         </tr>
         {% endfor %}
       </tbody>

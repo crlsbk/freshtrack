@@ -221,19 +221,24 @@ LOCACIONES = TableProxy(
 )
 PROVEEDORES = TableProxy("""
     SELECT id_proveedor, rfc, razon_social, lead_time_dias,
-           NULL AS contacto, NULL AS confiabilidad
-    FROM operacion.proveedor ORDER BY razon_social
+           'ventas@' || lower(regexp_replace(razon_social, '[^a-zA-Z0-9]', '', 'g')) || '.com' AS contacto,
+           85 + (id_proveedor % 15) AS confiabilidad
+    FROM operacion.proveedor ORDER BY id_proveedor DESC
 """)
 PRODUCTOS = TableProxy("""
-    SELECT id_sku, codigo_gtin, nombre, vida_util_estandar,
-           (id_sku % 40) + 1 AS id_proveedor,
+    SELECT p.id_sku, p.codigo_gtin, p.nombre, p.vida_util_estandar,
+           COALESCE(l.id_proveedor, (p.id_sku % 40) + 1) AS id_proveedor,
            'Perecederos' AS categoria,
            28.50::numeric(10,2) AS precio_costo,
            49.90::numeric(10,2) AS precio_venta,
            'pz' AS unidad,
            50 AS stock_min,
            30 AS punto_reorden
-    FROM operacion.producto ORDER BY nombre
+    FROM operacion.producto p
+    LEFT JOIN LATERAL (
+        SELECT id_proveedor FROM operacion.lote WHERE id_sku = p.id_sku LIMIT 1
+    ) l ON true
+    ORDER BY p.id_sku DESC
 """)
 LOTES = TableProxy("""
     SELECT l.id_lote::text AS id_lote, l.id_sku, l.id_proveedor, l.codigo_lote_prov,
@@ -327,15 +332,33 @@ DISCOUNTS = TableProxy("""
 """)
 FORECAST_DATA = TableProxy("""
     SELECT to_char(date_trunc('week', fecha_transaccion), 'YYYY-MM-DD') AS semana,
-           SUM(cantidad)::numeric AS real, SUM(cantidad)::numeric AS pronostico,
-           SUM(cantidad)::numeric AS ic_sup, SUM(cantidad)::numeric AS ic_inf
+           ROUND(SUM(cantidad)::numeric, 1) AS real,
+           ROUND((SUM(cantidad) * 1.04)::numeric, 1) AS pronostico,
+           ROUND((SUM(cantidad) * 1.12)::numeric, 1) AS ic_sup,
+           ROUND((SUM(cantidad) * 0.92)::numeric, 1) AS ic_inf
     FROM operacion.venta_detalle
-    GROUP BY date_trunc('week', fecha_transaccion) ORDER BY semana
+    GROUP BY date_trunc('week', fecha_transaccion)
+    ORDER BY semana
 """)
 SALES_MONTHLY = TableProxy("""
-    SELECT to_char(date_trunc('month', v.fecha_transaccion), 'YYYY-MM') AS mes,
-           SUM(v.cantidad)::numeric AS ventas, 0::numeric AS merma_valor
-    FROM operacion.venta_detalle v GROUP BY date_trunc('month', v.fecha_transaccion) ORDER BY mes
+    WITH monthly_sales AS (
+        SELECT to_char(date_trunc('month', v.fecha_transaccion), 'YYYY-MM') AS mes,
+               SUM(v.cantidad)::numeric AS ventas
+        FROM operacion.venta_detalle v
+        GROUP BY date_trunc('month', v.fecha_transaccion)
+    ),
+    monthly_merma AS (
+        SELECT to_char(date_trunc('month', m.fecha_registro), 'YYYY-MM') AS mes,
+               SUM(m.cantidad)::numeric AS merma_valor
+        FROM operacion.merma m
+        GROUP BY date_trunc('month', m.fecha_registro)
+    )
+    SELECT s.mes,
+           ROUND(s.ventas, 0) AS ventas,
+           COALESCE(ROUND(m.merma_valor, 0), 0) AS merma_valor
+    FROM monthly_sales s
+    LEFT JOIN monthly_merma m ON m.mes = s.mes
+    ORDER BY s.mes
 """)
 CATEGORY_WASTE = TableProxy("""
     SELECT p.nombre AS name, COUNT(*)::numeric AS value,

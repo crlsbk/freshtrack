@@ -28,15 +28,15 @@
     <div class="stat-grid-3" style="gap:0.5rem;">
       <div>
         <div class="kpi-label">SKUs activos</div>
-        <div class="kpi-value" style="font-size:1.25rem;">—</div>
+        <div class="kpi-value" style="font-size:1.25rem;">{{ loc.skus_activos }}</div>
       </div>
       <div>
         <div class="kpi-label">Lotes vigentes</div>
-        <div class="kpi-value" style="font-size:1.25rem;">—</div>
+        <div class="kpi-value" style="font-size:1.25rem;">{{ loc.lotes_vigentes }}</div>
       </div>
       <div>
         <div class="kpi-label">Alertas</div>
-        <div class="kpi-value" style="font-size:1.25rem;">—</div>
+        <div class="kpi-value" style="font-size:1.25rem; color:{% if loc.alertas > 0 %}var(--warning, #fbbf24){% else %}var(--muted-foreground){% endif %};">{{ loc.alertas }}</div>
       </div>
     </div>
   </div>

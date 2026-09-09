@@ -200,7 +200,9 @@ CREATE TABLE operacion.usuario (
     id_rol integer NOT NULL,
     id_locacion integer NOT NULL,
     nombre_completo character varying(150) NOT NULL,
-    estado_activo boolean DEFAULT true NOT NULL
+    estado_activo boolean DEFAULT true NOT NULL,
+    email character varying(255) UNIQUE,
+    password_hash text
 );
 
 

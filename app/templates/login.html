@@ -77,9 +77,9 @@
 
       <!-- Roles panel -->
       <div class="login-roles-panel">
-        <div class="login-roles-label">Perfiles disponibles</div>
+        <div class="login-roles-label">Perfiles (Haz clic para demo rápido)</div>
         {% for r in role_keys %}
-        <div class="login-role-row">
+        <div class="login-role-row" style="cursor: pointer;" onclick="quickLogin('{{ r.key }}@freshtrack.mx')">
           <span class="login-role-dot" style="background:{{ r.color }};"></span>
           <span class="login-role-name">{{ r.label }}</span>
           <span class="login-role-id" style="font-size: 11px; opacity: 0.8"
@@ -89,6 +89,13 @@
         {% endfor %}
       </div>
     </div>
+    <script>
+      function quickLogin(email) {
+        document.getElementById('login-email').value = email;
+        document.getElementById('login-password').value = 'freshtrack';
+        document.querySelector('.login-form').submit();
+      }
+    </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   </body>
 </html>

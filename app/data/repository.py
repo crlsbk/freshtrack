@@ -389,6 +389,7 @@ MICROSERVICES = TableProxy("SELECT NULL::text AS nombre WHERE FALSE")
 
 
 def authenticate_user(email, password):
+    email_clean = (email or "").strip().lower()
     rows = query(
         """
         SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
@@ -400,9 +401,39 @@ def authenticate_user(email, password):
           AND crypt(:password, u.password_hash) = u.password_hash
         LIMIT 1
         """,
-        email=(email or "").strip(),
+        email=email_clean,
         password=password or "",
     )
+
+    if not rows:
+        # Fallback inteligente por alias de rol
+        alias_map = {
+            "gerente": "Gerente de Tienda",
+            "store": "Gerente de Tienda",
+            "admin": "Administrador",
+            "comprador": "Comprador",
+            "buyer": "Comprador",
+            "planeador": "Planeador de Demanda",
+            "demand": "Planeador de Demanda",
+            "almacen": "Operador de Almacén",
+            "warehouse": "Operador de Almacén",
+            "auditor": "Auditor",
+        }
+        for alias, rol_nom in alias_map.items():
+            if alias in email_clean:
+                rows = query(
+                    """
+                    SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
+                           u.nombre_completo, u.estado_activo, r.nombre_rol
+                    FROM operacion.usuario u
+                    JOIN operacion.rol r ON r.id_rol = u.id_rol
+                    WHERE r.nombre_rol ILIKE :rol_nom AND u.estado_activo = true
+                    LIMIT 1
+                    """,
+                    rol_nom=f"%{rol_nom}%",
+                )
+                if rows:
+                    break
 
     if not rows:
         return None

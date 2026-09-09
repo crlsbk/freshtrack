@@ -144,13 +144,13 @@ def login():
         return redirect(url_for("index"))
     error = None
     if request.method == "POST":
-        user_id = request.form.get("email", "").strip()
+        email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
         from data.repository import authenticate_user
 
-        user = authenticate_user(user_id, password)
+        user = authenticate_user(email, password)
         if not user:
-            error = "ID de usuario o contraseña incorrectos."
+            error = "Correo electrónico o contraseña incorrectos."
         elif not user["estado_activo"]:
             error = "Esta cuenta está desactivada. Contacta al administrador."
         else:
@@ -240,12 +240,14 @@ def products():
         id_proveedor = int(request.form.get("id_proveedor", 1) or 1)
         if not gtin:
             import random
+
             gtin = f"750{random.randint(10000000000, 99999999999)}"
         if nombre:
             try:
                 import uuid
                 from sqlalchemy import text
                 from data.repository import get_engine
+
                 with get_engine().begin() as conn:
                     res = conn.execute(
                         text("""
@@ -327,11 +329,13 @@ def suppliers():
         lead_time = int(request.form.get("lead_time_dias", 3) or 3)
         if not rfc:
             import random
+
             rfc = f"PRV{random.randint(100000, 999999)}XXX"
         if razon_social:
             try:
                 from sqlalchemy import text
                 from data.repository import get_engine
+
                 with get_engine().begin() as conn:
                     conn.execute(
                         text("""
@@ -344,7 +348,9 @@ def suppliers():
                             "lead_time": lead_time,
                         },
                     )
-                message = f"Proveedor '{razon_social}' guardado exitosamente en PostgreSQL."
+                message = (
+                    f"Proveedor '{razon_social}' guardado exitosamente en PostgreSQL."
+                )
             except Exception as e:
                 message = f"Error al registrar proveedor: {e}"
     return render_template(
@@ -541,13 +547,19 @@ def shrinkage():
             if id_lote and id_usuario:
                 from sqlalchemy import text
                 from data.repository import get_engine
+
                 with get_engine().begin() as conn:
                     conn.execute(
                         text(
                             "INSERT INTO operacion.merma (id_lote, id_usuario, cantidad, causa_merma, fecha_registro) "
                             "VALUES (:id_lote, :id_usuario, :cantidad, :causa_merma, NOW())"
                         ),
-                        {"id_lote": id_lote, "id_usuario": id_usuario, "cantidad": cantidad, "causa_merma": causa},
+                        {
+                            "id_lote": id_lote,
+                            "id_usuario": id_usuario,
+                            "cantidad": cantidad,
+                            "causa_merma": causa,
+                        },
                     )
                     conn.execute(
                         text(
@@ -583,7 +595,9 @@ def shrinkage():
                 "valor": valor,
             }
         )
-    m_stat = query("SELECT COALESCE(SUM(cantidad), 0) AS total_cant FROM operacion.merma")[0]
+    m_stat = query(
+        "SELECT COALESCE(SUM(cantidad), 0) AS total_cant FROM operacion.merma"
+    )[0]
     total_cantidad = float(m_stat["total_cant"])
     total_valor = total_cantidad * 25.0
     return render_template(

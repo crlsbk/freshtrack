@@ -57,10 +57,9 @@ Almacena la bitácora centralizada de eventos mediante estructuras JSONB y funci
 
 ### Ejecutar la aplicación Flask contra PostgreSQL
 
-La aplicación consulta directamente las tablas del esquema `operacion` definidas en `docs/BD_Diseño.docx`. Copia `env.example` a `.env`, ajusta `DATABASE_URL` y define `APP_LOGIN_PASSWORD`. El login usa `id_usuario` (UUID) porque el diseño de la tabla `usuario` no incluye correo ni contraseña.
+La aplicación consulta directamente las tablas del esquema `operacion` definidas en `docs/BD_Diseño.docx`. Copia `env.example` a `.env` y ajusta `DATABASE_URL`. El login usa `usuario.email` y valida la contraseña contra `usuario.password_hash` mediante `pgcrypto`.
 
 ```bash
 export DATABASE_URL='postgresql+psycopg://app_backend:backend_secure_pass@localhost:5432/retail_perecederos'
-export APP_LOGIN_PASSWORD='una-credencial-segura'
 python run.py
 ```

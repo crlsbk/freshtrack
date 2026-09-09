@@ -213,7 +213,7 @@ class TableProxy:
 
 USUARIOS = TableProxy("""
     SELECT id_usuario::text AS id_usuario, id_rol, id_locacion, nombre_completo,
-           estado_activo, id_usuario::text AS email, '' AS password, NULL AS ultimo_acceso
+           estado_activo, email, NULL AS ultimo_acceso
     FROM operacion.usuario ORDER BY nombre_completo
 """)
 LOCACIONES = TableProxy(
@@ -388,68 +388,21 @@ BITACORA = TableProxy("""
 MICROSERVICES = TableProxy("SELECT NULL::text AS nombre WHERE FALSE")
 
 
-def authenticate_user(user_id, password):
-    if password != os.getenv("APP_LOGIN_PASSWORD", "freshtrack"):
-        return None
-    val = (user_id or "").strip()
-
-    # 1. Direct UUID
+def authenticate_user(email, password):
     rows = query(
         """
-         SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
-             u.nombre_completo, u.estado_activo, r.nombre_rol
-         FROM operacion.usuario u
-         JOIN operacion.rol r ON r.id_rol = u.id_rol
-         WHERE u.id_usuario::text = :val
-    """,
-        val=val,
-    )
-
-    # 2. Match by email or role keyword: e.g. "gerente@freshtrack.mx", "admin@...", "comprador"
-    if not rows:
-        val_clean = val.lower().split("@")[0].replace("_", "").replace(" ", "").replace("-", "")
-        role_search_map = {
-            "gerente": "Gerente de Tienda",
-            "store": "Gerente de Tienda",
-            "almacen": "Operador de Almac%",
-            "bodega": "Operador de Almac%",
-            "warehouse": "Operador de Almac%",
-            "compr": "Comprador",
-            "buyer": "Comprador",
-            "plan": "Planeador%",
-            "audit": "Auditor%",
-            "admin": "Administrador%",
-        }
-        for kw, pat in role_search_map.items():
-            if kw in val_clean:
-                rows = query(
-                    """
-                    SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
-                           u.nombre_completo, u.estado_activo, r.nombre_rol
-                    FROM operacion.usuario u
-                    JOIN operacion.rol r ON r.id_rol = u.id_rol
-                    WHERE r.nombre_rol ILIKE :pat AND u.estado_activo = true
-                    ORDER BY u.nombre_completo LIMIT 1
-                """,
-                    pat=pat,
-                )
-                if rows:
-                    break
-
-    # 3. Match by name: e.g. "Rebeca"
-    if not rows:
-        name_clean = val.split("@")[0].strip()
-        rows = query(
-            """
-            SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
-                   u.nombre_completo, u.estado_activo, r.nombre_rol
-            FROM operacion.usuario u
-            JOIN operacion.rol r ON r.id_rol = u.id_rol
-            WHERE u.nombre_completo ILIKE :pat AND u.estado_activo = true
-            ORDER BY u.nombre_completo LIMIT 1
+        SELECT u.id_usuario::text AS id_usuario, u.id_rol, u.id_locacion,
+               u.nombre_completo, u.estado_activo, r.nombre_rol
+        FROM operacion.usuario u
+        JOIN operacion.rol r ON r.id_rol = u.id_rol
+        WHERE lower(u.email) = lower(:email)
+          AND u.password_hash IS NOT NULL
+          AND crypt(:password, u.password_hash) = u.password_hash
+        LIMIT 1
         """,
-            pat=f"%{name_clean}%",
-        )
+        email=(email or "").strip(),
+        password=password or "",
+    )
 
     if not rows:
         return None

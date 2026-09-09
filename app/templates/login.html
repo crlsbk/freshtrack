@@ -40,15 +40,17 @@
           {% endif %}
 
           <div>
-            <label class="form-label" for="login-email">Correo electrónico o ID de usuario</label>
+            <label class="form-label" for="login-email"
+              >Correo electrónico</label
+            >
             <input
               class="input"
-              type="text"
+              type="email"
               id="login-email"
               name="email"
               autocomplete="username"
-              placeholder="ej. gerente@freshtrack.mx o UUID"
-              value="gerente@freshtrack.mx"
+              placeholder="ej. usuario@freshtrack.mx"
+              value=""
               required
             />
           </div>
@@ -61,7 +63,7 @@
               name="password"
               autocomplete="current-password"
               placeholder="••••••••"
-              value="freshtrack"
+              value=""
               required
             />
           </div>
@@ -75,23 +77,18 @@
 
       <!-- Roles panel -->
       <div class="login-roles-panel">
-        <div class="login-roles-label">Perfiles (Haz clic para demo rápido)</div>
+        <div class="login-roles-label">Perfiles disponibles</div>
         {% for r in role_keys %}
-        <div class="login-role-row" style="cursor: pointer;" onclick="quickLogin('{{ r.key }}@freshtrack.mx')">
+        <div class="login-role-row">
           <span class="login-role-dot" style="background:{{ r.color }};"></span>
           <span class="login-role-name">{{ r.label }}</span>
-          <span class="login-role-id" style="font-size:11px; opacity:0.8;">{{ r.key }}@freshtrack.mx</span>
+          <span class="login-role-id" style="font-size: 11px; opacity: 0.8"
+            >{{ r.key }}@freshtrack.mx</span
+          >
         </div>
         {% endfor %}
       </div>
     </div>
-    <script>
-      function quickLogin(email) {
-        document.getElementById('login-email').value = email;
-        document.getElementById('login-password').value = 'freshtrack';
-        document.querySelector('.login-form').submit();
-      }
-    </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   </body>
 </html>

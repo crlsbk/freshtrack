@@ -78,8 +78,7 @@ LOCACIONES = _safe_query(
 
 PROVEEDORES = _safe_query(
     """
-    SELECT id_proveedor, rfc, razon_social, lead_time_dias,
-           contacto, confiabilidad
+    SELECT id_proveedor, rfc, razon_social, lead_time_dias
     FROM operacion.proveedor
     ORDER BY id_proveedor
     """
@@ -87,20 +86,17 @@ PROVEEDORES = _safe_query(
 
 PRODUCTOS = _safe_query(
     """
-    SELECT p.id_sku, p.codigo_gtin, p.nombre, p.vida_util_estandar,
-           p.id_proveedor, p.categoria, p.precio_costo, p.precio_venta,
-           p.unidad, p.stock_min, p.punto_reorden
-    FROM operacion.producto p
-    ORDER BY p.id_sku
+    SELECT id_sku, codigo_gtin, nombre, vida_util_estandar
+    FROM operacion.producto
+    ORDER BY id_sku
     """
 ) or _MOCK_PRODUCTOS
 
 LOTES = _safe_query(
     """
-    SELECT l.id_lote, l.id_sku, l.id_proveedor, l.codigo_lote_prov,
-           l.fecha_caducidad, l.fecha_recepcion, l.id_locacion, l.status
-    FROM operacion.lote l
-    ORDER BY l.fecha_caducidad
+    SELECT id_lote, id_sku, id_proveedor, codigo_lote_prov, fecha_caducidad
+    FROM operacion.lote
+    ORDER BY fecha_caducidad
     """
 ) or _MOCK_LOTES
 
@@ -170,7 +166,7 @@ MICROSERVICES = _MOCK_MICROSERVICES
 # ---------------------------------------------------------------------------
 
 LOGIN_USERS_SQL = """
-SELECT
+SELECT DISTINCT ON (u.id_rol)
     u.id_usuario,
     u.id_rol,
     r.nombre_rol,
@@ -185,7 +181,8 @@ JOIN operacion.rol AS r
     ON r.id_rol = u.id_rol
 JOIN operacion.locacion AS l
     ON l.id_locacion = u.id_locacion
-ORDER BY u.nombre_completo;
+WHERE u.estado_activo = true
+ORDER BY u.id_rol, u.id_usuario;
 """
 
 PRODUCTS_CATALOG_SQL = """

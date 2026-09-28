@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Transferencias{% endblock %}
+{% block breadcrumb %}Analítica › Transferencias{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Analítica',
+  'Transferencias entre tiendas',
+  'Mover producto de donde sobra y está por vencer hacia donde se puede vender. Una sugerencia solo se genera si pasa las cuatro validaciones: el origen tiene suficiente, el destino realmente lo necesita, llega antes de caducar y el destino alcanza a consumirlo.'
+) }}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Sugeridas', resumen.sugeridas, 'Esperan decisión', '#38bdf8') }}
+  {{ ui.kpi('Aprobadas', resumen.aprobadas, 'Listas para ejecutar', '#fbbf24') }}
+  {{ ui.kpi('Ejecutadas', resumen.ejecutadas, 'Inventario ya movido', '#4ade80') }}
+  {{ ui.kpi('Unidades movidas', "%.2f" | format(resumen.unidades_movidas | float)) }}
+</div>
+
+<div class="filtros">
+  <form method="post" action="{{ url_for('analitica.transferencias_detectar') }}">
+    <button class="btn btn-primary" type="submit">Detectar oportunidades</button>
+  </form>
+  <form method="get" action="{{ url_for('analitica.transferencias') }}"
+        style="display:flex;gap:12px;align-items:flex-end;">
+    <div class="campo">
+      <label class="form-label">Estado</label>
+      <select class="input" name="estado">
+        {% for e in ['SUGERIDA', 'APROBADA', 'EJECUTADA', 'RECHAZADA', 'TODAS'] %}
+          <option value="{{ e }}" {% if estado_filtro == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-ghost" type="submit">Filtrar</button>
+  </form>
+</div>
+
+{% set etiquetas = {
+  'origen_suficiente':        '¿El origen tiene suficiente?',
+  'destino_necesita':         '¿El destino realmente lo necesita?',
+  'llega_antes_de_vencer':    '¿Llega antes de caducar?',
+  'destino_puede_consumirlo': '¿El destino alcanza a consumirlo?'
+} %}
+
+{% for t in transferencias %}
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;">
+          {{ t.origen }} <span style="color:var(--role-accent);">→</span> {{ t.destino }}
+        </div>
+        <div class="text-muted" style="font-size:11.5px;margin-top:3px;">
+          {{ t.producto }} · SKU {{ t.id_sku }} · lote {{ t.codigo_lote_prov or '—' }} ·
+          vence {{ t.fecha_caducidad }} ({{ t.dias_para_vencer }} días) ·
+          creada el {{ t.fecha_creacion }}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span class="badge badge-info">{{ "%.2f" | format(t.cantidad | float) }} {{ t.unidad_medida }}</span>
+        {{ ui.estado(t.estado) }}
+      </div>
+    </div>
+
+    <div class="stat-grid-4" style="margin:16px 0 0;">
+      {{ ui.kpi('Exceso en el origen', "%.2f" | format(t.exceso_origen | float),
+                'Inventario que sobra en ' ~ t.origen) }}
+      {{ ui.kpi('Faltante en el destino', "%.2f" | format(t.faltante_destino | float),
+                'Lo que necesita ' ~ t.destino) }}
+      {{ ui.kpi('Días para vencer', t.dias_para_vencer,
+                'Al momento de sugerir', '#fbbf24') }}
+      {{ ui.kpi('Unidades a mover', "%.2f" | format(t.cantidad | float),
+                'Cantidad propuesta', '#4ade80') }}
+    </div>
+
+    {% if t.validaciones %}
+      <div style="margin-top:16px;">
+        <div class="detalle-etiqueta" style="margin-bottom:8px;">
+          Validaciones aplicadas (las cuatro deben pasar)
+        </div>
+        <table>
+          <thead>
+            <tr><th>Validación</th><th>Resultado</th><th>Detalle</th></tr>
+          </thead>
+          <tbody>
+            {% for clave, v in t.validaciones.items() %}
+              <tr>
+                <td style="font-weight:600;">{{ etiquetas.get(clave, clave) }}</td>
+                <td>
+                  {% if v.pasa %}
+                    <span class="badge badge-success">PASA</span>
+                  {% else %}
+                    <span class="badge badge-danger">NO PASA</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted" style="font-size:12px;">{{ v.detalle }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    {% if t.motivo %}
+      <div class="aviso-info" style="margin-top:14px;">
+        <strong>Motivo:</strong> {{ t.motivo }}
+      </div>
+    {% endif %}
+
+    {% if t.solicita or t.aprueba %}
+      <div class="text-muted" style="font-size:11.5px;margin-top:10px;">
+        {% if t.solicita %}Sugerida por el sistema en la corrida solicitada por {{ t.solicita }}.{% endif %}
+        {% if t.aprueba %}Decidió: {{ t.aprueba }}{% if t.fecha_decision %} el {{ t.fecha_decision }}{% endif %}.{% endif %}
+        {% if t.fecha_ejecucion %}Ejecutada el {{ t.fecha_ejecucion }}.{% endif %}
+      </div>
+    {% endif %}
+
+    <div class="acciones" style="margin-top:16px;">
+      {% if t.estado == 'SUGERIDA' %}
+        <form class="inline-form" method="post"
+              action="{{ url_for('analitica.transferencias_decidir', id_transferencia=t.id_transferencia) }}"
+              style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="campo" style="min-width:150px;">
+            <label class="form-label">Cantidad a aprobar</label>
+            <input class="input" name="cantidad" type="number" step="0.01" min="0"
+                   value="{{ '%.2f' | format(t.cantidad | float) }}"/>
+          </div>
+          <button class="btn btn-primary" type="submit" name="decision" value="aprobar">
+            Aprobar transferencia
+          </button>
+          <button class="btn btn-danger" type="submit" name="decision" value="rechazar">
+            Rechazar
+          </button>
+        </form>
+      {% elif t.estado == 'APROBADA' %}
+        <form class="inline-form" method="post"
+              action="{{ url_for('analitica.transferencias_ejecutar', id_transferencia=t.id_transferencia) }}">
+          <button class="btn btn-primary" type="submit">Ejecutar y mover inventario</button>
+        </form>
+        <span class="text-muted" style="font-size:11.5px;align-self:center;">
+          Al ejecutar se descuenta del origen, se suma en el destino, se escriben dos
+          movimientos de kardex y se registra el desperdicio evitado.
+        </span>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="tabla-vacia">
+      <div class="tabla-vacia-titulo">No hay transferencias en este estado</div>
+      <div class="tabla-vacia-texto">
+        Pulsa «Detectar oportunidades»: el motor compara cada tienda con exceso de
+        producto por vencer contra las tiendas con faltante proyectado.
+      </div>
+    </div>
+  </div>
+{% endfor %}
+{% endblock %}

@@ -1,101 +1,124 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FreshTrack — Iniciar sesión</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-  </head>
-  <body>
-    <div class="login-page">
-      <!-- Form panel -->
-      <div class="login-panel">
-        <div class="login-logo">
-          <div class="login-logo-mark">
-            <svg viewBox="0 0 20 20">
-              <path
-                fill-rule="evenodd"
-                d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </div>
-          <div>
-            <div class="login-brand-name">FreshTrack</div>
-            <div class="login-brand-sub">PERECEDEROS · IA</div>
-          </div>
-        </div>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FreshTrack — Iniciar sesión</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+</head>
+<body>
+<div class="login-page">
 
-        <div class="login-title">Inicia sesión</div>
-        <div class="login-subtitle">
-          Ingresa tus credenciales para acceder al sistema.
-        </div>
-
-        <form class="login-form" method="POST" action="{{ url_for('login') }}">
-          {% if error %}
-          <div class="login-error">{{ error }}</div>
-          {% endif %}
-
-          <div>
-            <label class="form-label" for="login-email"
-              >Correo electrónico</label
-            >
-            <input
-              class="input"
-              type="email"
-              id="login-email"
-              name="email"
-              autocomplete="username"
-              placeholder="ej. usuario@freshtrack.mx"
-              value=""
-              required
-            />
-          </div>
-          <div>
-            <label class="form-label" for="login-password">Contraseña</label>
-            <input
-              class="input"
-              type="password"
-              id="login-password"
-              name="password"
-              autocomplete="current-password"
-              placeholder="••••••••"
-              value=""
-              required
-            />
-          </div>
-          <button type="submit" class="login-submit">Iniciar sesión</button>
-        </form>
-
-        <div class="login-footer">
-          retail_perecederos · PostgreSQL · Autenticación RBAC
-        </div>
+  {# ── Formulario ── #}
+  <div class="login-panel">
+    <div class="login-logo">
+      <div class="login-logo-mark">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
       </div>
-
-      <!-- Roles panel -->
-      <div class="login-roles-panel">
-        <div class="login-roles-label">Perfiles (Haz clic para demo rápido)</div>
-        {% for r in role_keys %}
-        <div class="login-role-row" style="cursor: pointer;" onclick="quickLogin('{{ r.key }}@freshtrack.mx')">
-          <span class="login-role-dot" style="background:{{ r.color }};"></span>
-          <span class="login-role-name">{{ r.label }}</span>
-          <span class="login-role-id" style="font-size: 11px; opacity: 0.8"
-            >{{ r.key }}@freshtrack.mx</span
-          >
-        </div>
-        {% endfor %}
+      <div>
+        <div class="login-brand-name">FreshTrack</div>
+        <div class="login-brand-sub">GESTIÓN DE PERECEDEROS</div>
       </div>
     </div>
-    <script>
-      function quickLogin(email) {
-        document.getElementById('login-email').value = email;
-        document.getElementById('login-password').value = 'freshtrack';
-        document.querySelector('.login-form').submit();
-      }
-    </script>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
-  </body>
+
+    <h1 class="login-title">Iniciar sesión</h1>
+    <p class="login-subtitle">
+      Accede con tu cuenta registrada. La contraseña se verifica contra
+      PostgreSQL con bcrypt.
+    </p>
+
+    {% with mensajes = get_flashed_messages(with_categories=true) %}
+      {% for categoria, texto in mensajes %}
+        <div class="login-error" style="margin-bottom:14px;">{{ texto }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if error %}
+      <div class="login-error" style="margin-bottom:14px;">{{ error }}</div>
+    {% endif %}
+
+    <form class="login-form" method="post" action="{{ url_for('auth.login') }}">
+      <div>
+        <label class="form-label" for="login-email">Correo electrónico</label>
+        <input class="input" id="login-email" name="email" type="email"
+               value="{{ email or '' }}" placeholder="usuario@freshtrack.mx"
+               autocomplete="username" required autofocus/>
+      </div>
+      <div>
+        <label class="form-label" for="login-password">Contraseña</label>
+        <input class="input" id="login-password" name="password" type="password"
+               placeholder="••••••••" autocomplete="current-password" required/>
+      </div>
+      <button class="login-submit" type="submit">Entrar al sistema</button>
+    </form>
+
+    <button class="login-hint-btn" id="hints-toggle-btn" onclick="toggleHints()">
+      Ver usuarios de demostración
+    </button>
+
+    <div class="login-hints" id="login-hints" style="display:none;">
+      {% set demo = [
+        ('admin@freshtrack.mx',     'Admin2026!',     'Administrador',    '#4ade80'),
+        ('buyer@freshtrack.mx',     'Compras2026!',   'Comprador',        '#38bdf8'),
+        ('planner@freshtrack.mx',   'Plan2026!',      'Planeador',        '#a78bfa'),
+        ('gerente@freshtrack.mx',   'Tienda2026!',    'Gerente de tienda','#fbbf24'),
+        ('almacen@freshtrack.mx',   'Almacen2026!',   'Almacén',          '#2dd4bf'),
+        ('proveedor@freshtrack.mx', 'Proveedor2026!', 'Proveedor',        '#f472b6'),
+        ('auditor@freshtrack.mx',   'Auditor2026!',   'Auditor',          '#f87171'),
+        ('inactivo@freshtrack.mx',  'Inactivo2026!',  'Usuario inactivo', '#536b57')
+      ] %}
+      {% for correo, clave, rol, color in demo %}
+        <button type="button" class="hint-row"
+                onclick="fillLogin('{{ correo }}', '{{ clave }}')">
+          <span>
+            <span class="hint-email">{{ correo }}</span>
+            <span class="hint-meta">
+              {{ rol }} · <span class="hint-pass">{{ clave }}</span>
+            </span>
+          </span>
+          <span class="login-role-dot" style="background:{{ color }};"></span>
+        </button>
+      {% endfor %}
+    </div>
+
+    <div class="login-footer">
+      La cuenta «inactivo@freshtrack.mx» está desactivada: sirve para comprobar
+      que el sistema rechaza usuarios inactivos.
+    </div>
+
+    <div class="login-footer">
+      <a href="{{ url_for('publico.inicio') }}" style="color:#4a6a4e;">← Volver a la página principal</a>
+    </div>
+  </div>
+
+  {# ── Panel informativo ── #}
+  <div class="login-roles-panel">
+    <div class="login-roles-label">Perfiles del sistema</div>
+    {% set perfiles = [
+      ('Administrador',     'Acceso completo, usuarios y bitácora',    '#4ade80'),
+      ('Comprador',         'Proveedores, lotes y reabastecimiento',   '#38bdf8'),
+      ('Planeador',         'Pronósticos, transferencias y descuentos','#a78bfa'),
+      ('Gerente de tienda', 'Recepción, ventas, FEFO y mermas',        '#fbbf24'),
+      ('Almacén',           'Inventario, FEFO y transferencias',       '#2dd4bf'),
+      ('Proveedor',         'Consulta de productos y órdenes',         '#f472b6'),
+      ('Auditor',           'Bitácora, mermas y trazabilidad',         '#f87171')
+    ] %}
+    {% for nombre, funcion, color in perfiles %}
+      <div class="login-role-row">
+        <span class="login-role-dot" style="background:{{ color }};"></span>
+        <span class="login-role-name">{{ nombre }}</span>
+        <span class="login-role-id">{{ funcion }}</span>
+      </div>
+    {% endfor %}
+
+    <div class="login-footer" style="margin-top:20px;">
+      El menú lateral se arma con los permisos del rol: cada perfil ve
+      únicamente las pantallas que le corresponden.
+    </div>
+  </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
 </html>

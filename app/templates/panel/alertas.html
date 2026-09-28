@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Alertas{% endblock %}
+{% block breadcrumb %}Principal › Alertas{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Principal',
+  'Alertas del sistema',
+  'Las alertas no se capturan a mano: se derivan de reglas aplicadas sobre el inventario, el pronóstico y las órdenes pendientes. Al recalcular, las que ya no aplican se cierran solas.'
+) }}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Abiertas', resumen.total, 'En total ahora mismo') }}
+  {{ ui.kpi('Críticas', resumen.por_severidad.get('CRITICA', 0), 'Requieren acción inmediata', '#f87171') }}
+  {{ ui.kpi('Altas', resumen.por_severidad.get('ALTA', 0), None, '#fb923c') }}
+  {{ ui.kpi('Tipos con actividad',
+            resumen.por_tipo | length, 'De los 7 tipos definidos') }}
+</div>
+
+{# ── Conteo por tipo ── #}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Alertas abiertas por tipo</div>
+  <table>
+    <thead><tr><th>Tipo</th><th>Descripción</th><th>Abiertas</th></tr></thead>
+    <tbody>
+      {% for clave, meta in tipos.items() %}
+        <tr>
+          <td class="mono" style="font-size:11.5px;font-weight:600;">{{ clave }}</td>
+          <td>{{ meta.etiqueta }}</td>
+          <td>
+            {% set n = resumen.por_tipo.get(clave, 0) %}
+            {% if n %}
+              <span class="badge badge-warning">{{ n }}</span>
+            {% else %}
+              <span class="text-muted mono">0</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Controles ── #}
+<div class="filtros">
+  <form method="post" action="{{ url_for('panel.alertas_regenerar') }}">
+    <button class="btn btn-primary" type="submit">Recalcular alertas desde PostgreSQL</button>
+  </form>
+  <form method="get" action="{{ url_for('panel.alertas') }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    <div class="campo">
+      <label class="form-label">Tipo</label>
+      <select class="input" name="tipo">
+        <option value="">Todos</option>
+        {% for clave, meta in tipos.items() %}
+          <option value="{{ clave }}" {% if filtro_tipo == clave %}selected{% endif %}>
+            {{ meta.etiqueta }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label class="form-label">Severidad</label>
+      <select class="input" name="severidad">
+        <option value="">Todas</option>
+        {% for clave, meta in severidades.items() %}
+          <option value="{{ clave }}" {% if filtro_severidad == clave %}selected{% endif %}>
+            {{ meta.etiqueta }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label class="form-label">Estado</label>
+      <select class="input" name="estado">
+        {% for e in ['ABIERTA', 'ATENDIDA', 'DESCARTADA'] %}
+          <option value="{{ e }}" {% if filtro_estado == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-ghost" type="submit">Filtrar</button>
+  </form>
+</div>
+
+{# ── Listado ── #}
+<div class="stack">
+  {% for a in alertas %}
+    <div class="alerta-card alerta-{{ a.severidad }}">
+      <div class="alerta-cuerpo">
+        <div class="alerta-meta">
+          {{ ui.severidad(a.severidad) }}
+          <span class="badge badge-neutral mono" style="font-size:9.5px;">{{ a.tipo }}</span>
+          {% if a.producto %}
+            <span style="font-size:12px;font-weight:600;">{{ a.producto }}</span>
+          {% endif %}
+          {% if a.locacion %}
+            <span class="text-muted" style="font-size:11.5px;">· {{ a.locacion }}</span>
+          {% endif %}
+          {% if a.codigo_lote_prov %}
+            <span class="text-muted mono" style="font-size:11px;">· lote {{ a.codigo_lote_prov }}</span>
+          {% endif %}
+        </div>
+
+        <div class="alerta-mensaje">{{ a.mensaje }}</div>
+
+        {% if a.detalle %}
+          <details class="acordeon">
+            <summary>Detalle del cálculo</summary>
+            <div class="acordeon-cuerpo">
+              <pre class="explicacion">{{ a.detalle | tojson(indent=2) }}</pre>
+            </div>
+          </details>
+        {% endif %}
+
+        <div class="alerta-pie">
+          Generada el {{ a.fecha_generacion }} · estado {{ a.estado }}
+          {% if a.referencia_tipo %} · referencia: {{ a.referencia_tipo }}{% endif %}
+        </div>
+      </div>
+
+      {% if a.estado == 'ABIERTA' %}
+        <form method="post" action="{{ url_for('panel.alertas_cerrar', id_alerta=a.id_alerta) }}">
+          <button class="btn btn-ghost btn-sm" type="submit">Marcar atendida</button>
+        </form>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="card">
+      <div class="tabla-vacia">
+        <div class="tabla-vacia-titulo">No hay alertas en este filtro</div>
+        <div class="tabla-vacia-texto">
+          Pulsa «Recalcular alertas» para que el motor vuelva a evaluar todas las reglas
+          sobre el inventario y las órdenes actuales.
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Cola FEFO{% endblock %}
+{% block breadcrumb %}Operación › Cola FEFO{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Operación',
+  'Cola FEFO',
+  'First Expired, First Out: este es el orden exacto en el que el sistema debe sacar el inventario. El primer lote de la lista es el que vence antes y el que se consumirá primero en la próxima venta.'
+) }}
+
+<form class="filtros" method="get" action="{{ url_for('operacion.fefo') }}">
+  <div class="campo">
+    <label class="form-label" for="locacion">Tienda / CEDIS</label>
+    <select class="input" id="locacion" name="locacion">
+      <option value="">Todas</option>
+      {% for l in locaciones %}
+        <option value="{{ l.id_locacion }}"
+                {% if id_locacion == l.id_locacion %}selected{% endif %}>
+          {{ l.nombre }} ({{ l.tipo_locacion }})
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-primary" type="submit">Ver cola</button>
+  <a class="btn btn-ghost" href="{{ url_for('operacion.fefo') }}">Limpiar</a>
+  <span class="text-muted" style="font-size:12px;">
+    {{ cola | length }} lotes con existencia vigente
+  </span>
+</form>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Orden de salida</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Lote</th>
+        <th>Producto</th>
+        <th>Ubicación</th>
+        <th>Caducidad</th>
+        <th>Días restantes</th>
+        <th>Vida útil</th>
+        <th>Disponible</th>
+        <th>Costo unitario</th>
+        <th>Riesgo</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in cola %}
+        <tr>
+          <td class="mono" style="font-weight:700;color:var(--role-accent);">{{ loop.index }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ l.codigo_lote_prov }}</td>
+          <td>
+            <div style="font-weight:600;">{{ l.producto }}</div>
+            <div class="text-muted" style="font-size:10.5px;">SKU {{ l.id_sku }} · {{ l.categoria }}</div>
+          </td>
+          <td style="font-size:12px;">{{ l.locacion }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ l.fecha_caducidad }}</td>
+          <td class="mono">
+            <span class="{% if l.dias_restantes <= 2 %}text-danger{% elif l.dias_restantes <= 5 %}text-warning{% endif %}">
+              {{ l.dias_restantes }}
+            </span>
+          </td>
+          <td style="min-width:100px;">
+            <div class="medidor">
+              <div class="progress-bar">
+                <div class="progress-fill {{ 'expiry-fill-ok' if l.clasificacion == 'NORMAL' else ('expiry-fill-warning' if l.clasificacion == 'VIGILANCIA' else 'expiry-fill-critical') }}"
+                     style="width: {{ [0, [l.vida_util_pct | float, 100] | min] | max }}%;"></div>
+              </div>
+              <span class="medidor-valor">{{ "%.0f" | format(l.vida_util_pct | float) }}%</span>
+            </div>
+          </td>
+          <td class="mono">{{ "%.2f" | format(l.cantidad_disponible | float) }} {{ l.unidad_medida }}</td>
+          <td class="mono">{{ ui.moneda(l.costo_unitario) }}</td>
+          <td>{{ ui.riesgo(l.clasificacion) }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No hay lotes con existencia vigente para mostrar.', 10) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

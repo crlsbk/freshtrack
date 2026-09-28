@@ -1,0 +1,114 @@
+{# ==========================================================================
+   Macros compartidos por todas las plantillas de FreshTrack.
+   ========================================================================== #}
+
+{# --- Avisos flash -------------------------------------------------------- #}
+{% macro avisos() %}
+  {% with mensajes = get_flashed_messages(with_categories=true) %}
+    {% if mensajes %}
+      <div class="flash-stack">
+        {% for categoria, texto in mensajes %}
+          <div class="flash flash-{{ 'ok' if categoria == 'ok' else 'error' }}">
+            <span class="flash-icon">{{ '✓' if categoria == 'ok' else '!' }}</span>
+            <span class="flash-text">{{ texto }}</span>
+            <button type="button" class="flash-dismiss" title="Cerrar">×</button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+{% endmacro %}
+
+{# --- Encabezado de vista ------------------------------------------------- #}
+{% macro encabezado(eyebrow, titulo, descripcion=None) %}
+  <div class="view-head">
+    <div class="view-eyebrow">{{ eyebrow }}</div>
+    <h1 class="view-title">{{ titulo }}</h1>
+    {% if descripcion %}<p class="view-desc">{{ descripcion }}</p>{% endif %}
+  </div>
+{% endmacro %}
+
+{# --- Badge de clasificación de riesgo ------------------------------------ #}
+{% macro riesgo(clasificacion) %}
+  {% set mapa = {'NORMAL': 'success', 'VIGILANCIA': 'warning',
+                 'CRITICO': 'danger', 'VENCIDO': 'neutral'} %}
+  <span class="badge badge-{{ mapa.get(clasificacion, 'neutral') }}">{{ clasificacion }}</span>
+{% endmacro %}
+
+{# --- Barra de vida útil restante ----------------------------------------- #}
+{% macro barra_vida(pct, clasificacion) %}
+  {% set relleno = {'NORMAL': 'expiry-fill-ok', 'VIGILANCIA': 'expiry-fill-warning',
+                    'CRITICO': 'expiry-fill-critical', 'VENCIDO': 'expiry-fill-expired'} %}
+  <div class="expiry-bar" title="{{ pct }}% de vida útil restante">
+    <div class="progress-fill {{ relleno.get(clasificacion, 'expiry-fill-ok') }}"
+         style="width: {{ [0, [pct, 100] | min] | max }}%;"></div>
+  </div>
+{% endmacro %}
+
+{# --- Badge de severidad de alerta ---------------------------------------- #}
+{% macro severidad(nivel) %}
+  {% set mapa = {'CRITICA': 'danger', 'ALTA': 'warning', 'MEDIA': 'info', 'BAJA': 'neutral'} %}
+  <span class="badge badge-{{ mapa.get(nivel, 'neutral') }}">{{ nivel }}</span>
+{% endmacro %}
+
+{# --- Badge de estado genérico -------------------------------------------- #}
+{% macro estado(valor) %}
+  {% set mapa = {
+      'PENDIENTE': 'warning', 'APROBADA': 'success', 'RECHAZADA': 'danger',
+      'SUGERIDA': 'info', 'SUGERIDO': 'info', 'EJECUTADA': 'success',
+      'APROBADO': 'success', 'RECHAZADO': 'danger', 'CANCELADA': 'neutral',
+      'ABIERTA': 'danger', 'ATENDIDA': 'success', 'DESCARTADA': 'neutral',
+      'AGOTADO': 'neutral', 'DISPONIBLE': 'success', 'VENCIDO': 'danger',
+      'BLOQUEADO': 'warning'} %}
+  <span class="badge badge-{{ mapa.get(valor, 'neutral') }}">{{ valor }}</span>
+{% endmacro %}
+
+{# --- Fila de tabla vacía ------------------------------------------------- #}
+{% macro vacio(mensaje, columnas) %}
+  <tr>
+    <td colspan="{{ columnas }}" class="tabla-vacia">
+      <div class="tabla-vacia-titulo">Sin registros</div>
+      <div class="tabla-vacia-texto">{{ mensaje }}</div>
+    </td>
+  </tr>
+{% endmacro %}
+
+{# --- Paginación ---------------------------------------------------------- #}
+{% macro paginacion(pag, endpoint, filtros={}) %}
+  {% if pag.paginas > 1 %}
+    <div class="paginacion">
+      <span class="paginacion-info">
+        {{ pag.total }} registros · página {{ pag.pagina }} de {{ pag.paginas }}
+      </span>
+      <div class="paginacion-botones">
+        {% set base = dict(filtros, pagina=pag.pagina - 1) %}
+        {% if pag.pagina > 1 %}
+          <a class="btn btn-ghost btn-sm" href="{{ url_for(endpoint, **base) }}">‹ Anterior</a>
+        {% endif %}
+        {% set sig = dict(filtros, pagina=pag.pagina + 1) %}
+        {% if pag.pagina < pag.paginas %}
+          <a class="btn btn-ghost btn-sm" href="{{ url_for(endpoint, **sig) }}">Siguiente ›</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{# --- Formato ------------------------------------------------------------- #}
+{% macro num(valor, decimales=2) %}{{ "%.{0}f".format(decimales) | format(valor | float) }}{% endmacro %}
+
+{% macro moneda(valor) %}${{ "{:,.2f}".format(valor | float) }}{% endmacro %}
+
+{# --- Tarjeta KPI --------------------------------------------------------- #}
+{% macro kpi(etiqueta, valor, sub=None, acento=None) %}
+  <div class="card kpi-card">
+    <div class="kpi-label">{{ etiqueta }}</div>
+    <div class="kpi-value" {% if acento %}style="color: {{ acento }};"{% endif %}>{{ valor }}</div>
+    {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
+  </div>
+{% endmacro %}
+
+{# --- Bloque de explicación (reabastecimiento / transferencia) ------------ #}
+{% macro explicacion(texto) %}
+  <pre class="explicacion">{{ texto }}</pre>
+{% endmacro %}

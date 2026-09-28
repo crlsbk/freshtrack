@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Trazabilidad{% endblock %}
+{% block breadcrumb %}Operación › Trazabilidad{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Operación',
+  'Trazabilidad de lote',
+  'Selecciona un lote y reconstruye su ciclo completo: proveedor, recepción, existencias por ubicación, ventas FEFO, transferencias, mermas y estado final.'
+) }}
+
+<form class="filtros" method="get" action="{{ url_for('operacion.trazabilidad') }}">
+  <div class="campo campo-ancho">
+    <label class="form-label" for="lote">Lote</label>
+    <select class="input" id="lote" name="lote" required>
+      <option value="">Selecciona un lote…</option>
+      {% for l in lotes %}
+        <option value="{{ l.id_lote }}" {% if id_lote == l.id_lote %}selected{% endif %}>
+          {{ l.codigo_lote_prov }} — {{ l.producto }} — vence {{ l.fecha_caducidad }}
+          ({{ l.clasificacion }})
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-primary" type="submit">Consultar trazabilidad</button>
+</form>
+
+{% if detalle and detalle.lote %}
+  {% set lote = detalle.lote %}
+  {% set r = detalle.resumen %}
+
+  {# ── Ficha del lote ── #}
+  <div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:18px;">
+      <div>
+        <div class="view-eyebrow">Lote</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;">
+          {{ lote.codigo_lote_prov }}
+        </div>
+        <div class="text-muted" style="font-size:12.5px;margin-top:4px;">
+          {{ lote.producto }} · SKU {{ lote.id_sku }} · {{ lote.categoria }} ·
+          {{ lote.unidad_medida }}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        {{ ui.riesgo(lote.clasificacion) }}
+        {{ ui.estado(lote.estado) }}
+      </div>
+    </div>
+
+    <div class="detalle-grid">
+      <div class="detalle-item">
+        <div class="detalle-etiqueta">Proveedor</div>
+        <div class="detalle-valor">{{ lote.proveedor }}</div>
+        <div class="text-muted" style="font-size:11px;">RFC {{ lote.rfc }} · lead time {{ lote.lead_time_dias }} d</div>
+      </div>
+      <div class="detalle-item">
+        <div class="detalle-etiqueta">Recepción</div>
+        <div class="detalle-valor">{{ lote.fecha_recepcion }}</div>
+        <div class="text-muted" style="font-size:11px;">en {{ lote.locacion_recepcion or '—' }}</div>
+      </div>
+      <div class="detalle-item">
+        <div class="detalle-etiqueta">Producción</div>
+        <div class="detalle-valor">{{ lote.fecha_produccion or '—' }}</div>
+      </div>
+      <div class="detalle-item">
+        <div class="detalle-etiqueta">Caducidad</div>
+        <div class="detalle-valor">{{ lote.fecha_caducidad }}</div>
+        <div class="text-muted" style="font-size:11px;">
+          {{ lote.dias_restantes }} días · vida útil {{ "%.0f" | format(lote.vida_util_pct | float) }}%
+        </div>
+      </div>
+      <div class="detalle-item">
+        <div class="detalle-etiqueta">Cantidad recibida</div>
+        <div class="detalle-valor">{{ "%.2f" | format(lote.cantidad_recibida | float) }}</div>
+      </div>
+      <div class="detalle-item">
+        <div class="detalle-etiqueta">Costo unitario</div>
+        <div class="detalle-valor">{{ ui.moneda(lote.costo_unitario) }}</div>
+      </div>
+      <div class="detalle-item">
+        <div class="detalle-etiqueta">Existencia actual</div>
+        <div class="detalle-valor">{{ "%.2f" | format(r.existencia) }}</div>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:20px;">
+      <div>
+        <div class="kpi-label">Vendido</div>
+        <div class="mono" style="font-size:20px;font-weight:600;color:var(--success);">
+          {{ "%.2f" | format(r.vendido) }}
+        </div>
+        <div class="kpi-sub">{{ r.porcentaje_venta }}% de lo recibido</div>
+      </div>
+      <div>
+        <div class="kpi-label">Mermado</div>
+        <div class="mono" style="font-size:20px;font-weight:600;color:var(--danger);">
+          {{ "%.2f" | format(r.mermado) }}
+        </div>
+        <div class="kpi-sub">{{ r.porcentaje_merma }}% de lo recibido</div>
+      </div>
+      <div>
+        <div class="kpi-label">Por salir</div>
+        <div class="mono" style="font-size:20px;font-weight:600;">
+          {{ "%.2f" | format(r.existencia) }}
+        </div>
+        <div class="kpi-sub">en existencia hoy</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Existencias ── #}
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">Existencia por ubicación</div>
+    <table>
+      <thead>
+        <tr><th>Ubicación</th><th>Tipo</th><th>Disponible</th><th>Reservado</th></tr>
+      </thead>
+      <tbody>
+        {% for e in detalle.existencias %}
+          <tr>
+            <td style="font-weight:600;">{{ e.locacion }}</td>
+            <td><span class="badge badge-{{ 'info' if e.tipo_locacion == 'CEDIS' else 'success' }}">{{ e.tipo_locacion }}</span></td>
+            <td class="mono">{{ "%.2f" | format(e.cantidad_disponible | float) }}</td>
+            <td class="mono">{{ "%.2f" | format(e.cantidad_reservada | float) }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('El lote ya no tiene existencia en ninguna ubicación.', 4) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Ventas y mermas ── #}
+  <div class="grid-2" style="margin-bottom:20px;">
+    <div class="card">
+      <div class="card-title">Ventas que consumieron este lote (FEFO)</div>
+      <table>
+        <thead>
+          <tr><th>Folio</th><th>Fecha</th><th>Tienda</th><th>Cantidad</th><th>Subtotal</th></tr>
+        </thead>
+        <tbody>
+          {% for v in detalle.ventas %}
+            <tr>
+              <td class="mono" style="font-size:11px;">{{ v.folio }}</td>
+              <td class="mono" style="font-size:11px;">{{ v.fecha_transaccion }}</td>
+              <td>{{ v.locacion }}</td>
+              <td class="mono">{{ "%.2f" | format(v.cantidad | float) }}</td>
+              <td class="mono">{{ ui.moneda(v.subtotal) }}</td>
+            </tr>
+          {% else %}
+            {{ ui.vacio('Este lote todavía no registra ventas.', 5) }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Mermas de este lote</div>
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Tienda</th><th>Cantidad</th><th>Causa</th><th>Valor</th><th>Responsable</th></tr>
+        </thead>
+        <tbody>
+          {% for m in detalle.mermas %}
+            <tr>
+              <td class="mono" style="font-size:11px;">{{ m.fecha_registro }}</td>
+              <td>{{ m.locacion }}</td>
+              <td class="mono">{{ "%.2f" | format(m.cantidad | float) }}</td>
+              <td><span class="badge badge-warning">{{ m.causa_merma }}</span></td>
+              <td class="mono">{{ ui.moneda(m.valor_merma) }}</td>
+              <td style="font-size:11.5px;">{{ m.responsable }}</td>
+            </tr>
+          {% else %}
+            {{ ui.vacio('Sin mermas asociadas a este lote.', 6) }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Transferencias ── #}
+  {% if detalle.transferencias %}
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Transferencias entre tiendas</div>
+      <table>
+        <thead>
+          <tr><th>Origen</th><th>Destino</th><th>Cantidad</th><th>Estado</th><th>Motivo</th><th>Creada</th><th>Ejecutada</th></tr>
+        </thead>
+        <tbody>
+          {% for t in detalle.transferencias %}
+            <tr>
+              <td>{{ t.origen }}</td>
+              <td>{{ t.destino }}</td>
+              <td class="mono">{{ "%.2f" | format(t.cantidad | float) }}</td>
+              <td>{{ ui.estado(t.estado) }}</td>
+              <td style="font-size:12px;">{{ t.motivo or '—' }}</td>
+              <td class="mono" style="font-size:11px;">{{ t.fecha_creacion }}</td>
+              <td class="mono" style="font-size:11px;">{{ t.fecha_ejecucion or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {# ── Kardex / línea de tiempo ── #}
+  <div class="card">
+    <div class="card-title">Kardex del lote (línea de tiempo)</div>
+    <div class="timeline">
+      {% for m in detalle.movimientos %}
+        <div class="timeline-item">
+          <div class="timeline-fecha">{{ m.fecha }}</div>
+          <div class="timeline-titulo">
+            {{ m.tipo }}
+            <span class="mono" style="font-size:12px;">
+              {{ "%+.2f" | format(m.cantidad | float) }}
+            </span>
+          </div>
+          <div class="timeline-detalle">
+            {{ m.locacion }} · saldo resultante
+            <span class="mono">{{ "%.2f" | format(m.cantidad_resultante | float) }}</span>
+            {% if m.usuario %} · {{ m.usuario }}{% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="text-muted" style="font-size:12.5px;">
+          Este lote no tiene movimientos de kardex registrados.
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+{% elif id_lote %}
+  <div class="aviso-advertencia">
+    No se encontró el lote solicitado. Puede que el identificador no exista.
+  </div>
+{% else %}
+  <div class="card">
+    <div class="tabla-vacia">
+      <div class="tabla-vacia-titulo">Selecciona un lote</div>
+      <div class="tabla-vacia-texto">
+        Elige un lote en la lista de arriba para ver su ciclo de vida completo.
+      </div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

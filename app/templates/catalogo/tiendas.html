@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Tiendas y CEDIS{% endblock %}
+{% block breadcrumb %}Catálogos › Tiendas y CEDIS{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Catálogo',
+  'Tiendas y CEDIS',
+  'Alta, consulta, edición y activación de puntos de venta y centros de distribución.'
+) }}
+
+<div class="filtros">
+  <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nueva-locacion')">
+    + Nueva tienda o CEDIS
+  </button>
+  <span class="text-muted" style="font-size:12px;">
+    {{ locaciones | length }} ubicaciones registradas
+  </span>
+</div>
+
+<div class="form-card" id="form-nueva-locacion" style="display:none;">
+  <div class="card-title">Registrar ubicación</div>
+  <form method="post" action="{{ url_for('catalogo.locaciones') }}">
+    <div class="form-grid-3">
+      <div>
+        <label class="form-label">Nombre *</label>
+        <input class="input" name="nombre" required placeholder="Tienda San Pedro"/>
+      </div>
+      <div>
+        <label class="form-label">Tipo *</label>
+        <select class="input" name="tipo_locacion">
+          <option value="Tienda">Tienda</option>
+          <option value="CEDIS">CEDIS</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Ciudad</label>
+        <input class="input" name="ciudad" placeholder="Monterrey"/>
+      </div>
+      <div>
+        <label class="form-label">Dirección</label>
+        <input class="input" name="direccion" placeholder="Av. Constitución 1200"/>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Guardar en PostgreSQL</button>
+      <button class="btn btn-ghost" type="button"
+              onclick="toggleForm('form-nueva-locacion')">Cancelar</button>
+    </div>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Ubicaciones</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Tipo</th>
+        <th>Ciudad</th>
+        <th>Dirección</th>
+        <th>SKU en piso</th>
+        <th>Lotes</th>
+        <th>Unidades</th>
+        <th>Usuarios</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in locaciones %}
+        <tr>
+          <td class="mono">{{ l.id_locacion }}</td>
+          <td style="font-weight:600;">{{ l.nombre }}</td>
+          <td>
+            <span class="badge badge-{{ 'info' if l.tipo_locacion == 'CEDIS' else 'success' }}">
+              {{ l.tipo_locacion }}
+            </span>
+          </td>
+          <td>{{ l.ciudad or '—' }}</td>
+          <td class="text-muted" style="font-size:12px;">{{ l.direccion or '—' }}</td>
+          <td class="mono">{{ l.skus }}</td>
+          <td class="mono">{{ l.lotes }}</td>
+          <td class="mono">{{ "%.2f" | format(l.unidades | float) }}</td>
+          <td class="mono">{{ l.usuarios }}</td>
+          <td>
+            {% if l.activo %}
+              <span class="badge badge-success">ACTIVA</span>
+            {% else %}
+              <span class="badge badge-neutral">INACTIVA</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="acciones">
+              <button class="btn btn-ghost btn-sm" type="button"
+                      onclick="toggleForm('editar-locacion-{{ l.id_locacion }}')">Editar</button>
+              <form class="inline-form" method="post"
+                    action="{{ url_for('catalogo.estado_locacion', id_locacion=l.id_locacion) }}">
+                <input type="hidden" name="activo" value="{{ 0 if l.activo else 1 }}"/>
+                <button class="btn {{ 'btn-danger' if l.activo else 'btn-primary' }} btn-sm"
+                        type="submit">
+                  {{ 'Desactivar' if l.activo else 'Activar' }}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <tr id="editar-locacion-{{ l.id_locacion }}" style="display:none;">
+          <td colspan="11" style="background:var(--muted);">
+            <form method="post"
+                  action="{{ url_for('catalogo.editar_locacion', id_locacion=l.id_locacion) }}">
+              <div class="form-grid-3">
+                <div>
+                  <label class="form-label">Nombre</label>
+                  <input class="input" name="nombre" value="{{ l.nombre }}" required/>
+                </div>
+                <div>
+                  <label class="form-label">Tipo</label>
+                  <select class="input" name="tipo_locacion">
+                    <option value="Tienda" {% if l.tipo_locacion == 'Tienda' %}selected{% endif %}>Tienda</option>
+                    <option value="CEDIS" {% if l.tipo_locacion == 'CEDIS' %}selected{% endif %}>CEDIS</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label">Ciudad</label>
+                  <input class="input" name="ciudad" value="{{ l.ciudad or '' }}"/>
+                </div>
+                <div>
+                  <label class="form-label">Dirección</label>
+                  <input class="input" name="direccion" value="{{ l.direccion or '' }}"/>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn-primary btn-sm" type="submit">Guardar cambios</button>
+                <button class="btn btn-ghost btn-sm" type="button"
+                        onclick="toggleForm('editar-locacion-{{ l.id_locacion }}')">Cerrar</button>
+              </div>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Todavía no hay tiendas ni CEDIS registrados.', 11) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

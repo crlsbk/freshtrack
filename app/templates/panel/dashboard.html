@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Panel de Control{% endblock %}
+{% block breadcrumb %}Principal › Panel de Control{% endblock %}
+
+{% block content %}
+{% set inv = kpis.inventario %}
+{% set ven = kpis.ventas %}
+{% set mer = kpis.merma %}
+
+<div class="view-head">
+  <div class="view-eyebrow">Principal</div>
+  <h1 class="view-title">Panel de control</h1>
+  <p class="view-desc">
+    Indicadores calculados contra PostgreSQL en este momento. Cada cifra es una
+    consulta a la base, no un valor de ejemplo.
+  </p>
+</div>
+
+{# ── Inventario ── #}
+<div class="stat-grid-4">
+  {{ ui.kpi('Inventario total', "%.2f" | format(inv.unidades | float),
+            (inv.lotes | string) ~ ' lotes en ' ~ (inv.locaciones | string) ~ ' ubicaciones') }}
+  {{ ui.kpi('Valor del inventario', ui.moneda(inv.valor), 'A costo unitario de lote') }}
+  {{ ui.kpi('Lotes críticos', inv.lotes_criticos,
+            "%.2f" | format(inv.criticas | float) ~ ' unidades a ≤2 días de vencer', '#f87171') }}
+  {{ ui.kpi('Lotes en vigilancia', inv.lotes_vigilancia,
+            "%.2f" | format(inv.vigilancia | float) ~ ' unidades en la ventana de riesgo', '#fbbf24') }}
+</div>
+
+{# ── Ventas, merma y alertas ── #}
+<div class="stat-grid-4">
+  {{ ui.kpi('Unidades vendidas', "%.2f" | format(ven.unidades | float),
+            (ven.tickets | string) ~ ' tickets históricos') }}
+  {{ ui.kpi('Ingreso acumulado', ui.moneda(ven.ingreso),
+            "%.2f" | format(ven.unidades_30d | float) ~ ' unidades en 30 días') }}
+  {{ ui.kpi('Merma acumulada', ui.moneda(mer.valor),
+            "%.2f" | format(mer.unidades | float) ~ ' unidades · ' ~ (mer.eventos | string) ~ ' eventos',
+            '#f87171') }}
+  {{ ui.kpi('Alertas abiertas', alertas.total,
+            (alertas.por_severidad.get('CRITICA', 0) | string) ~ ' críticas · ' ~
+            (alertas.por_severidad.get('ALTA', 0) | string) ~ ' altas') }}
+</div>
+
+{# ── Tasa de merma y precisión ── #}
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-title">Tasa de merma sobre lo recibido (180 días)</div>
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:12px;">
+      <div class="mono" style="font-size:34px;font-weight:700;color:var(--danger);">
+        {{ "%.2f" | format(tasa.tasa_pct | float) }}%
+      </div>
+      <div class="text-muted" style="font-size:12.5px;">
+        {{ "%.2f" | format(tasa.mermado | float) }} mermadas de
+        {{ "%.2f" | format(tasa.recibido | float) }} recibidas
+      </div>
+    </div>
+    <div class="progress-bar" style="height:8px;">
+      <div class="progress-fill" style="width: {{ [tasa.tasa_pct | float, 100] | min }}%; background: var(--danger);"></div>
+    </div>
+    <div class="text-muted" style="font-size:11.5px;margin-top:10px;">
+      Se calcula contra lo recibido y no contra lo vendido: es el indicador honesto de
+      cuánto del producto que entró no se aprovechó. La tasa de venta fue
+      {{ "%.2f" | format(tasa.tasa_venta_pct | float) }}%.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Precisión del pronóstico vigente</div>
+    {% if precision and precision.id_run %}
+      <div class="stat-grid-3" style="margin-bottom:0;">
+        {{ ui.kpi('MAE', "%.2f" | format(precision.mae | float), 'Unidades por serie y día') }}
+        {{ ui.kpi('RMSE', "%.2f" | format(precision.rmse | float), 'Castiga errores grandes') }}
+        {{ ui.kpi('WMAPE', ("%.1f" | format(precision.wmape | float)) ~ '%',
+                  'Sobre demanda total', '#fbbf24') }}
+      </div>
+      <div class="text-muted" style="font-size:11.5px;margin-top:12px;">
+        {{ precision.horizonte_dias }} días de horizonte ·
+        {{ precision.puntos }} puntos ·
+        ejecutado el {{ precision.fecha_ejecucion }}
+      </div>
+    {% else %}
+      <div class="text-muted" style="font-size:12.5px;">
+        Todavía no se ha ejecutado ningún pronóstico.
+        <a href="{{ url_for('analitica.pronostico') }}" style="color:var(--role-accent);">Ejecutar ahora →</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Serie mensual ── #}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Ventas y merma por mes</div>
+  <div class="chart-wrap" style="height:260px;">
+    <canvas id="grafica-mensual"></canvas>
+  </div>
+</div>
+
+{# ── Recomendaciones y transferencias ── #}
+<div class="stat-grid-4">
+  {{ ui.kpi('Reabastecimiento pendiente', kpis.ordenes.pendientes,
+            (kpis.ordenes.aprobadas | string) ~ ' ya aprobadas', '#fbbf24') }}
+  {{ ui.kpi('Transferencias sugeridas', kpis.transferencias.sugeridas,
+            (kpis.transferencias.aprobadas | string) ~ ' aprobadas · ' ~
+            (kpis.transferencias.ejecutadas | string) ~ ' ejecutadas', '#38bdf8') }}
+  {{ ui.kpi('Lotes por vencer o vencidos',
+            (alertas.por_tipo.get('LOTE_POR_VENCER', 0) + alertas.por_tipo.get('LOTE_VENCIDO', 0))) }}
+  {{ ui.kpi('Riesgo de faltante', alertas.por_tipo.get('RIESGO_DE_FALTANTE', 0),
+            'Productos con cobertura menor al lead time') }}
+</div>
+
+{# ── Tablas de apoyo ── #}
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-title">Productos con más merma (valorizada)</div>
+    <table>
+      <thead><tr><th>Producto</th><th>Categoría</th><th>Unidades</th><th>Valor</th></tr></thead>
+      <tbody>
+        {% for s in top_sku %}
+          <tr>
+            <td style="font-weight:600;">{{ s.producto }}</td>
+            <td><span class="badge badge-neutral">{{ s.categoria }}</span></td>
+            <td class="mono">{{ "%.2f" | format(s.unidades | float) }}</td>
+            <td class="mono">{{ ui.moneda(s.valor) }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Sin mermas registradas.', 4) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Tiendas con más merma (valorizada)</div>
+    <table>
+      <thead><tr><th>Tienda</th><th>Unidades</th><th>Valor</th></tr></thead>
+      <tbody>
+        {% for t in top_tienda %}
+          <tr>
+            <td style="font-weight:600;">{{ t.locacion }}</td>
+            <td class="mono">{{ "%.2f" | format(t.unidades | float) }}</td>
+            <td class="mono">{{ ui.moneda(t.valor) }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Sin mermas registradas.', 3) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-title">Lotes críticos o vencidos</div>
+    <table>
+      <thead>
+        <tr><th>Producto</th><th>Tienda</th><th>Lote</th><th>Caduca</th><th>Días</th><th>Cantidad</th><th>Riesgo</th></tr>
+      </thead>
+      <tbody>
+        {% for l in criticos %}
+          <tr>
+            <td style="font-weight:600;">{{ l.producto }}</td>
+            <td>{{ l.locacion }}</td>
+            <td class="mono" style="font-size:11px;">{{ l.codigo_lote_prov }}</td>
+            <td class="mono" style="font-size:11px;">{{ l.fecha_caducidad }}</td>
+            <td class="mono text-danger">{{ l.dias_restantes }}</td>
+            <td class="mono">{{ "%.2f" | format(l.cantidad_disponible | float) }}</td>
+            <td>{{ ui.riesgo(l.clasificacion) }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Ningún lote está en estado crítico o vencido.', 7) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Inventario por ubicación</div>
+    <table>
+      <thead>
+        <tr><th>Ubicación</th><th>Tipo</th><th>Unidades</th><th>Valor</th><th>Lotes en riesgo</th></tr>
+      </thead>
+      <tbody>
+        {% for l in por_locacion %}
+          <tr>
+            <td style="font-weight:600;">{{ l.locacion }}</td>
+            <td>
+              <span class="badge badge-{{ 'info' if l.tipo_locacion == 'CEDIS' else 'success' }}">
+                {{ l.tipo_locacion }}
+              </span>
+            </td>
+            <td class="mono">{{ "%.2f" | format(l.unidades | float) }}</td>
+            <td class="mono">{{ ui.moneda(l.valor) }}</td>
+            <td class="mono {{ 'text-danger' if l.lotes_en_riesgo else '' }}">
+              {{ l.lotes_en_riesgo }}
+            </td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Sin inventario registrado.', 5) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Merma por categoría</div>
+  <div class="grid-2">
+    <table>
+      <thead><tr><th>Categoría</th><th>Unidades</th><th>Valor</th></tr></thead>
+      <tbody>
+        {% for c in por_categoria %}
+          <tr>
+            <td style="font-weight:600;">{{ c.name }}</td>
+            <td class="mono">{{ "%.2f" | format(c.unidades | float) }}</td>
+            <td class="mono">{{ ui.moneda(c.valor) }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Sin mermas registradas.', 3) }}
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="chart-wrap" style="height:220px;">
+      <canvas id="grafica-categoria"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const serieMensual = {{ serie | tojson }};
+const mermaCategoria = {{ por_categoria | tojson }};
+
+const opcionesBase = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { labels: { color: '#93b09a', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#536b57', font: { size: 10 } }, grid: { color: '#1a2a1d' } },
+    y: { ticks: { color: '#536b57', font: { size: 10 } }, grid: { color: '#1a2a1d' } }
+  }
+};
+
+if (document.getElementById('grafica-mensual')) {
+  new Chart(document.getElementById('grafica-mensual'), {
+    type: 'bar',
+    data: {
+      labels: serieMensual.map(f => f.mes),
+      datasets: [
+        { label: 'Unidades vendidas', data: serieMensual.map(f => Number(f.ventas_unidades)),
+          backgroundColor: 'rgba(74,222,128,.55)', borderRadius: 4, yAxisID: 'y' },
+        { label: 'Unidades mermadas', data: serieMensual.map(f => Number(f.merma_unidades)),
+          backgroundColor: 'rgba(248,113,113,.6)', borderRadius: 4, yAxisID: 'y' },
+        { label: 'Valor de merma ($)', data: serieMensual.map(f => Number(f.merma_valor)),
+          type: 'line', borderColor: '#fbbf24', backgroundColor: '#fbbf24',
+          tension: .3, pointRadius: 3, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      ...opcionesBase,
+      scales: {
+        ...opcionesBase.scales,
+        y1: { position: 'right', ticks: { color: '#fbbf24', font: { size: 10 } },
+              grid: { display: false } }
+      }
+    }
+  });
+}
+
+if (document.getElementById('grafica-categoria')) {
+  new Chart(document.getElementById('grafica-categoria'), {
+    type: 'doughnut',
+    data: {
+      labels: mermaCategoria.map(c => c.name),
+      datasets: [{
+        data: mermaCategoria.map(c => Number(c.valor)),
+        backgroundColor: ['#f87171', '#fbbf24', '#38bdf8', '#a78bfa', '#4ade80', '#2dd4bf', '#f472b6'],
+        borderColor: '#111815', borderWidth: 2
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+               plugins: { legend: { position: 'right',
+                                    labels: { color: '#93b09a', font: { size: 11 } } } } }
+  });
+}
+</script>
+{% endblock %}

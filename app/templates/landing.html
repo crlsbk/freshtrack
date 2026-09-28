@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FreshTrack — Gestión inteligente de inventario de perecederos</title>
+  <meta name="description" content="FreshTrack reduce el desperdicio de alimentos en el comercio minorista mediante control de caducidades, FEFO, pronóstico de demanda y reabastecimiento asistido."/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/freshtrack.css') }}"/>
+</head>
+<body>
+<div class="landing">
+
+  {# ── Barra superior ── #}
+  <nav class="landing-nav">
+    <div class="landing-nav-marca">
+      <div class="landing-nav-logo">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+      </div>
+      <div>
+        <div class="landing-nav-nombre">FreshTrack</div>
+        <div class="landing-nav-sub">Perecederos · IA</div>
+      </div>
+    </div>
+    <div class="landing-nav-links">
+      <a href="#problema">El problema</a>
+      <a href="#objetivos">Objetivos</a>
+      <a href="#beneficios">Beneficios</a>
+      <a href="#funcionamiento">Cómo funciona</a>
+    </div>
+    <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Acceder al sistema</a>
+  </nav>
+
+  {# ── Presentación ── #}
+  <header class="landing-hero">
+    <div>
+      <span class="landing-etiqueta">
+        <span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;"></span>
+        Proyecto académico · Equipo 05
+      </span>
+      <h1 class="landing-h1">
+        Menos comida a la basura.<br/>
+        <em>Más valor en el anaquel.</em>
+      </h1>
+      <p class="landing-lead">
+        FreshTrack es un sistema de gestión de inventario para productos perecederos.
+        Controla la caducidad lote por lote, prioriza la salida de lo que está por
+        vencer, pronostica la demanda por producto y tienda, y propone
+        reabastecimiento y transferencias entre sucursales antes de que el producto
+        se pierda.
+      </p>
+      <div class="landing-cta">
+        <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Iniciar sesión</a>
+        <a href="#funcionamiento" class="btn btn-ghost">Ver cómo funciona</a>
+      </div>
+    </div>
+
+    <aside class="landing-panel">
+      <div class="landing-panel-titulo">Estado del sistema</div>
+      {% if cifras_sistema %}
+        <div class="landing-dato">
+          <span class="landing-dato-valor">{{ cifras_sistema.skus }}</span>
+          <span class="landing-dato-texto">productos perecederos en catálogo</span>
+        </div>
+        <div class="landing-dato">
+          <span class="landing-dato-valor">{{ cifras_sistema.locaciones }}</span>
+          <span class="landing-dato-texto">tiendas y CEDIS conectados</span>
+        </div>
+        <div class="landing-dato">
+          <span class="landing-dato-valor">{{ "%.0f" | format(cifras_sistema.unidades | float) }}</span>
+          <span class="landing-dato-texto">unidades bajo seguimiento por lote</span>
+        </div>
+        <div class="landing-dato">
+          <span class="landing-dato-valor">{{ cifras_sistema.criticos }}</span>
+          <span class="landing-dato-texto">lotes en estado crítico o vencido</span>
+        </div>
+      {% else %}
+        <div class="landing-dato">
+          <span class="landing-dato-valor">—</span>
+          <span class="landing-dato-texto">
+            El sistema está en línea; la base de datos aún no responde.
+          </span>
+        </div>
+      {% endif %}
+      <div style="margin-top:16px;font-size:11px;color:var(--muted-foreground);line-height:1.6;">
+        Cifras agregadas del inventario en línea. No se muestra información
+        comercial sensible.
+      </div>
+    </aside>
+  </header>
+
+  {# ── El problema ── #}
+  <section class="landing-seccion landing-seccion-alt" id="problema">
+    <div class="landing-interior">
+      <h2 class="landing-h2">El problema: el producto perecedero se pierde antes de venderse</h2>
+      <p class="landing-h2-sub">
+        En el comercio de alimentos, el inventario tiene fecha límite. Lo que no se
+        vende a tiempo no se puede recuperar: se convierte en merma, en pérdida
+        económica y en desperdicio con impacto ambiental.
+      </p>
+
+      <div class="landing-tarjetas">
+        <div class="landing-tarjeta">
+          <div class="landing-tarjeta-icono">!</div>
+          <div class="landing-tarjeta-titulo">Desperdicio global</div>
+          <p class="landing-tarjeta-texto">
+            {{ dato_fao }} {{ dato_fao_texto }}
+          </p>
+        </div>
+        <div class="landing-tarjeta">
+          <div class="landing-tarjeta-icono">%</div>
+          <div class="landing-tarjeta-titulo">Merma en tienda</div>
+          <p class="landing-tarjeta-texto">
+            {{ dato_merma_retail }}
+          </p>
+        </div>
+        <div class="landing-tarjeta">
+          <div class="landing-tarjeta-icono">↻</div>
+          <div class="landing-tarjeta-titulo">Decisiones sin información</div>
+          <p class="landing-tarjeta-texto">
+            Sin visibilidad de la caducidad por lote, la tienda reordena «a ojo»:
+            compra de más lo que se vence y de menos lo que se agota. Ambos errores
+            cuestan dinero.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ── Objetivos ── #}
+  <section class="landing-seccion" id="objetivos">
+    <h2 class="landing-h2">Qué se propone FreshTrack</h2>
+    <p class="landing-h2-sub">
+      El objetivo no es adivinar el futuro, sino tomar mejores decisiones con la
+      información que ya existe en la operación diaria.
+    </p>
+
+    <div class="landing-tarjetas">
+      <div class="landing-tarjeta">
+        <div class="landing-tarjeta-icono">1</div>
+        <div class="landing-tarjeta-titulo">Saber qué se va a perder</div>
+        <p class="landing-tarjeta-texto">
+          Clasificar cada lote según su vida útil restante —normal, vigilancia,
+          crítico o vencido— con umbrales configurables por tipo de producto.
+        </p>
+      </div>
+      <div class="landing-tarjeta">
+        <div class="landing-tarjeta-icono">2</div>
+        <div class="landing-tarjeta-titulo">Anticipar la demanda</div>
+        <p class="landing-tarjeta-texto">
+          Pronosticar la demanda por producto y por tienda a partir del historial
+          de ventas, y medir el error del pronóstico en lugar de suponer que es bueno.
+        </p>
+      </div>
+      <div class="landing-tarjeta">
+        <div class="landing-tarjeta-icono">3</div>
+        <div class="landing-tarjeta-titulo">Decidir con respaldo</div>
+        <p class="landing-tarjeta-texto">
+          Proponer cuánto reordenar y qué mover entre tiendas, explicando el
+          cálculo completo. La decisión final siempre la toma una persona.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  {# ── Beneficios ── #}
+  <section class="landing-seccion landing-seccion-alt" id="beneficios">
+    <div class="landing-interior">
+      <h2 class="landing-h2">Beneficios esperados</h2>
+      <p class="landing-h2-sub">
+        Cada beneficio se mide con datos que el propio sistema registra, para poder
+        comprobar si el resultado se está cumpliendo.
+      </p>
+
+      <div class="landing-tarjetas">
+        <div class="landing-tarjeta">
+          <div class="landing-tarjeta-icono">↓</div>
+          <div class="landing-tarjeta-titulo">Menos merma</div>
+          <p class="landing-tarjeta-texto">
+            Detectar los lotes en riesgo antes de que caduquen y actuar sobre ellos:
+            transferirlos a donde sí se venden, o descontarlos a tiempo.
+          </p>
+        </div>
+        <div class="landing-tarjeta">
+          <div class="landing-tarjeta-icono">◎</div>
+          <div class="landing-tarjeta-titulo">Inventario más sano</div>
+          <p class="landing-tarjeta-texto">
+            Distinguir el inventario físico del realmente aprovechable. Lo que está
+            por vencer no cubre demanda futura, y el sistema lo trata como tal.
+          </p>
+        </div>
+        <div class="landing-tarjeta">
+          <div class="landing-tarjeta-icono">✓</div>
+          <div class="landing-tarjeta-titulo">Trazabilidad completa</div>
+          <p class="landing-tarjeta-texto">
+            Del proveedor al anaquel y del anaquel a la merma. Cada movimiento queda
+            registrado y auditable, con el usuario que lo ejecutó.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ── Cómo funciona ── #}
+  <section class="landing-seccion" id="funcionamiento">
+    <h2 class="landing-h2">Cómo funciona el sistema</h2>
+    <p class="landing-h2-sub">
+      El flujo sigue la operación real de una tienda, desde que el producto llega
+      hasta que se vende o se da de baja.
+    </p>
+
+    <div class="landing-pasos">
+      <div class="landing-paso">
+        <div class="landing-paso-titulo">Recepción por lote</div>
+        <p class="landing-paso-texto">
+          Cada entrega se registra con proveedor, fechas de producción y caducidad,
+          cantidad y costo. El sistema calcula la vida útil restante al instante.
+        </p>
+      </div>
+      <div class="landing-paso">
+        <div class="landing-paso-titulo">Salida FEFO</div>
+        <p class="landing-paso-texto">
+          Las ventas consumen primero el lote que vence antes. La asignación se hace
+          en una sola transacción y el inventario se descuenta lote por lote.
+        </p>
+      </div>
+      <div class="landing-paso">
+        <div class="landing-paso-titulo">Pronóstico y riesgo</div>
+        <p class="landing-paso-texto">
+          Con el historial de ventas se estima la demanda por producto y tienda, y se
+          compara contra el inventario aprovechable antes de la caducidad.
+        </p>
+      </div>
+      <div class="landing-paso">
+        <div class="landing-paso-titulo">Recomendación y aprobación</div>
+        <p class="landing-paso-texto">
+          El sistema propone reabastecer, transferir o descontar, con su explicación.
+          Un responsable revisa y aprueba; la decisión queda en la bitácora.
+        </p>
+      </div>
+    </div>
+
+    <div class="landing-tarjetas" style="margin-top:34px;">
+      <div class="landing-tarjeta">
+        <div class="landing-tarjeta-titulo">Alertas automáticas</div>
+        <p class="landing-tarjeta-texto">
+          Lote por vencer, lote vencido, riesgo de merma, sobreinventario, riesgo de
+          faltante, reabastecimiento requerido y transferencia sugerida. Se generan
+          por reglas sobre los datos, no se capturan a mano.
+        </p>
+      </div>
+      <div class="landing-tarjeta">
+        <div class="landing-tarjeta-titulo">Medición del desperdicio evitado</div>
+        <p class="landing-tarjeta-texto">
+          Cuando una intervención rescata producto, se registra cuánto se recuperó
+          realmente y cómo se calculó: unidades en riesgo, unidades intervenidas y
+          unidades efectivamente vendidas antes de caducar.
+        </p>
+      </div>
+      <div class="landing-tarjeta">
+        <div class="landing-tarjeta-titulo">Bitácora auditable</div>
+        <p class="landing-tarjeta-texto">
+          Accesos, altas, recepciones, ventas, mermas, pronósticos y aprobaciones
+          quedan registrados con fecha, usuario, rol y valores anterior y nuevo.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  {# ── Acceso ── #}
+  <section class="landing-seccion" style="padding-top:0;">
+    <div class="landing-acceso">
+      <div class="landing-acceso-texto">
+        <div class="landing-acceso-titulo">Acceso al sistema</div>
+        <p class="landing-acceso-desc">
+          El acceso es con cuentas registradas. Cada usuario entra con su correo y
+          contraseña, y el sistema le habilita únicamente las pantallas que
+          corresponden a su rol: administración, compras, planeación, gerencia de
+          tienda, almacén, proveedor o auditoría.
+        </p>
+      </div>
+      <a href="{{ url_for('auth.login') }}" class="btn btn-primary" style="padding:12px 26px;font-size:14px;">
+        Iniciar sesión
+      </a>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    <span>FreshTrack · Sistema de gestión de inventario de perecederos · Equipo 05</span>
+    <span class="mono">Datos almacenados en PostgreSQL</span>
+  </footer>
+
+</div>
+</body>
+</html>

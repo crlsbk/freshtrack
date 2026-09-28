@@ -1,0 +1,277 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FreshTrack — hoja complementaria.
+
+   Se carga después de style.css y añade los componentes que las pantallas
+   nuevas necesitan: avisos, filtros, tablas vacías, paginación, líneas de
+   tiempo, tarjetas de alerta y la página pública de presentación.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Avisos flash ── */
+.flash-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.flash {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 16px; border-radius: var(--radius);
+  font-size: 13px; border-left: 3px solid;
+}
+.flash-ok    { background: var(--success-bg); border-color: var(--success); color: #a7f3c0; }
+.flash-error { background: var(--danger-bg);  border-color: var(--danger);  color: #fecaca; }
+.flash-icon  { font-weight: 700; flex-shrink: 0; }
+.flash-text  { flex: 1; line-height: 1.5; }
+.flash-dismiss {
+  background: none; border: none; cursor: pointer; color: inherit;
+  opacity: .5; font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.flash-dismiss:hover { opacity: 1; }
+
+/* ── Encabezado de vista ── */
+.view-head { margin-bottom: 22px; }
+
+/* ── Barra de filtros ── */
+.filtros {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px;
+}
+.filtros .campo { min-width: 170px; }
+.filtros .campo-ancho { min-width: 240px; flex: 1; }
+
+/* ── Tabla vacía ── */
+.tabla-vacia { text-align: center; padding: 34px 16px !important; }
+.tabla-vacia-titulo {
+  font-family: 'DM Serif Display', serif; font-size: 15px;
+  color: var(--foreground); margin-bottom: 4px;
+}
+.tabla-vacia-texto { font-size: 12.5px; color: var(--muted-foreground); }
+
+/* ── Paginación ── */
+.paginacion {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px; border-top: 1px solid var(--border); gap: 12px;
+}
+.paginacion-info { font-size: 11.5px; color: var(--muted-foreground); }
+.paginacion-botones { display: flex; gap: 8px; }
+
+/* ── Tarjeta KPI ── */
+.kpi-card { padding: 16px 18px; }
+
+/* ── Grids adicionales ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+.grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Bloque de explicación (texto preformateado) ── */
+.explicacion {
+  background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+  line-height: 1.7; color: var(--foreground);
+  white-space: pre-wrap; overflow-x: auto; margin: 0;
+}
+
+/* ── Acciones dentro de tablas ── */
+.acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+.inline-form { display: inline; }
+
+/* ── Detalle desplegable (acordeón) ── */
+details.acordeon {
+  background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0; margin-top: 8px;
+}
+details.acordeon > summary {
+  cursor: pointer; padding: 9px 14px; font-size: 12px; font-weight: 600;
+  color: var(--muted-foreground); list-style: none;
+}
+details.acordeon > summary::-webkit-details-marker { display: none; }
+details.acordeon > summary::before { content: '\25B8  '; }
+details.acordeon[open] > summary::before { content: '\25BE  '; }
+details.acordeon > .acordeon-cuerpo { padding: 0 14px 14px; }
+
+/* ── Línea de tiempo (trazabilidad) ── */
+.timeline { position: relative; padding-left: 26px; }
+.timeline::before {
+  content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px;
+  width: 1px; background: var(--border);
+}
+.timeline-item { position: relative; padding-bottom: 18px; }
+.timeline-item::before {
+  content: ''; position: absolute; left: -23px; top: 4px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--role-accent); border: 2px solid var(--card);
+}
+.timeline-fecha { font-size: 10.5px; color: var(--muted-foreground); font-family: 'JetBrains Mono', monospace; }
+.timeline-titulo { font-size: 13px; font-weight: 600; margin: 2px 0; }
+.timeline-detalle { font-size: 12px; color: var(--muted-foreground); }
+
+/* ── Rejilla de detalle clave/valor ── */
+.detalle-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr));
+  gap: 12px 20px;
+}
+.detalle-item .detalle-etiqueta {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted-foreground); font-weight: 600; margin-bottom: 3px;
+}
+.detalle-item .detalle-valor {
+  font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600;
+}
+
+/* ── Tarjetas de alerta ── */
+.alerta-card {
+  display: flex; gap: 14px; align-items: flex-start;
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px;
+}
+.alerta-CRITICA { border-left-color: var(--danger); }
+.alerta-ALTA    { border-left-color: var(--warning); }
+.alerta-MEDIA   { border-left-color: var(--info); }
+.alerta-BAJA    { border-left-color: var(--muted-foreground); }
+.alerta-cuerpo { flex: 1; }
+.alerta-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.alerta-mensaje { font-size: 13px; line-height: 1.55; }
+.alerta-pie { font-size: 11px; color: var(--muted-foreground); margin-top: 6px; }
+
+/* ── Medidor con etiqueta ── */
+.medidor { display: flex; align-items: center; gap: 10px; }
+.medidor .progress-bar { flex: 1; }
+.medidor-valor { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; min-width: 46px; text-align: right; }
+
+/* ── Avisos dentro de tarjetas ── */
+.aviso-advertencia {
+  background: var(--warning-bg); border: 1px solid rgba(251,191,36,.25);
+  border-radius: var(--radius); padding: 10px 14px; font-size: 12px;
+  color: #fde68a; margin-top: 10px;
+}
+.aviso-info {
+  background: var(--info-bg); border: 1px solid rgba(56,189,248,.22);
+  border-radius: var(--radius); padding: 10px 14px; font-size: 12px;
+  color: #bae6fd; margin-top: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Página pública de presentación
+   ═══════════════════════════════════════════════════════════════════════════ */
+.landing { background: var(--background); min-height: 100vh; }
+
+.landing-nav {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 40px; border-bottom: 1px solid var(--border);
+  background: rgba(8,12,9,.88); position: sticky; top: 0; z-index: 10;
+}
+.landing-nav-marca { display: flex; align-items: center; gap: 10px; flex: 1; }
+.landing-nav-logo {
+  width: 30px; height: 30px; border-radius: 8px; background: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+}
+.landing-nav-logo svg { width: 16px; height: 16px; fill: #021c0a; }
+.landing-nav-nombre { font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
+.landing-nav-sub { font-size: 9.5px; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: .08em; }
+.landing-nav-links { display: flex; gap: 22px; }
+.landing-nav-links a {
+  font-size: 12.5px; color: var(--muted-foreground); text-decoration: none; font-weight: 500;
+}
+.landing-nav-links a:hover { color: var(--foreground); }
+
+.landing-hero {
+  padding: 72px 40px 64px; max-width: 1180px; margin: 0 auto;
+  display: grid; grid-template-columns: 1.15fr .85fr; gap: 56px; align-items: center;
+}
+.landing-etiqueta {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--primary); background: rgba(34,197,94,.08);
+  border: 1px solid rgba(34,197,94,.2); border-radius: 99px;
+  padding: 5px 13px; margin-bottom: 20px;
+}
+.landing-h1 {
+  font-family: 'DM Serif Display', serif; font-size: 46px; line-height: 1.08;
+  letter-spacing: -.8px; margin-bottom: 18px;
+}
+.landing-h1 em { font-style: italic; color: var(--primary); }
+.landing-lead { font-size: 15px; line-height: 1.7; color: #93b09a; margin-bottom: 28px; max-width: 560px; }
+.landing-cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.landing-cta .btn { padding: 11px 22px; font-size: 13.5px; }
+
+.landing-panel {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 22px 24px;
+}
+.landing-panel-titulo {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted-foreground); margin-bottom: 14px;
+}
+.landing-dato { display: flex; align-items: baseline; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.landing-dato:last-child { border-bottom: none; }
+.landing-dato-valor { font-family: 'JetBrains Mono', monospace; font-size: 19px; font-weight: 700; color: var(--primary); }
+.landing-dato-texto { font-size: 12px; color: var(--muted-foreground); }
+
+.landing-seccion { padding: 60px 40px; max-width: 1180px; margin: 0 auto; }
+.landing-seccion-alt { background: rgba(17,24,21,.5); }
+.landing-interior { max-width: 1180px; margin: 0 auto; }
+.landing-h2 {
+  font-family: 'DM Serif Display', serif; font-size: 30px; line-height: 1.15;
+  letter-spacing: -.4px; margin-bottom: 10px;
+}
+.landing-h2-sub { font-size: 14px; color: var(--muted-foreground); margin-bottom: 34px; max-width: 740px; line-height: 1.65; }
+
+.landing-tarjetas { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+.landing-tarjeta {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 22px 22px 24px;
+}
+.landing-tarjeta-icono {
+  width: 34px; height: 34px; border-radius: 9px; display: flex;
+  align-items: center; justify-content: center; margin-bottom: 14px;
+  background: rgba(34,197,94,.1); color: var(--primary); font-size: 15px; font-weight: 700;
+}
+.landing-tarjeta-titulo { font-size: 14.5px; font-weight: 700; margin-bottom: 7px; }
+.landing-tarjeta-texto { font-size: 12.5px; line-height: 1.65; color: var(--muted-foreground); }
+
+.landing-pasos { display: grid; grid-template-columns: repeat(4,1fr); gap: 18px; counter-reset: paso; }
+.landing-paso { position: relative; padding-top: 40px; }
+.landing-paso::before {
+  counter-increment: paso; content: counter(paso, decimal-leading-zero);
+  position: absolute; top: 0; left: 0;
+  font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700;
+  color: var(--primary); opacity: .55;
+}
+.landing-paso-titulo { font-size: 13.5px; font-weight: 700; margin-bottom: 6px; }
+.landing-paso-texto { font-size: 12px; line-height: 1.6; color: var(--muted-foreground); }
+
+.landing-acceso {
+  background: linear-gradient(135deg, #14301f 0%, #0b1a12 100%);
+  border: 1px solid rgba(34,197,94,.18); border-radius: 14px;
+  padding: 40px 44px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
+}
+.landing-acceso-texto { flex: 1; min-width: 300px; }
+.landing-acceso-titulo { font-family: 'DM Serif Display', serif; font-size: 25px; margin-bottom: 8px; }
+.landing-acceso-desc { font-size: 13px; color: #86a98f; line-height: 1.6; }
+
+.landing-footer {
+  border-top: 1px solid var(--border); padding: 26px 40px;
+  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--muted-foreground);
+}
+.landing-footer .mono { font-size: 11px; }
+
+/* ── Error 404/500 ── */
+.error-page {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px; padding: 40px; text-align: center;
+}
+.error-codigo {
+  font-family: 'DM Serif Display', serif; font-size: 78px; line-height: 1;
+  color: var(--primary); opacity: .55;
+}
+.error-mensaje { font-size: 15px; color: var(--muted-foreground); max-width: 460px; line-height: 1.6; }
+
+@media (max-width: 1000px) {
+  .landing-hero { grid-template-columns: 1fr; padding: 48px 22px; gap: 36px; }
+  .landing-h1 { font-size: 34px; }
+  .landing-tarjetas, .landing-pasos { grid-template-columns: 1fr; }
+  .landing-seccion { padding: 44px 22px; }
+  .landing-nav { padding: 14px 22px; }
+  .landing-nav-links { display: none; }
+  .grid-2, .grid-4 { grid-template-columns: 1fr; }
+}

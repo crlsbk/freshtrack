@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Lotes y Recepción{% endblock %}
+{% block breadcrumb %}Operación › Lotes y Recepción{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Operación',
+  'Lotes y recepción',
+  'Cada entrega se registra como un lote con su proveedor, fechas, cantidad y costo. El sistema calcula la vida útil restante y clasifica el riesgo al momento.'
+) }}
+
+<div class="filtros">
+  <button class="btn btn-primary" type="button" onclick="toggleForm('form-recepcion')">
+    + Registrar recepción
+  </button>
+  <form method="get" action="{{ url_for('operacion.lotes') }}"
+        style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex:1;">
+    <div class="campo campo-ancho">
+      <label class="form-label" for="q">Buscar</label>
+      <input class="input" id="q" name="q" type="text" value="{{ filtro }}"
+             placeholder="Producto, lote o proveedor"/>
+    </div>
+    <div class="campo">
+      <label class="form-label" for="riesgo">Riesgo</label>
+      <select class="input" id="riesgo" name="riesgo">
+        <option value="">Todos</option>
+        {% for c in ['NORMAL', 'VIGILANCIA', 'CRITICO', 'VENCIDO'] %}
+          <option value="{{ c }}" {% if filtro_riesgo == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label class="form-label" for="locacion">Ubicación</label>
+      <select class="input" id="locacion" name="locacion">
+        <option value="">Todas</option>
+        {% for l in locaciones %}
+          <option value="{{ l.id_locacion }}"
+                  {% if request.args.get('locacion') == l.id_locacion | string %}selected{% endif %}>
+            {{ l.nombre }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-ghost" type="submit">Filtrar</button>
+    <a class="btn btn-ghost" href="{{ url_for('operacion.lotes') }}">Limpiar</a>
+  </form>
+</div>
+
+{# ── Formulario de recepción ── #}
+<div class="form-card" id="form-recepcion" style="display:none;">
+  <div class="card-title">Registrar recepción de mercancía</div>
+  <form method="post" action="{{ url_for('operacion.lotes') }}">
+    <div class="form-grid-3">
+      <div>
+        <label class="form-label">Producto *</label>
+        <select class="input" name="id_sku" required>
+          <option value="">Selecciona…</option>
+          {% for p in productos %}
+            <option value="{{ p.id_sku }}">
+              {{ p.nombre }} — vida útil {{ p.vida_util_estandar }} d
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Proveedor *</label>
+        <select class="input" name="id_proveedor" required>
+          <option value="">Selecciona…</option>
+          {% for p in proveedores %}
+            <option value="{{ p.id_proveedor }}">
+              {{ p.razon_social }} — lead time {{ p.lead_time_dias }} d
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Tienda / CEDIS de destino *</label>
+        <select class="input" name="id_locacion" required>
+          <option value="">Selecciona…</option>
+          {% for l in locaciones %}
+            <option value="{{ l.id_locacion }}">{{ l.nombre }} ({{ l.tipo_locacion }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Código de lote del proveedor *</label>
+        <input class="input" name="codigo_lote_prov" required placeholder="LDN-20260928-001"/>
+      </div>
+      <div>
+        <label class="form-label">Fecha de producción</label>
+        <input class="input" name="fecha_produccion" type="date"/>
+      </div>
+      <div>
+        <label class="form-label">Fecha de recepción *</label>
+        <input class="input" name="fecha_recepcion" type="date" value="{{ hoy }}" required/>
+      </div>
+      <div>
+        <label class="form-label">Fecha de caducidad *</label>
+        <input class="input" name="fecha_caducidad" type="date" required/>
+      </div>
+      <div>
+        <label class="form-label">Cantidad recibida *</label>
+        <input class="input" name="cantidad" type="number" step="0.01" min="0.01" required/>
+      </div>
+      <div>
+        <label class="form-label">Costo unitario *</label>
+        <input class="input" name="costo_unitario" type="number" step="0.01" min="0" value="0" required/>
+      </div>
+    </div>
+    <div>
+      <label class="form-label">Observaciones</label>
+      <input class="input" name="observaciones" placeholder="Ej. llegó con 2 cajas dañadas"/>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Guardar en PostgreSQL</button>
+      <button class="btn btn-ghost" type="button"
+              onclick="toggleForm('form-recepcion')">Cancelar</button>
+    </div>
+    <div class="form-note">
+      Al guardar se crean el lote, su existencia en la ubicación y el movimiento de
+      entrada en el kardex, todo en una sola transacción y con registro en la bitácora.
+    </div>
+  </form>
+</div>
+
+{# ── Listado de lotes ── #}
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Lotes ({{ lotes | length }})</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Lote</th>
+        <th>Producto</th>
+        <th>Proveedor</th>
+        <th>Recepción</th>
+        <th>Caducidad</th>
+        <th>Días</th>
+        <th>Vida útil</th>
+        <th>Recibido</th>
+        <th>Existencia</th>
+        <th>Riesgo</th>
+        <th>Trazar</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lotes %}
+        <tr>
+          <td class="mono" style="font-size:11.5px;">{{ l.codigo_lote_prov }}</td>
+          <td>
+            <div style="font-weight:600;">{{ l.producto }}</div>
+            <div class="text-muted" style="font-size:10.5px;">
+              SKU {{ l.id_sku }} · {{ l.categoria }}
+            </div>
+          </td>
+          <td style="font-size:12px;">{{ l.proveedor }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ l.fecha_recepcion }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ l.fecha_caducidad }}</td>
+          <td class="mono">
+            <span class="{% if l.dias_restantes < 0 %}text-danger{% elif l.dias_restantes <= 2 %}text-danger{% elif l.dias_restantes <= 5 %}text-warning{% endif %}">
+              {{ l.dias_restantes }}
+            </span>
+          </td>
+          <td style="min-width:110px;">
+            <div class="medidor">
+              <div class="progress-bar">
+                <div class="progress-fill {{ 'expiry-fill-ok' if l.clasificacion == 'NORMAL' else ('expiry-fill-warning' if l.clasificacion == 'VIGILANCIA' else ('expiry-fill-critical' if l.clasificacion == 'CRITICO' else 'expiry-fill-expired')) }}"
+                     style="width: {{ [0, [l.vida_util_pct | float, 100] | min] | max }}%;"></div>
+              </div>
+              <span class="medidor-valor">{{ "%.0f" | format(l.vida_util_pct | float) }}%</span>
+            </div>
+          </td>
+          <td class="mono">{{ "%.2f" | format(l.cantidad_recibida | float) }}</td>
+          <td class="mono">{{ "%.2f" | format(l.existencia_total | float) }}</td>
+          <td>{{ ui.riesgo(l.clasificacion) }}</td>
+          <td>
+            <a class="btn btn-ghost btn-sm"
+               href="{{ url_for('operacion.trazabilidad', lote=l.id_lote) }}">Ver</a>
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No hay lotes que coincidan con el filtro.', 11) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

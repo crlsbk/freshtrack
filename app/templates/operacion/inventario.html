@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Inventario{% endblock %}
+{% block breadcrumb %}Operación › Inventario{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Operación',
+  'Inventario por lote',
+  'Producto → tienda → lote → caducidad. Los totales se calculan en la consulta, no se guardan: así nunca quedan desfasados del detalle.'
+) }}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Unidades en existencia', "%.2f" | format(resumen.unidades | float)) }}
+  {{ ui.kpi('Valor del inventario', ui.moneda(resumen.valor)) }}
+  {{ ui.kpi('Lotes con existencia', resumen.lotes) }}
+  {{ ui.kpi('Productos / ubicaciones',
+            (resumen.skus | string) ~ ' / ' ~ (resumen.locaciones | string)) }}
+</div>
+
+<div class="grid-3" style="margin-bottom:20px;">
+  {{ ui.kpi('Unidades en riesgo crítico', "%.2f" | format(resumen.criticas | float),
+            'Lotes a 2 días o menos de vencer', '#f87171') }}
+  {{ ui.kpi('Unidades en vigilancia', "%.2f" | format(resumen.vigilancia | float),
+            'Lotes que entran en la ventana de riesgo', '#fbbf24') }}
+  {{ ui.kpi('Unidades vencidas', "%.2f" | format(resumen.vencidas | float),
+            'Requieren baja inmediata', '#536b57') }}
+</div>
+
+<form class="filtros" method="get" action="{{ url_for('operacion.inventario') }}">
+  <div class="campo campo-ancho">
+    <label class="form-label" for="q">Buscar producto o lote</label>
+    <input class="input" id="q" name="q" type="text" value="{{ filtro }}"/>
+  </div>
+  <div class="campo">
+    <label class="form-label" for="locacion">Ubicación</label>
+    <select class="input" id="locacion" name="locacion">
+      <option value="">Todas</option>
+      {% for l in locaciones %}
+        <option value="{{ l.id_locacion }}"
+                {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-primary" type="submit">Filtrar</button>
+  <a class="btn btn-ghost" href="{{ url_for('operacion.inventario') }}">Limpiar</a>
+</form>
+
+{% for g in grupos %}
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
+      <div>
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;">
+          {{ g.producto }} <span class="text-muted" style="font-size:13px;">/ {{ g.locacion }}</span>
+        </div>
+        <div class="text-muted" style="font-size:11.5px;margin-top:3px;">
+          SKU {{ g.id_sku }} · {{ g.categoria }} · {{ g.unidad_medida }} ·
+          {{ g.tipo_locacion }} · {{ g.n_lotes }} lote(s)
+        </div>
+      </div>
+      <div style="display:flex;gap:22px;text-align:right;">
+        <div>
+          <div class="kpi-label">Total disponible</div>
+          <div class="mono" style="font-size:19px;font-weight:600;">
+            {{ "%.2f" | format(g.total) }} {{ g.unidad_medida }}
+          </div>
+        </div>
+        <div>
+          <div class="kpi-label">Valor</div>
+          <div class="mono" style="font-size:19px;font-weight:600;">{{ ui.moneda(g.valor) }}</div>
+        </div>
+        {% if g.en_riesgo > 0 %}
+          <div>
+            <div class="kpi-label">En riesgo</div>
+            <div class="mono text-danger" style="font-size:19px;font-weight:600;">
+              {{ "%.2f" | format(g.en_riesgo) }}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Lote</th>
+          <th>Caducidad</th>
+          <th>Días restantes</th>
+          <th>Vida útil</th>
+          <th>Disponible</th>
+          <th>Costo unitario</th>
+          <th>Valor</th>
+          <th>Riesgo</th>
+          <th>Trazar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in g.lotes %}
+          <tr>
+            <td class="mono" style="font-size:11.5px;">{{ l.codigo_lote_prov }}</td>
+            <td class="mono" style="font-size:11.5px;">{{ l.fecha_caducidad }}</td>
+            <td class="mono">{{ l.dias_restantes }}</td>
+            <td style="min-width:100px;">
+              <div class="medidor">
+                <div class="progress-bar">
+                  <div class="progress-fill {{ 'expiry-fill-ok' if l.clasificacion == 'NORMAL' else ('expiry-fill-warning' if l.clasificacion == 'VIGILANCIA' else ('expiry-fill-critical' if l.clasificacion == 'CRITICO' else 'expiry-fill-expired')) }}"
+                       style="width: {{ [0, [l.vida_util_pct | float, 100] | min] | max }}%;"></div>
+                </div>
+                <span class="medidor-valor">{{ "%.0f" | format(l.vida_util_pct | float) }}%</span>
+              </div>
+            </td>
+            <td class="mono">{{ "%.2f" | format(l.cantidad_disponible | float) }}</td>
+            <td class="mono">{{ ui.moneda(l.costo_unitario) }}</td>
+            <td class="mono">{{ ui.moneda(l.valor_inventario) }}</td>
+            <td>{{ ui.riesgo(l.clasificacion) }}</td>
+            <td>
+              <a class="btn btn-ghost btn-sm"
+                 href="{{ url_for('operacion.trazabilidad', lote=l.id_lote) }}">Ver</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        {{ ui.vacio('No hay inventario que coincida con el filtro.', 1) }}
+      </tbody>
+    </table>
+  </div>
+{% endfor %}
+{% endblock %}

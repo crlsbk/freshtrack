@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Usuarios y Roles{% endblock %}
+{% block breadcrumb %}Administración › Usuarios y Roles{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Administración',
+  'Usuarios y roles',
+  'Cada usuario está registrado en PostgreSQL con su rol y estado. La contraseña nunca se guarda en claro: se almacena cifrada con bcrypt y la comparación ocurre dentro de la base de datos.'
+) }}
+
+<div class="filtros">
+  <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nuevo-usuario')">
+    + Nuevo usuario
+  </button>
+  <form method="get" action="{{ url_for('panel.usuarios') }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex:1;">
+    <div class="campo campo-ancho">
+      <label class="form-label" for="q">Buscar</label>
+      <input class="input" id="q" name="q" type="text" value="{{ filtro }}"
+             placeholder="Nombre o correo"/>
+    </div>
+    <button class="btn btn-ghost" type="submit">Filtrar</button>
+    <a class="btn btn-ghost" href="{{ url_for('panel.usuarios') }}">Limpiar</a>
+  </form>
+</div>
+
+<div class="form-card" id="form-nuevo-usuario" style="display:none;">
+  <div class="card-title">Registrar usuario</div>
+  <form method="post" action="{{ url_for('panel.usuarios') }}">
+    <div class="form-grid-3">
+      <div>
+        <label class="form-label">Nombre completo *</label>
+        <input class="input" name="nombre_completo" required/>
+      </div>
+      <div>
+        <label class="form-label">Correo electrónico *</label>
+        <input class="input" name="email" type="email" required/>
+      </div>
+      <div>
+        <label class="form-label">Contraseña * (mínimo 8 caracteres)</label>
+        <input class="input" name="password" type="password" minlength="8" required/>
+      </div>
+      <div>
+        <label class="form-label">Rol *</label>
+        <select class="input" name="id_rol" required>
+          <option value="">Selecciona…</option>
+          {% for r in roles %}
+            <option value="{{ r.id_rol }}">{{ r.nombre_rol }} ({{ r.clave }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Tienda asignada</label>
+        <select class="input" name="id_locacion">
+          <option value="">Sin asignar</option>
+          {% for l in locaciones %}
+            <option value="{{ l.id_locacion }}">{{ l.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Crear usuario</button>
+      <button class="btn btn-ghost" type="button"
+              onclick="toggleForm('form-nuevo-usuario')">Cancelar</button>
+    </div>
+    <div class="form-note">
+      La contraseña se cifra con <span class="mono">crypt(..., gen_salt('bf'))</span>
+      directamente en PostgreSQL. El texto en claro nunca se almacena ni se compara en Python.
+    </div>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Usuarios ({{ usuarios | length }})</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Correo</th>
+        <th>Rol</th>
+        <th>Tienda</th>
+        <th>Último acceso</th>
+        <th>Intentos fallidos</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in usuarios %}
+        <tr>
+          <td style="font-weight:600;">{{ u.nombre_completo }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ u.email }}</td>
+          <td><span class="badge badge-info">{{ u.rol_clave }}</span></td>
+          <td style="font-size:12px;">{{ u.locacion or '—' }}</td>
+          <td class="mono" style="font-size:11px;">
+            {{ u.ultimo_acceso or 'nunca' }}
+            {% if u.bloqueado_hasta %}
+              <br/><span class="text-danger">bloqueado hasta {{ u.bloqueado_hasta }}</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ u.intentos_fallidos }}</td>
+          <td>
+            {% if u.estado_activo %}
+              <span class="badge badge-success">ACTIVO</span>
+            {% else %}
+              <span class="badge badge-neutral">INACTIVO</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="acciones">
+              <button class="btn btn-ghost btn-sm" type="button"
+                      onclick="toggleForm('editar-usuario-{{ u.id_usuario }}')">Editar</button>
+              <form class="inline-form" method="post"
+                    action="{{ url_for('panel.usuarios_estado', id_usuario=u.id_usuario) }}">
+                <input type="hidden" name="activo" value="{{ 0 if u.estado_activo else 1 }}"/>
+                <button class="btn {{ 'btn-danger' if u.estado_activo else 'btn-primary' }} btn-sm"
+                        type="submit">
+                  {{ 'Desactivar' if u.estado_activo else 'Activar' }}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <tr id="editar-usuario-{{ u.id_usuario }}" style="display:none;">
+          <td colspan="8" style="background:var(--muted);">
+            <div class="grid-2">
+              <form method="post"
+                    action="{{ url_for('panel.usuarios_editar', id_usuario=u.id_usuario) }}">
+                <div class="form-grid-3">
+                  <div>
+                    <label class="form-label">Nombre</label>
+                    <input class="input" name="nombre_completo"
+                           value="{{ u.nombre_completo }}" required/>
+                  </div>
+                  <div>
+                    <label class="form-label">Correo</label>
+                    <input class="input" name="email" type="email" value="{{ u.email }}" required/>
+                  </div>
+                  <div>
+                    <label class="form-label">Rol</label>
+                    <select class="input" name="id_rol" required>
+                      {% for r in roles %}
+                        <option value="{{ r.id_rol }}"
+                                {% if r.id_rol == u.id_rol %}selected{% endif %}>
+                          {{ r.nombre_rol }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label">Tienda</label>
+                    <select class="input" name="id_locacion">
+                      <option value="">Sin asignar</option>
+                      {% for l in locaciones %}
+                        <option value="{{ l.id_locacion }}"
+                                {% if l.id_locacion == u.id_locacion %}selected{% endif %}>
+                          {{ l.nombre }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button class="btn btn-primary btn-sm" type="submit">Guardar datos</button>
+                </div>
+              </form>
+
+              <form method="post"
+                    action="{{ url_for('panel.usuarios_password', id_usuario=u.id_usuario) }}">
+                <div>
+                  <label class="form-label">Restablecer contraseña</label>
+                  <input class="input" name="password" type="password" minlength="8"
+                         placeholder="Nueva contraseña (mínimo 8 caracteres)" required/>
+                </div>
+                <div class="form-actions">
+                  <button class="btn btn-danger btn-sm" type="submit">
+                    Cambiar y revocar sesiones
+                  </button>
+                </div>
+                <div class="form-note">
+                  Al cambiar la contraseña se revocan todas las sesiones abiertas del usuario.
+                </div>
+              </form>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-ghost btn-sm" type="button"
+                      onclick="toggleForm('editar-usuario-{{ u.id_usuario }}')">Cerrar</button>
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No hay usuarios que coincidan con la búsqueda.', 8) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Roles del sistema ── #}
+<div class="card" style="margin-top:20px;">
+  <div class="card-title">Roles definidos en la base de datos</div>
+  <table>
+    <thead><tr><th>ID</th><th>Clave</th><th>Nombre</th><th>Descripción</th></tr></thead>
+    <tbody>
+      {% for r in roles %}
+        <tr>
+          <td class="mono">{{ r.id_rol }}</td>
+          <td class="mono" style="font-size:11.5px;font-weight:600;">{{ r.clave }}</td>
+          <td style="font-weight:600;">{{ r.nombre_rol }}</td>
+          <td class="text-muted" style="font-size:12px;">{{ r.descripcion or '—' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Pronósticos{% endblock %}
+{% block breadcrumb %}Analítica › Pronósticos{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Analítica',
+  'Pronóstico de demanda',
+  'La demanda se estima por producto y por tienda a partir del historial real de ventas. El error se mide contra la demanda observada: un pronóstico no se declara «bueno» sin comprobarlo.'
+) }}
+
+{# ── Ejecutar ── #}
+<div class="form-card">
+  <div class="card-title">Ejecutar pronóstico</div>
+  <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}">
+    <div class="form-grid-3">
+      <div>
+        <label class="form-label">Método</label>
+        <select class="input" name="metodo">
+          {% for clave, m in metodos.items() %}
+            <option value="{{ clave }}"
+                    {% if corrida and corrida.metodo == clave %}selected{% endif %}>
+              {{ m.etiqueta }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Horizonte (días)</label>
+        <input class="input" name="horizonte" type="number" min="1" max="30"
+               value="{{ horizonte_defecto }}"/>
+      </div>
+      <div>
+        <label class="form-label">Ventana de historia (días)</label>
+        <input class="input" name="dias_historia" type="number" min="14" max="365" value="120"/>
+      </div>
+      <div>
+        <label class="form-label">Ventana de la media móvil</label>
+        <input class="input" name="ventana" type="number" min="2" max="90"
+               value="{{ ventana_defecto }}"/>
+      </div>
+      <div>
+        <label class="form-label">Alfa (suavización exponencial)</label>
+        <input class="input" name="alpha" type="number" step="0.05" min="0.05" max="0.95"
+               value="{{ alpha_defecto }}"/>
+      </div>
+      <div>
+        <label class="form-label">Limitar a una tienda</label>
+        <select class="input" name="id_locacion">
+          <option value="">Todas</option>
+          {% for l in locaciones %}
+            <option value="{{ l.id_locacion }}">{{ l.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Ejecutar y guardar corrida</button>
+    </div>
+    <div class="form-note">
+      {% for clave, m in metodos.items() %}
+        <strong>{{ m.etiqueta }}:</strong> {{ m.descripcion }}
+        {% if not loop.last %}<br/>{% endif %}
+      {% endfor %}
+    </div>
+  </form>
+</div>
+
+{% if corrida %}
+  {# ── Precisión de la última corrida ── #}
+  <div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+      <div>
+        <div class="card-title" style="margin-bottom:4px;">
+          Última corrida — {{ metodos.get(corrida.metodo, {}).get('etiqueta', corrida.metodo) }}
+        </div>
+        <div class="text-muted" style="font-size:12px;">
+          Ejecutada el {{ corrida.fecha_ejecucion }}
+          {% if corrida.ejecutado_por %}por {{ corrida.ejecutado_por }}{% endif %} ·
+          {{ corrida.n_series }} series · horizonte {{ corrida.horizonte_dias }} días
+        </div>
+      </div>
+      <span class="badge badge-info mono" style="font-size:10px;">{{ corrida.id_run }}</span>
+    </div>
+
+    <div class="stat-grid-4">
+      {{ ui.kpi('MAE (error absoluto medio)', "%.2f" | format(corrida.mae | float),
+                'Unidades por producto y día') }}
+      {{ ui.kpi('RMSE', "%.2f" | format(corrida.rmse | float),
+                'Penaliza más los errores grandes') }}
+      {{ ui.kpi('WMAPE', ("%.1f" | format(corrida.wmape | float)) ~ '%',
+                'Error sobre la demanda total', '#fbbf24') }}
+      {{ ui.kpi('Duración', (corrida.duracion_ms | string) ~ ' ms', 'Tiempo de cómputo') }}
+    </div>
+
+    <div class="aviso-info">
+      <strong>Cómo se mide:</strong> sobre el tramo final del historial se pronostica
+      hacia adelante y se compara con la demanda real ya registrada (validación
+      retrospectiva). El MAE dice cuántas unidades se desvía en promedio el pronóstico;
+      el WMAPE expresa ese error como porcentaje de la demanda total, que es la cifra
+      comparable entre productos de tamaños muy distintos.
+    </div>
+  </div>
+
+  {# ── Pronóstico por producto y tienda ── #}
+  <div class="table-wrap" style="margin-bottom:20px;">
+    <div class="table-header">
+      <div class="table-header-title">
+        Pronóstico por producto y tienda ({{ series | length }} series)
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Tienda</th>
+          <th>Próximo día</th>
+          <th>Total horizonte ({{ corrida.horizonte_dias }} d)</th>
+          <th>Promedio diario</th>
+          <th>Unidad</th>
+          <th>Vigencia</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in series %}
+          <tr>
+            <td style="font-weight:600;">{{ s.producto }}</td>
+            <td>{{ s.locacion }}</td>
+            <td class="mono">{{ "%.2f" | format(s.proximo_dia | float) }}</td>
+            <td class="mono" style="font-weight:600;color:var(--role-accent);">
+              {{ "%.2f" | format(s.total_horizonte | float) }}
+            </td>
+            <td class="mono text-muted">
+              {{ "%.2f" | format((s.total_horizonte | float) / (corrida.horizonte_dias or 1)) }}
+            </td>
+            <td class="text-muted" style="font-size:12px;">{{ s.unidad_medida }}</td>
+            <td class="mono" style="font-size:11px;">{{ s.desde }} → {{ s.hasta }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Esta corrida no produjo series. Registra ventas o carga el ETL.', 7) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="tabla-vacia">
+      <div class="tabla-vacia-titulo">Todavía no hay corridas de pronóstico</div>
+      <div class="tabla-vacia-texto">
+        Ejecuta el pronóstico con el formulario de arriba. La corrida queda guardada
+        con su método, parámetros, horizonte y error medido.
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{# ── Historial de corridas ── #}
+{% if corridas %}
+  <div class="table-wrap">
+    <div class="table-header">
+      <div class="table-header-title">Historial de corridas</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Método</th>
+          <th>Horizonte</th>
+          <th>Series</th>
+          <th>MAE</th>
+          <th>RMSE</th>
+          <th>WMAPE</th>
+          <th>Ejecutó</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in corridas %}
+          <tr>
+            <td class="mono" style="font-size:11px;">{{ c.fecha_ejecucion }}</td>
+            <td>{{ metodos.get(c.metodo, {}).get('etiqueta', c.metodo) }}</td>
+            <td class="mono">{{ c.horizonte_dias }} d</td>
+            <td class="mono">{{ c.n_series }}</td>
+            <td class="mono">{{ "%.2f" | format(c.mae | float) if c.mae is not none else '—' }}</td>
+            <td class="mono">{{ "%.2f" | format(c.rmse | float) if c.rmse is not none else '—' }}</td>
+            <td class="mono">{{ ("%.1f" | format(c.wmape | float)) ~ '%' if c.wmape is not none else '—' }}</td>
+            <td style="font-size:12px;">{{ c.ejecutado_por or '—' }}</td>
+            <td>{{ ui.estado(c.estado) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

@@ -6,9 +6,16 @@
 
 .env
 
-.env
 .venv/
 __pycache__/
+*.pyc
 *.dump
 *.sql.gz
 .context/
+
+# Artefactos del pipeline de reportes (regenerables; el entregable final
+# vive en docs/, no aca)
+/output/
+
+# Estado local del agente (memoria y logs de sesion, no van al repo)
+.workbuddy-ai/

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Configuración{% endblock %}
+{% block breadcrumb %}Administración › Configuración{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Administración',
+  'Configuración del sistema',
+  'Los parámetros viven en analitica.configuracion y los umbrales de riesgo en operacion.regla_riesgo. Cambiarlos aquí afecta de inmediato a los motores de alertas, pronóstico y reabastecimiento: no hay valores enterrados en el código.'
+) }}
+
+<form method="post" action="{{ url_for('panel.configuracion') }}">
+  <div class="table-wrap" style="margin-bottom:20px;">
+    <div class="table-header">
+      <div class="table-header-title">Parámetros del sistema ({{ parametros | length }})</div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Clave</th><th>Valor</th><th>Tipo</th><th>Descripción</th><th>Actualizado</th></tr>
+      </thead>
+      <tbody>
+        {% for p in parametros %}
+          <tr>
+            <td class="mono" style="font-size:11.5px;font-weight:600;">{{ p.clave }}</td>
+            <td style="min-width:180px;">
+              <input class="input" name="cfg_{{ p.clave }}" value="{{ p.valor }}"/>
+            </td>
+            <td><span class="badge badge-neutral">{{ p.tipo }}</span></td>
+            <td class="text-muted" style="font-size:12px;">{{ p.descripcion or '—' }}</td>
+            <td class="mono" style="font-size:10.5px;">{{ p.actualizado }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('No hay parámetros configurados.', 5) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="filtros" style="margin-bottom:24px;">
+    <button class="btn btn-primary" type="submit">Guardar parámetros</button>
+    <span class="text-muted" style="font-size:11.5px;">
+      El cambio queda registrado en la bitácora de auditoría.
+    </span>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-title">Umbrales de clasificación de riesgo</div>
+  <p class="text-muted" style="font-size:12.5px;line-height:1.65;margin-bottom:16px;">
+    Un lote se clasifica comparando sus días restantes y su porcentaje de vida útil
+    contra estos umbrales. La resolución es por precedencia:
+    <strong>regla del SKU</strong> &gt; <strong>regla de la categoría</strong> &gt;
+    <strong>regla por defecto</strong>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Alcance</th>
+        <th>Aplica a</th>
+        <th>Vigilancia — días</th>
+        <th>Vigilancia — vida útil</th>
+        <th>Crítico — días</th>
+        <th>Crítico — vida útil</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reglas %}
+        <tr>
+          <td>
+            {% if r.id_sku %}
+              <span class="badge badge-info">SKU</span>
+            {% elif r.categoria %}
+              <span class="badge badge-warning">Categoría</span>
+            {% else %}
+              <span class="badge badge-neutral">Por defecto</span>
+            {% endif %}
+          </td>
+          <td style="font-weight:600;">
+            {{ r.producto or r.categoria or 'Todos los productos' }}
+          </td>
+          <td class="mono">{{ r.dias_vigilancia }} d</td>
+          <td class="mono">{{ "%.0f" | format(r.pct_vigilancia | float) }}%</td>
+          <td class="mono text-danger">{{ r.dias_critico }} d</td>
+          <td class="mono text-danger">{{ "%.0f" | format(r.pct_critico | float) }}%</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No hay reglas de riesgo definidas.', 6) }}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="aviso-info" style="margin-top:16px;">
+    Un lote se marca <strong>VENCIDO</strong> cuando los días restantes son negativos.
+    Se marca <strong>CRÍTICO</strong> cuando entra en la ventana crítica por días o por
+    porcentaje de vida útil, <strong>VIGILANCIA</strong> cuando entra en la ventana
+    intermedia, y <strong>NORMAL</strong> en cualquier otro caso. La clasificación se
+    calcula en el momento de la consulta: no se guarda, así nunca queda desactualizada.
+  </div>
+</div>
+{% endblock %}

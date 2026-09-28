@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Mermas{% endblock %}
+{% block breadcrumb %}Desperdicio › Mermas{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Desperdicio',
+  'Registro de mermas',
+  'Flujo real: tienda → producto → lote → cantidad → causa. El sistema valida que la existencia alcance, descuenta el inventario, escribe el kardex y deja el evento en la bitácora. Si la validación falla, no se guarda nada.'
+) }}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Unidades mermadas (180 d)', "%.2f" | format(resumen.totales.unidades | float)) }}
+  {{ ui.kpi('Valor de la merma', ui.moneda(resumen.totales.valor), None, '#f87171') }}
+  {{ ui.kpi('Eventos registrados', resumen.totales.eventos) }}
+  {{ ui.kpi('Merma por caducidad',
+            "%.2f" | format(resumen.por_caducidad.unidades_caducidad | float),
+            ui.moneda(resumen.por_caducidad.valor_caducidad)) }}
+</div>
+
+{# ── Formulario ── #}
+<div class="form-card">
+  <div class="card-title">Registrar merma</div>
+  <form method="post" action="{{ url_for('operacion.mermas') }}">
+    <div class="form-grid-3">
+      <div>
+        <label class="form-label">Tienda / CEDIS *</label>
+        <select class="input" name="id_locacion" required>
+          <option value="">Selecciona…</option>
+          {% for l in locaciones %}
+            <option value="{{ l.id_locacion }}">{{ l.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Lote (producto — caducidad — existencia) *</label>
+        <select class="input" name="id_lote" required>
+          <option value="">Selecciona…</option>
+          {% for l in lotes %}
+            <option value="{{ l.id_lote }}">
+              {{ l.codigo_lote_prov }} — {{ l.producto }} — vence {{ l.fecha_caducidad }}
+              — {{ "%.2f" | format(l.cantidad_disponible | float) }} {{ l.unidad_medida }}
+              ({{ l.locacion }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Cantidad *</label>
+        <input class="input" name="cantidad" type="number" step="0.01" min="0.01" required/>
+      </div>
+      <div>
+        <label class="form-label">Causa *</label>
+        <select class="input" name="causa_merma" required>
+          {% for c in causas %}
+            <option value="{{ c.codigo }}">{{ c.etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo-ancho" style="grid-column: span 2;">
+        <label class="form-label">Observación</label>
+        <input class="input" name="observacion" placeholder="Detalle de lo ocurrido"/>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Registrar merma en PostgreSQL</button>
+    </div>
+    <div class="form-note">
+      Causas disponibles: caducidad, daño, calidad, cadena de frío, manipulación,
+      devolución y otra. La merma por caducidad es la que el motor de alertas intenta
+      anticipar.
+    </div>
+  </form>
+</div>
+
+{# ── Análisis ── #}
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-title">Merma por causa</div>
+    <table>
+      <thead>
+        <tr><th>Causa</th><th>Unidades</th><th>Valor</th><th>% del valor</th></tr>
+      </thead>
+      <tbody>
+        {% for c in resumen.por_causa %}
+          <tr>
+            <td style="font-weight:600;">{{ c.etiqueta }}</td>
+            <td class="mono">{{ "%.2f" | format(c.unidades | float) }}</td>
+            <td class="mono">{{ ui.moneda(c.valor) }}</td>
+            <td style="min-width:110px;">
+              <div class="medidor">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: {{ c.porcentaje }}%; background: var(--danger);"></div>
+                </div>
+                <span class="medidor-valor">{{ c.porcentaje }}%</span>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Sin mermas registradas en el periodo.', 4) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Merma por tienda</div>
+    <table>
+      <thead>
+        <tr><th>Tienda</th><th>Unidades</th><th>Valor</th></tr>
+      </thead>
+      <tbody>
+        {% for t in resumen.por_tienda %}
+          <tr>
+            <td style="font-weight:600;">{{ t.locacion }}</td>
+            <td class="mono">{{ "%.2f" | format(t.unidades | float) }}</td>
+            <td class="mono">{{ ui.moneda(t.valor) }}</td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Sin mermas registradas en el periodo.', 3) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Productos con mayor merma (valorizada)</div>
+  <table>
+    <thead>
+      <tr><th>Producto</th><th>Categoría</th><th>Unidades</th><th>Valor</th></tr>
+    </thead>
+    <tbody>
+      {% for s in resumen.por_sku %}
+        <tr>
+          <td style="font-weight:600;">{{ s.producto }}</td>
+          <td><span class="badge badge-neutral">{{ s.categoria }}</span></td>
+          <td class="mono">{{ "%.2f" | format(s.unidades | float) }}</td>
+          <td class="mono">{{ ui.moneda(s.valor) }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Sin mermas registradas en el periodo.', 4) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Detalle ── #}
+<form class="filtros" method="get" action="{{ url_for('operacion.mermas') }}">
+  <div class="campo">
+    <label class="form-label" for="locacion">Tienda</label>
+    <select class="input" id="locacion" name="locacion">
+      <option value="">Todas</option>
+      {% for l in locaciones %}
+        <option value="{{ l.id_locacion }}"
+                {% if request.args.get('locacion') == l.id_locacion | string %}selected{% endif %}>
+          {{ l.nombre }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label class="form-label" for="causa">Causa</label>
+    <select class="input" id="causa" name="causa">
+      <option value="">Todas</option>
+      {% for c in causas %}
+        <option value="{{ c.codigo }}" {% if filtro_causa == c.codigo %}selected{% endif %}>
+          {{ c.etiqueta }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-primary" type="submit">Filtrar</button>
+  <a class="btn btn-ghost" href="{{ url_for('operacion.mermas') }}">Limpiar</a>
+</form>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Mermas recientes ({{ mermas | length }})</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Tienda</th>
+        <th>Producto</th>
+        <th>Lote</th>
+        <th>Cantidad</th>
+        <th>Causa</th>
+        <th>Valor</th>
+        <th>Días vs caducidad</th>
+        <th>Responsable</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in mermas %}
+        <tr>
+          <td class="mono" style="font-size:11px;">{{ m.fecha_registro }}</td>
+          <td>{{ m.locacion }}</td>
+          <td style="font-weight:600;">{{ m.producto }}</td>
+          <td class="mono" style="font-size:11px;">{{ m.codigo_lote_prov }}</td>
+          <td class="mono">{{ "%.2f" | format(m.cantidad | float) }} {{ m.unidad_medida }}</td>
+          <td><span class="badge badge-warning">{{ m.causa_merma }}</span></td>
+          <td class="mono">{{ ui.moneda(m.valor_merma) }}</td>
+          <td class="mono">
+            <span class="{% if m.dias_vs_caducidad < 0 %}text-danger{% elif m.dias_vs_caducidad <= 3 %}text-warning{% endif %}">
+              {{ m.dias_vs_caducidad }} d
+            </span>
+          </td>
+          <td style="font-size:12px;">{{ m.responsable }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No hay mermas que coincidan con el filtro.', 9) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

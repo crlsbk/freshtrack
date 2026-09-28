@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Desperdicio Evitado{% endblock %}
+{% block breadcrumb %}Desperdicio › Desperdicio Evitado{% endblock %}
+
+{% block content %}
+{% set t = resumen.totales %}
+
+{{ ui.encabezado(
+  'Desperdicio',
+  'Desperdicio evitado',
+  'Este indicador ya no es un número inventado. Se calcula contando las unidades del lote que efectivamente se vendieron en la tienda destino entre la fecha de la intervención y la fecha de caducidad.'
+) }}
+
+{# ── Cifra principal ── #}
+<div class="savings-hero">
+  <div class="savings-hero-label">Unidades rescatadas por intervenciones</div>
+  <div class="savings-hero-total">{{ "%.2f" | format(t.recuperado | float) }}</div>
+  <div class="savings-hero-sub">
+    Producto que iba a perderse y se vendió antes de caducar · valor
+    {{ ui.moneda(t.valor) }}
+  </div>
+  <div class="savings-hero-grid">
+    <div>
+      <div class="savings-hero-kpi-val">{{ "%.2f" | format(t.en_riesgo | float) }}</div>
+      <div class="savings-hero-kpi-lbl">Riesgo estimado inicial</div>
+    </div>
+    <div>
+      <div class="savings-hero-kpi-val">{{ "%.2f" | format(t.intervenido | float) }}</div>
+      <div class="savings-hero-kpi-lbl">Unidades intervenidas</div>
+    </div>
+    <div>
+      <div class="savings-hero-kpi-val">{{ t.tasa_recuperacion }}%</div>
+      <div class="savings-hero-kpi-lbl">Tasa de recuperación</div>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Intervenciones registradas', t.intervenciones, 'Transferencias y descuentos') }}
+  {{ ui.kpi('Unidades mermadas igualmente', "%.2f" | format(t.mermado | float),
+            'Merma residual del mismo lote y periodo', '#f87171') }}
+  {{ ui.kpi('Valor recuperado', ui.moneda(t.valor), None, '#4ade80') }}
+  {{ ui.kpi('CO₂e evitado', ("%.1f" | format(sostenibilidad.co2e_evitado_kg | float)) ~ ' kg',
+            '2.5 kg CO₂e por kg de alimento (FAO)') }}
+</div>
+
+{# ── Metodología ── #}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Cómo se calcula</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">
+    <div>
+      <div class="kpi-label">1. Riesgo estimado inicial</div>
+      <div style="font-size:12.5px;line-height:1.6;color:var(--muted-foreground);">
+        Unidades del lote que iban a vencer sin intervención: existencia menos la
+        demanda esperada antes de la caducidad.
+      </div>
+    </div>
+    <div>
+      <div class="kpi-label">2. Intervención</div>
+      <div style="font-size:12.5px;line-height:1.6;color:var(--muted-foreground);">
+        Transferencia aprobada y ejecutada, o descuento aprobado. Siempre pasa por una
+        decisión humana registrada.
+      </div>
+    </div>
+    <div>
+      <div class="kpi-label">3. Recuperado</div>
+      <div style="font-size:12.5px;line-height:1.6;color:var(--muted-foreground);">
+        Ventas reales de ese lote en la tienda destino entre la ejecución y la
+        caducidad. Se limita a lo intervenido.
+      </div>
+    </div>
+    <div>
+      <div class="kpi-label">4. Merma residual</div>
+      <div style="font-size:12.5px;line-height:1.6;color:var(--muted-foreground);">
+        Unidades de ese mismo lote dadas de baja en el destino dentro del mismo
+        intervalo. Es lo que no se alcanzó a rescatar.
+      </div>
+    </div>
+  </div>
+  <div class="aviso-info" style="margin-top:16px;">
+    <strong>Regla de honestidad:</strong> el indicador se recalcula desde las ventas
+    reales, no se incrementa cuando se aprueba una intervención. Si la transferencia se
+    ejecuta pero el destino no vende, el número no sube.
+  </div>
+</div>
+
+<div class="filtros">
+  <form method="post" action="{{ url_for('panel.desperdicio_recalcular') }}">
+    <button class="btn btn-primary" type="submit">Recalcular con las ventas reales</button>
+  </form>
+  <span class="text-muted" style="font-size:12px;">
+    Recalcula las {{ t.intervenciones }} intervenciones contra las ventas registradas.
+  </span>
+</div>
+
+{# ── Detalle ── #}
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Intervenciones registradas</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Tipo</th>
+        <th>Producto</th>
+        <th>Lote</th>
+        <th>Origen → Destino</th>
+        <th>Caducidad</th>
+        <th>En riesgo</th>
+        <th>Intervenido</th>
+        <th>Recuperado</th>
+        <th>Mermado</th>
+        <th>Valor recuperado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in resumen.detalle %}
+        <tr>
+          <td class="mono" style="font-size:11px;">{{ d.fecha_registro }}</td>
+          <td>
+            <span class="badge badge-{{ 'info' if d.tipo_intervencion == 'TRANSFERENCIA' else 'warning' }}">
+              {{ d.tipo_intervencion }}
+            </span>
+          </td>
+          <td style="font-weight:600;">{{ d.producto }}</td>
+          <td class="mono" style="font-size:11px;">{{ d.codigo_lote_prov }}</td>
+          <td style="font-size:12px;">
+            {% if d.origen %}{{ d.origen }} → {{ d.destino }}{% else %}—{% endif %}
+          </td>
+          <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad }}</td>
+          <td class="mono">{{ "%.2f" | format(d.cantidad_en_riesgo | float) }}</td>
+          <td class="mono">{{ "%.2f" | format(d.cantidad_intervenida | float) }}</td>
+          <td class="mono text-success" style="font-weight:600;">
+            {{ "%.2f" | format(d.cantidad_recuperada | float) }}
+          </td>
+          <td class="mono text-danger">{{ "%.2f" | format(d.cantidad_mermada | float) }}</td>
+          <td class="mono">{{ ui.moneda(d.valor_recuperado) }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Todavía no hay intervenciones registradas. Ejecuta una transferencia aprobada para generar el primer registro.', 11) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

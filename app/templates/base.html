@@ -1,17 +1,19 @@
+{% import "_macros.html" as ui %}
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>FreshTrack — {% block page_title %}Vista{% endblock %}</title>
+  <title>FreshTrack — {% block titulo %}Vista{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/freshtrack.css') }}"/>
   <style>:root { --role-accent: {{ role_accent }}; }</style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="app-shell">
 
-  <!-- Sidebar -->
+  {# ── Menú lateral: se arma filtrando las secciones por los permisos del rol ── #}
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">
@@ -34,10 +36,11 @@
     </div>
 
     <nav class="sidebar-nav">
-      {% for section in nav_sections %}
-        <div class="sidebar-section-label">{{ section.label }}</div>
-        {% for item in section['items'] %}
-          <a href="{{ url_for(item.id) }}" class="sidebar-link {% if active == item.id %}active{% endif %}">
+      {% for seccion in nav_sections %}
+        <div class="sidebar-section-label">{{ seccion.label }}</div>
+        {% for item in seccion['items'] %}
+          <a href="{{ url_for(item.endpoint) }}"
+             class="sidebar-link {% if active == item.id %}active{% endif %}">
             <svg viewBox="0 0 20 20">{{ nav_icons[item.id] | safe }}</svg>
             <span>{{ item.label }}</span>
           </a>
@@ -46,38 +49,47 @@
     </nav>
   </aside>
 
-  <!-- Main -->
+  {# ── Área principal ── #}
   <div class="main">
-    <header class="topbar" style="box-shadow: 0 1px 0 0 {{ role_accent }}28;">
+    <header class="topbar">
       <div class="topbar-breadcrumb">
         <span class="parent">FreshTrack</span>
         <span class="sep">›</span>
-        <span class="current">{% block topbar_title %}Vista{% endblock %}</span>
+        <span class="current">{% block breadcrumb %}Vista{% endblock %}</span>
       </div>
-      <div class="topbar-db">
+
+      <div class="topbar-db" title="Todos los datos de esta pantalla vienen de PostgreSQL">
         <span class="topbar-db-dot"></span>
         retail_perecederos
       </div>
-      <div class="topbar-search">
-        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
-        <input type="text" placeholder="Buscar producto, lote, SKU..."/>
-      </div>
-      <a href="{{ url_for('alerts') if 'alerts' in allowed_views else '#' }}" class="topbar-bell">
-        <svg viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z"/></svg>
-        <span class="topbar-badge">{{ notifications }}</span>
-      </a>
-      <div class="topbar-role-pill" style="border:1px solid {{ role_accent }}40; background:{{ role_accent }}0d; color:{{ role_accent }};">
+
+      {% if 'alerts' in allowed_views %}
+        <a href="{{ url_for('panel.alertas') }}" class="topbar-bell" title="Alertas abiertas">
+          <svg viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z"/></svg>
+          {% if notifications %}<span class="topbar-badge">{{ notifications }}</span>{% endif %}
+        </a>
+      {% endif %}
+
+      <div class="topbar-role-pill"
+           style="border:1px solid {{ role_accent }}40; background:{{ role_accent }}0d; color:{{ role_accent }};">
         <span style="width:5px;height:5px;border-radius:50%;background:{{ role_accent }};display:inline-block;margin-right:2px;"></span>
         {{ role_label }}
       </div>
-      <div class="topbar-avatar" style="background:{{ role_accent }}20; border:1.5px solid {{ role_accent }}50; color:{{ role_accent }};" title="{{ user_name }}">
+
+      <div class="topbar-avatar"
+           style="background:{{ role_accent }}20; border:1.5px solid {{ role_accent }}50; color:{{ role_accent }};"
+           title="{{ user_name }} — {{ user_email }}">
         {{ user_initials }}
       </div>
-      <a href="{{ url_for('logout') }}" class="topbar-logout">Salir</a>
+
+      <a href="{{ url_for('auth.logout') }}" class="topbar-logout">Salir</a>
     </header>
 
     <div class="content">
-      {% block content %}{% endblock %}
+      <div class="view">
+        {{ ui.avisos() }}
+        {% block content %}{% endblock %}
+      </div>
     </div>
   </div>
 </div>

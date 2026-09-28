@@ -1,60 +1,124 @@
 version: '3.8'
 
+# FreshTrack — persistencia políglota.
+#
+# El brief pide contenedores de PostgreSQL, MongoDB y Redis. Los tres se levantan
+# aquí. Ojo con la distinción, que importa para no confundir "desplegado" con
+# "funcional":
+#
+#   * PostgreSQL es la ÚNICA fuente de verdad del flujo funcional de este avance.
+#     Todo lo que el sistema presenta como operativo (catálogos, lotes, inventario,
+#     FEFO, ventas, mermas, pronóstico, reabastecimiento, transferencias, alertas,
+#     auditoría) se lee y se escribe ahí.
+#
+#   * MongoDB y Redis están desplegados y con su estructura inicial creada, pero
+#     todavía NO son fuente de datos de ningún flujo. Corresponden a la arquitectura
+#     diseñada en docs/Documento_Analitico_FreshTrack.pdf (pronósticos y alertas en
+#     documentos; sesiones, denylist de JWT, caché y bloqueos en memoria) y se
+#     activan en las siguientes parciales.
+#
+# Los esquemas de PostgreSQL (operacion, analitica, auditoria) se crean al inicializar
+# el volumen con los scripts de ./sql montados en docker-entrypoint-initdb.d.
+
 services:
   postgres:
-    image: postgres:15-alpine
-    container_name: retail_db
+    image: postgres:17-alpine
+    container_name: freshtrack_db
     restart: unless-stopped
     env_file:
       - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Se ejecutan en orden alfabético la primera vez que se crea el volumen.
       - ./sql:/docker-entrypoint-initdb.d:ro,z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  mongodb:
-    image: mongo:7.0
-    container_name: retail_mongo
+  # --- MongoDB: pronósticos, avisos ASN y alertas operativas -------------------
+  mongo:
+    image: mongo:7
+    container_name: freshtrack_mongo
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-admin_pass}
-      MONGO_INITDB_DATABASE: ${MONGO_DB:-retail_forecast}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
     ports:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
+      # Crea las colecciones, sus validadores y sus índices en la primera arranque.
+      - ./mongo:/docker-entrypoint-initdb.d:ro,z
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          mongosh --quiet --host 127.0.0.1
+          --username "$$MONGO_INITDB_ROOT_USERNAME"
+          --password "$$MONGO_INITDB_ROOT_PASSWORD"
+          --authenticationDatabase admin
+          --eval "quit(db.adminCommand('ping').ok ? 0 : 1)"
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
+  # --- Redis: sesiones, denylist de JWT, caché y bloqueos distribuidos ---------
   redis:
-    image: redis:7.2-alpine
-    container_name: retail_redis
+    image: redis:7-alpine
+    container_name: freshtrack_redis
     restart: unless-stopped
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redis_pass}"]
+    env_file:
+      - .env
+    # appendonly yes: la denylist de tokens revocados debe sobrevivir a un reinicio,
+    # si no un logout se perdería al reiniciar el contenedor.
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: retail_app
+    container_name: freshtrack_app
     restart: unless-stopped
     env_file:
       - .env
+    # La aplicación solo depende de PostgreSQL: es su única fuente de datos.
+    # No se le añade depends_on de mongo/redis a propósito, para no dar a entender
+    # que los necesita para arrancar.
     depends_on:
-      - postgres
-      - mongodb
-      - redis
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-5000}:5000"
     volumes:
       - .:/app:z
-    command: ["sleep", "infinity"]
-    
+    command: ["python", "run.py"]
+
 volumes:
   postgres_data:
   mongo_data:

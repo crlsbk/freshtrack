@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Reabastecimiento{% endblock %}
+{% block breadcrumb %}Analítica › Reabastecimiento{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Analítica',
+  'Recomendaciones de reabastecimiento',
+  'El cálculo es: demanda pronosticada + stock de seguridad − inventario útil − entradas confirmadas. Se distingue el inventario físico del que está en riesgo de vencer, porque lo que caduca no cubre demanda futura.'
+) }}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Órdenes pendientes', resumen.pendientes, 'Esperan aprobación humana', '#fbbf24') }}
+  {{ ui.kpi('Urgentes', resumen.urgentes, 'Prioridad alta', '#f87171') }}
+  {{ ui.kpi('Aprobadas', resumen.aprobadas) }}
+  {{ ui.kpi('Valor estimado pendiente', ui.moneda(resumen.valor_estimado)) }}
+</div>
+
+<div class="filtros">
+  <form method="post" action="{{ url_for('analitica.reabastecimiento_generar') }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    <div class="campo">
+      <label class="form-label">Horizonte de la recomendación</label>
+      <select class="input" name="horizonte">
+        <option value="">Usar el configurado</option>
+        {% for h in [3, 5, 7, 14, 21] %}
+          <option value="{{ h }}">{{ h }} días</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">Generar recomendaciones</button>
+  </form>
+  <form method="get" action="{{ url_for('analitica.reabastecimiento') }}"
+        style="display:flex;gap:12px;align-items:flex-end;">
+    <div class="campo">
+      <label class="form-label">Estado</label>
+      <select class="input" name="estado">
+        {% for e in ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'TODAS'] %}
+          <option value="{{ e }}" {% if estado_filtro == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-ghost" type="submit">Filtrar</button>
+  </form>
+</div>
+
+{# ── Órdenes ── #}
+{% for o in ordenes %}
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;">
+          {{ o.producto }}
+          <span class="text-muted" style="font-size:13px;">→ {{ o.locacion }}</span>
+        </div>
+        <div class="text-muted" style="font-size:11.5px;margin-top:3px;">
+          SKU {{ o.id_sku }} · {{ o.proveedor or 'sin proveedor asignado' }} ·
+          lead time {{ o.lead_time_dias }} días · MOQ {{ "%.0f" | format(o.moq | float) }} ·
+          creada el {{ o.fecha_creacion }}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span class="badge badge-{{ 'danger' if o.prioridad == 'ALTA' else ('warning' if o.prioridad == 'MEDIA' else 'neutral') }}">
+          Prioridad {{ o.prioridad }}
+        </span>
+        {{ ui.estado(o.estado) }}
+      </div>
+    </div>
+
+    <div class="stat-grid-4" style="margin:16px 0 0;">
+      {{ ui.kpi('Cantidad sugerida', "%.2f" | format(o.cantidad_sugerida | float),
+                o.unidad_medida, '#4ade80') }}
+      {{ ui.kpi('Necesidad neta', "%.2f" | format(o.necesidad_neta | float), o.unidad_medida) }}
+      {{ ui.kpi('Inventario útil', "%.2f" | format(o.inventario_util | float),
+                'Descontado lo que está por vencer') }}
+      {{ ui.kpi('Inventario en riesgo', "%.2f" | format(o.inventario_riesgo | float),
+                'No cubre demanda futura', '#f87171') }}
+    </div>
+
+    <details class="acordeon" {% if loop.first and o.estado == 'PENDIENTE' %}open{% endif %}>
+      <summary>Ver el cálculo completo y la explicación</summary>
+      <div class="acordeon-cuerpo">
+        <div class="detalle-grid" style="margin-bottom:14px;">
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Demanda pronosticada</div>
+            <div class="detalle-valor">{{ "%.2f" | format(o.demanda_pronosticada | float) }}</div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Inventario físico</div>
+            <div class="detalle-valor">{{ "%.2f" | format(o.inventario_fisico | float) }}</div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Entradas confirmadas</div>
+            <div class="detalle-valor">{{ "%.2f" | format(o.entradas_confirmadas | float) }}</div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Stock de seguridad</div>
+            <div class="detalle-valor">{{ "%.2f" | format(o.stock_seguridad | float) }}</div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Lead time</div>
+            <div class="detalle-valor">{{ o.lead_time_dias }} días</div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">MOQ</div>
+            <div class="detalle-valor">{{ "%.0f" | format(o.moq | float) }}</div>
+          </div>
+          {% if o.cantidad_aprobada is not none %}
+            <div class="detalle-item">
+              <div class="detalle-etiqueta">Cantidad aprobada</div>
+              <div class="detalle-valor">{{ "%.2f" | format(o.cantidad_aprobada | float) }}</div>
+            </div>
+          {% endif %}
+        </div>
+
+        {% if o.advertencias %}
+          <div class="aviso-advertencia">
+            <strong>Advertencias:</strong>
+            <ul style="margin:6px 0 0 18px;">
+              {% for a in o.advertencias %}
+                <li>{{ a }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <div style="margin-top:14px;">
+          <div class="detalle-etiqueta" style="margin-bottom:6px;">Explicación guardada</div>
+          <pre class="explicacion">{{ o.explicacion }}</pre>
+        </div>
+
+        {% if o.solicita or o.aprueba %}
+          <div class="text-muted" style="font-size:11.5px;margin-top:12px;">
+            {% if o.solicita %}Solicitó: {{ o.solicita }}.{% endif %}
+            {% if o.aprueba %}Decidió: {{ o.aprueba }}.{% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </details>
+
+    {% if o.estado == 'PENDIENTE' %}
+      <form method="post"
+            action="{{ url_for('analitica.reabastecimiento_decidir', id_orden=o.id_orden) }}"
+            style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;">
+        <div class="campo" style="min-width:160px;">
+          <label class="form-label">Cantidad a aprobar</label>
+          <input class="input" name="cantidad" type="number" step="0.01" min="0"
+                 value="{{ '%.2f' | format(o.cantidad_sugerida | float) }}"/>
+        </div>
+        <button class="btn btn-primary" type="submit" name="decision" value="aprobar">
+          Aprobar
+        </button>
+        <button class="btn btn-danger" type="submit" name="decision" value="rechazar">
+          Rechazar
+        </button>
+        <span class="text-muted" style="font-size:11.5px;">
+          La decisión queda registrada con tu usuario y la fecha.
+        </span>
+      </form>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="card">
+    <div class="tabla-vacia">
+      <div class="tabla-vacia-titulo">No hay órdenes en este estado</div>
+      <div class="tabla-vacia-texto">
+        Pulsa «Generar recomendaciones» para que el motor evalúe cada combinación de
+        producto y tienda contra su pronóstico de demanda.
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+{# ── Sobreinventario ── #}
+<div class="table-wrap" style="margin-top:20px;">
+  <div class="table-header">
+    <div class="table-header-title">
+      Sobreinventario detectado ({{ sobreinventario | length }})
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Producto</th>
+        <th>Tienda</th>
+        <th>Inventario útil</th>
+        <th>Demanda diaria</th>
+        <th>Días de cobertura</th>
+        <th>Vida útil del producto</th>
+        <th>Diagnóstico</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sobreinventario %}
+        <tr>
+          <td style="font-weight:600;">{{ s.producto }}</td>
+          <td>{{ s.locacion }}</td>
+          <td class="mono">{{ "%.2f" | format(s.util | float) }} {{ s.unidad_medida }}</td>
+          <td class="mono">{{ "%.2f" | format(s.demanda_diaria | float) }}</td>
+          <td class="mono" style="color:var(--warning);">{{ s.dias_cobertura }} d</td>
+          <td class="mono">{{ s.vida_util_estandar }} d</td>
+          <td style="font-size:12px;">
+            {% if s.dias_cobertura and s.dias_cobertura > s.vida_util_estandar %}
+              <span class="text-danger">No se alcanza a vender antes de que caduque</span>
+            {% else %}
+              <span class="text-warning">Cobertura por encima del umbral</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Ninguna combinación de producto y tienda supera el umbral de cobertura.', 7) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Sostenibilidad{% endblock %}
+{% block breadcrumb %}Desperdicio › Sostenibilidad{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Desperdicio',
+  'Sostenibilidad',
+  'El alimento que no se desperdicia no genera emisiones. Estas cifras traducen el producto rescatado a impacto ambiental, con la equivalencia declarada para que se pueda revisar.'
+) }}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Unidades recuperadas', "%.2f" | format(indicadores.unidades_recuperadas | float),
+            'Vendidas antes de caducar gracias a una intervención', '#4ade80') }}
+  {{ ui.kpi('Unidades mermadas', "%.2f" | format(indicadores.unidades_mermadas | float),
+            'Pérdida inevitable registrada', '#f87171') }}
+  {{ ui.kpi('Tasa de aprovechamiento',
+            ("%.1f" | format(indicadores.tasa_aprovechamiento | float)) ~ '%',
+            'Recuperado sobre recuperado + mermado', '#fbbf24') }}
+  {{ ui.kpi('CO₂e evitado', ("%.1f" | format(indicadores.co2e_evitado_kg | float)) ~ ' kg',
+            'Equivalencia declarada abajo') }}
+</div>
+
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-title">Valor económico rescatado</div>
+    <div class="mono" style="font-size:32px;font-weight:700;color:var(--success);margin-bottom:8px;">
+      {{ ui.moneda(indicadores.valor_recuperado) }}
+    </div>
+    <div class="text-muted" style="font-size:12.5px;line-height:1.6;">
+      Ingreso por ventas de lotes que estaban en riesgo de merma y se vendieron antes
+      de caducar, medido en la tienda destino después de la intervención.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Tasa de merma sobre lo recibido (180 días)</div>
+    <div class="mono" style="font-size:32px;font-weight:700;color:var(--danger);margin-bottom:8px;">
+      {{ "%.2f" | format(tasa.tasa_pct | float) }}%
+    </div>
+    <div class="progress-bar" style="height:8px;">
+      <div class="progress-fill" style="width: {{ [tasa.tasa_pct | float, 100] | min }}%; background: var(--danger);"></div>
+    </div>
+    <div class="text-muted" style="font-size:11.5px;margin-top:10px;">
+      {{ "%.2f" | format(tasa.mermado | float) }} unidades mermadas de
+      {{ "%.2f" | format(tasa.recibido | float) }} recibidas.
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Metodología de las equivalencias</div>
+  <pre class="explicacion">{{ indicadores.metodologia }}</pre>
+  <div class="aviso-advertencia" style="margin-top:14px;">
+    <strong>Nota metodológica:</strong> el factor de 2.5 kg CO₂e por kg de alimento
+    desperdiciado es una referencia de la FAO y se aplica de forma uniforme a todas las
+    categorías. Es una aproximación: no distingue entre un kilo de carne y un kilo de
+    arroz. Se declara para que el número sea interpretable, no para presentarlo como
+    una medición de laboratorio.
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Ventas y merma por mes</div>
+  <div class="chart-wrap" style="height:250px;">
+    <canvas id="grafica-sostenibilidad"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Merma por categoría (donde más se pierde)</div>
+  <table>
+    <thead><tr><th>Categoría</th><th>Unidades</th><th>Valor</th></tr></thead>
+    <tbody>
+      {% for c in por_categoria %}
+        <tr>
+          <td style="font-weight:600;">{{ c.name }}</td>
+          <td class="mono">{{ "%.2f" | format(c.unidades | float) }}</td>
+          <td class="mono">{{ ui.moneda(c.valor) }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Sin mermas registradas en el periodo.', 3) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const serie = {{ serie | tojson }};
+const canvas = document.getElementById('grafica-sostenibilidad');
+if (canvas) {
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: serie.map(f => f.mes),
+      datasets: [
+        { label: 'Unidades vendidas', data: serie.map(f => Number(f.ventas_unidades)),
+          borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,.12)',
+          fill: true, tension: .3, pointRadius: 3 },
+        { label: 'Unidades mermadas', data: serie.map(f => Number(f.merma_unidades)),
+          borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,.12)',
+          fill: true, tension: .3, pointRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#93b09a', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#536b57', font: { size: 10 } }, grid: { color: '#1a2a1d' } },
+        y: { ticks: { color: '#536b57', font: { size: 10 } }, grid: { color: '#1a2a1d' } }
+      }
+    }
+  });
+}
+</script>
+{% endblock %}

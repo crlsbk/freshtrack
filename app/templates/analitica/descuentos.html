@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Descuentos{% endblock %}
+{% block breadcrumb %}Analítica › Descuentos{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Analítica',
+  'Descuentos para lotes por vencer',
+  'Cuando un lote entra en vigilancia o riesgo crítico, el sistema propone un descuento sobre el precio de venta para acelerar su salida. El porcentaje sale de la configuración, no de una tabla escrita a mano.'
+) }}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Sugeridos', resumen.sugeridos, 'Esperan aprobación', '#38bdf8') }}
+  {{ ui.kpi('Aprobados', resumen.aprobados) }}
+  {{ ui.kpi('Unidades en promoción', "%.2f" | format(resumen.unidades | float)) }}
+  {{ ui.kpi('Ingreso potencial', ui.moneda(resumen.ingreso_potencial),
+            'Si se vende todo lo descontado', '#4ade80') }}
+</div>
+
+<div class="filtros">
+  <form method="post" action="{{ url_for('analitica.descuentos_generar') }}">
+    <button class="btn btn-primary" type="submit">Generar sugerencias</button>
+  </form>
+  <form method="get" action="{{ url_for('analitica.descuentos') }}"
+        style="display:flex;gap:12px;align-items:flex-end;">
+    <div class="campo">
+      <label class="form-label">Estado</label>
+      <select class="input" name="estado">
+        {% for e in ['SUGERIDO', 'APROBADO', 'RECHAZADO', 'TODAS'] %}
+          <option value="{{ e }}" {% if estado_filtro == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-ghost" type="submit">Filtrar</button>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Descuentos ({{ descuentos | length }})</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Producto</th>
+        <th>Tienda</th>
+        <th>Lote</th>
+        <th>Caducidad</th>
+        <th>Días</th>
+        <th>Unidades</th>
+        <th>Precio normal</th>
+        <th>Descuento</th>
+        <th>Precio nuevo</th>
+        <th>Ingreso potencial</th>
+        <th>Estado</th>
+        <th>Decisión</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in descuentos %}
+        <tr>
+          <td style="font-weight:600;">{{ d.producto }}</td>
+          <td>{{ d.locacion }}</td>
+          <td class="mono" style="font-size:11px;">{{ d.codigo_lote_prov }}</td>
+          <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad }}</td>
+          <td class="mono">
+            <span class="{% if d.dias_restantes <= 2 %}text-danger{% elif d.dias_restantes <= 5 %}text-warning{% endif %}">
+              {{ d.dias_restantes }}
+            </span>
+          </td>
+          <td class="mono">{{ "%.2f" | format(d.cantidad | float) }} {{ d.unidad_medida }}</td>
+          <td class="mono">{{ ui.moneda(d.precio_normal) }}</td>
+          <td><span class="badge badge-warning">{{ d.descuento_pct }}%</span></td>
+          <td class="mono" style="font-weight:600;">{{ ui.moneda(d.precio_nuevo) }}</td>
+          <td class="mono">{{ ui.moneda(d.ingreso_potencial) }}</td>
+          <td>{{ ui.estado(d.estado) }}</td>
+          <td>
+            {% if d.estado == 'SUGERIDO' %}
+              <div class="acciones">
+                <form class="inline-form" method="post"
+                      action="{{ url_for('analitica.descuentos_decidir', id_descuento=d.id_descuento) }}">
+                  <button class="btn btn-primary btn-sm" type="submit"
+                          name="decision" value="aprobar">Aprobar</button>
+                </form>
+                <form class="inline-form" method="post"
+                      action="{{ url_for('analitica.descuentos_decidir', id_descuento=d.id_descuento) }}">
+                  <button class="btn btn-danger btn-sm" type="submit"
+                          name="decision" value="rechazar">Rechazar</button>
+                </form>
+              </div>
+            {% else %}
+              <span class="text-muted" style="font-size:11.5px;">
+                {% if d.aprueba %}por {{ d.aprueba }}{% else %}—{% endif %}
+              </span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No hay descuentos en este estado. Genera sugerencias para ver los lotes en vigilancia o crítico.', 12) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

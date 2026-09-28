@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Proveedores{% endblock %}
+{% block breadcrumb %}Catálogos › Proveedores{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Catálogo',
+  'Proveedores',
+  'Alta, consulta, edición y activación de proveedores, con su tiempo de entrega (lead time) y pedido mínimo (MOQ).'
+) }}
+
+<form class="filtros" method="get" action="{{ url_for('catalogo.proveedores') }}">
+  <div class="campo campo-ancho">
+    <label class="form-label" for="q">Buscar</label>
+    <input class="input" id="q" name="q" type="text" value="{{ filtro }}"
+           placeholder="Razón social o RFC"/>
+  </div>
+  <button class="btn btn-primary" type="submit">Filtrar</button>
+  <a class="btn btn-ghost" href="{{ url_for('catalogo.proveedores') }}">Limpiar</a>
+  <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nuevo-proveedor')">
+    + Nuevo proveedor
+  </button>
+</form>
+
+<div class="form-card" id="form-nuevo-proveedor" style="display:none;">
+  <div class="card-title">Registrar proveedor</div>
+  <form method="post" action="{{ url_for('catalogo.proveedores') }}">
+    <div class="form-grid-3">
+      <div>
+        <label class="form-label">Razón social *</label>
+        <input class="input" name="razon_social" required placeholder="Lácteos del Norte S.A. de C.V."/>
+      </div>
+      <div>
+        <label class="form-label">RFC *</label>
+        <input class="input" name="rfc" required placeholder="LDN850101ABC" maxlength="13"/>
+      </div>
+      <div>
+        <label class="form-label">Lead time (días) *</label>
+        <input class="input" name="lead_time_dias" type="number" min="0" value="3" required/>
+      </div>
+      <div>
+        <label class="form-label">MOQ (pedido mínimo) *</label>
+        <input class="input" name="moq" type="number" step="1" min="1" value="50" required/>
+      </div>
+      <div>
+        <label class="form-label">Correo de contacto</label>
+        <input class="input" name="contacto_email" type="email" placeholder="ventas@proveedor.mx"/>
+      </div>
+      <div>
+        <label class="form-label">Teléfono</label>
+        <input class="input" name="telefono" placeholder="81 1234 5678"/>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Guardar en PostgreSQL</button>
+      <button class="btn btn-ghost" type="button"
+              onclick="toggleForm('form-nuevo-proveedor')">Cancelar</button>
+    </div>
+    <div class="form-note">
+      El lead time y el MOQ alimentan el motor de reabastecimiento: sin ellos no se
+      puede calcular si el pedido llega a tiempo ni si el mínimo obliga a sobreinventar.
+    </div>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Proveedores ({{ proveedores | length }})</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Razón social</th>
+        <th>RFC</th>
+        <th>Contacto</th>
+        <th>Lead time</th>
+        <th>MOQ</th>
+        <th>Productos</th>
+        <th>Lotes</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in proveedores %}
+        <tr>
+          <td class="mono">{{ p.id_proveedor }}</td>
+          <td style="font-weight:600;">{{ p.razon_social }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ p.rfc }}</td>
+          <td style="font-size:12px;">
+            {{ p.contacto_email or '—' }}<br/>
+            <span class="text-muted">{{ p.telefono or '' }}</span>
+          </td>
+          <td class="mono">{{ p.lead_time_dias }} días</td>
+          <td class="mono">{{ "%.0f" | format(p.moq | float) }}</td>
+          <td class="mono">{{ p.n_productos }}</td>
+          <td class="mono">{{ p.n_lotes }}</td>
+          <td>
+            {% if p.activo %}
+              <span class="badge badge-success">ACTIVO</span>
+            {% else %}
+              <span class="badge badge-neutral">INACTIVO</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="acciones">
+              <button class="btn btn-ghost btn-sm" type="button"
+                      onclick="toggleForm('editar-proveedor-{{ p.id_proveedor }}')">Editar</button>
+              <form class="inline-form" method="post"
+                    action="{{ url_for('catalogo.estado_proveedor', id_proveedor=p.id_proveedor) }}">
+                <input type="hidden" name="activo" value="{{ 0 if p.activo else 1 }}"/>
+                <button class="btn {{ 'btn-danger' if p.activo else 'btn-primary' }} btn-sm"
+                        type="submit">
+                  {{ 'Desactivar' if p.activo else 'Activar' }}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <tr id="editar-proveedor-{{ p.id_proveedor }}" style="display:none;">
+          <td colspan="10" style="background:var(--muted);">
+            <form method="post"
+                  action="{{ url_for('catalogo.editar_proveedor', id_proveedor=p.id_proveedor) }}">
+              <div class="form-grid-3">
+                <div>
+                  <label class="form-label">Razón social</label>
+                  <input class="input" name="razon_social" value="{{ p.razon_social }}" required/>
+                </div>
+                <div>
+                  <label class="form-label">RFC</label>
+                  <input class="input" name="rfc" value="{{ p.rfc }}" maxlength="13" required/>
+                </div>
+                <div>
+                  <label class="form-label">Lead time (días)</label>
+                  <input class="input" name="lead_time_dias" type="number" min="0"
+                         value="{{ p.lead_time_dias }}" required/>
+                </div>
+                <div>
+                  <label class="form-label">MOQ</label>
+                  <input class="input" name="moq" type="number" step="1" min="1"
+                         value="{{ '%.0f' | format(p.moq | float) }}" required/>
+                </div>
+                <div>
+                  <label class="form-label">Correo</label>
+                  <input class="input" name="contacto_email" value="{{ p.contacto_email or '' }}"/>
+                </div>
+                <div>
+                  <label class="form-label">Teléfono</label>
+                  <input class="input" name="telefono" value="{{ p.telefono or '' }}"/>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn-primary btn-sm" type="submit">Guardar cambios</button>
+                <button class="btn btn-ghost btn-sm" type="button"
+                        onclick="toggleForm('editar-proveedor-{{ p.id_proveedor }}')">Cerrar</button>
+              </div>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Todavía no hay proveedores registrados.', 10) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

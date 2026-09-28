@@ -19,12 +19,16 @@ else
 	PYBIN := $(VENV)/bin/python
 endif
 
-.PHONY: help setup venv bootstrap etl app demo verify smoke test up infra down clean
+# Accion para `make db` (start | stop | status | restart). Por defecto, arrancar.
+ACCION ?= start
+
+.PHONY: help setup venv db bootstrap etl app demo verify smoke test up infra down clean
 
 help:
 	@echo "FreshTrack — objetivos disponibles:"
 	@echo "  make setup      Copia env.example a .env"
 	@echo "  make venv       Crea .venv e instala requirements.txt"
+	@echo "  make db         Arranca el PostgreSQL portable (ver ACCION abajo)"
 	@echo "  make bootstrap  Crea la base, roles, esquemas y datos base"
 	@echo "  make etl        Carga la historia operativa (180 dias)"
 	@echo "  make app        Levanta la aplicacion Flask"
@@ -34,6 +38,8 @@ help:
 	@echo "  make test       smoke + demo + verify"
 	@echo "  make infra      Levanta solo PostgreSQL, MongoDB y Redis"
 	@echo "  make up/down/clean  Docker Compose (los 3 motores + la app)"
+	@echo ""
+	@echo "  make db ACCION=stop|status|restart   Controla el PostgreSQL portable"
 
 setup:
 	@test -f .env || cp env.example .env
@@ -44,6 +50,11 @@ venv:
 	$(PYBIN) -m pip install --upgrade pip
 	$(PYBIN) -m pip install -r requirements.txt
 	@echo "Entorno virtual listo en $(VENV)."
+
+# Arranca/para el PostgreSQL portable. Por defecto arranca. El puerto se lee de
+# DATABASE_URL, asi que el servidor y la aplicacion no pueden discrepar.
+db:
+	@bash scripts/start_db.sh $(ACCION)
 
 bootstrap:
 	$(PYBIN) scripts/bootstrap_db.py

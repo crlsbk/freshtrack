@@ -13,37 +13,30 @@ en la base de datos.
 
 ## 1. Puesta en marcha
 
-### 1.1 Sin Docker (recomendado para desarrollo)
+> **¿Solo quieres ver el sistema funcionando?** Usa la vía con Docker (§1.1). Es un
+> comando, y `env.example` funciona tal cual: el contenedor crea la base con las claves
+> que ya vienen en ese archivo, así que no hay que inventar ninguna contraseña.
+>
+> La vía sin Docker (§1.2) es para quien va a desarrollar: **exige tener PostgreSQL ya
+> instalado y corriendo**. Si no lo tienes, el sistema no arranca.
 
-```bash
-# 1. Variables de entorno
-cp env.example .env          # y ajusta las claves
+### 1.1 Con Docker (la forma rápida)
 
-# 2. Entorno virtual
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt        # Windows: .venv\Scripts\pip
-
-# 3. Base de datos: base + roles + esquemas + datos base (idempotente)
-python scripts/bootstrap_db.py
-
-# 4. Historia operativa (180 días de ventas, lotes, mermas y kardex)
-python scripts/ETL.py
-
-# 5. Aplicación
-python run.py                # http://127.0.0.1:5000
-```
-
-Con `make`:
-
-```bash
-make setup venv bootstrap etl app
-```
-
-### 1.2 Con Docker
+Requisito: Docker y Docker Compose.
 
 ```bash
 cp env.example .env
-make up          # levanta PostgreSQL, MongoDB, Redis y la aplicación
+docker compose up -d postgres     # levanta solo la base
+pip install -r requirements.txt
+python scripts/ETL.py             # carga 180 días de historia operativa
+python run.py                     # http://127.0.0.1:5000
+```
+
+Si prefieres todo dentro de contenedores (base + aplicación):
+
+```bash
+cp env.example .env
+make up                           # PostgreSQL, MongoDB, Redis y la aplicación
 ```
 
 Al crear el volumen por primera vez, cada motor ejecuta sus scripts de inicialización
@@ -65,6 +58,73 @@ activan en las siguientes parciales. La aplicación **no** depende de ellos para
 su único `depends_on` es PostgreSQL.
 
 El ETL se corre aparte con `make etl`.
+
+### 1.2 Sin Docker (para desarrollo)
+
+**Antes de empezar:** necesitas un PostgreSQL ya instalado y corriendo, y su contraseña
+de superusuario. Si no lo tienes, usa §1.1.
+
+```bash
+# 1. Variables de entorno
+cp env.example .env          # y ajusta las claves a TU PostgreSQL
+
+# 2. Entorno virtual
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt        # Windows: .venv\Scripts\pip
+
+# 3. Base de datos: base + roles + esquemas + datos base (idempotente)
+python scripts/bootstrap_db.py
+
+# 4. Historia operativa (180 días de ventas, lotes, mermas y kardex)
+python scripts/ETL.py
+
+# 5. Aplicación
+python run.py                # http://127.0.0.1:5000
+```
+
+Con `make`:
+
+```bash
+make setup venv bootstrap etl app
+```
+
+Tres cosas que hacen perder tiempo, así que van aquí:
+
+- **El puerto tiene que coincidir.** `DATABASE_URL` debe apuntar al puerto donde escucha
+  tu PostgreSQL. Este proyecto usa el **5433** en la instalación portable; el 5432 es el
+  valor por defecto de PostgreSQL y el que usa Docker.
+- **Las contraseñas de los roles son obligatorias.** `APP_BACKEND_PASSWORD` y
+  `APP_AUDITOR_PASSWORD` no tienen valor por defecto: `bootstrap_db.py` aborta si faltan.
+- **Si se queda colgado sin imprimir nada**, es que no hay ninguna base escuchando en ese
+  puerto. Ya no tarda minutos: falla en unos segundos con un mensaje que dice qué revisar.
+
+#### Si la base se detuvo
+
+El PostgreSQL portable no se levanta solo al encender el equipo. Si la aplicación dice que
+no encuentra la base, casi siempre es esto:
+
+```bash
+make db status     # ¿responde? (no arranca nada)
+make db            # arranca
+make db restart    # reinicia
+make db ACCION=stop
+```
+
+El script lee el puerto de `DATABASE_URL`, así que no hay forma de arrancar el servidor en
+un puerto y que la aplicación busque otro. **Un detalle que ya causó un susto:** el script
+convierte las rutas de Git Bash (`/c/Users/...`) al formato de Windows antes de pasárselas
+a `pg_ctl`. Sin esa conversión, PostgreSQL interpreta `/c/Users/...` como `C:\c\Users\...`
+—otra carpeta— y arranca un clúster **vacío**: parece que la base se borró, cuando en
+realidad nunca se tocó. Si alguna vez ves tablas vacías de golpe, comprueba el directorio
+de datos antes de entrar en pánico:
+
+```bash
+ps -W | grep postgres        # o: Get-CimInstance Win32_Process -Filter "Name='postgres.exe'"
+```
+
+Debe decir `-D "C:/Users/<tu usuario>/.../postgres/data"`. Si aparece una ruta con `C:\c\`,
+está corriendo el clúster equivocado.
+
 
 ---
 

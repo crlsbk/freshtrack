@@ -12,6 +12,7 @@ Dos reglas que se respetan en todo el proyecto:
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from decimal import Decimal
 from typing import Any, Iterable, Sequence
@@ -35,6 +36,12 @@ def get_engine() -> Engine:
             pool_size=5,
             max_overflow=10,
             future=True,
+            # Sin esto, si no hay nada escuchando en el puerto, la conexión se
+            # queda colgada hasta el timeout del sistema operativo (minutos) en
+            # vez de fallar. En Windows "localhost" resuelve a ::1 y a 127.0.0.1,
+            # así que el timeout se aplica a cada intento. Preferimos fallar en
+            # segundos con un mensaje claro.
+            connect_args={"connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "5"))},
         )
     return _engine
 

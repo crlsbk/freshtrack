@@ -75,6 +75,38 @@ def _ejecutar_sql(conn: psycopg.Connection, ruta: Path) -> None:
         cur.execute(contenido)
 
 
+def _conectar(url: str) -> psycopg.Connection:
+    """
+    Abre una conexión con timeout y, si no hay nada escuchando, lo explica.
+
+    Sin `connect_timeout`, psycopg espera al timeout del sistema operativo y el
+    script parece colgado durante minutos, sin imprimir nada. En Windows
+    "localhost" resuelve a ::1 y a 127.0.0.1, así que el timeout se aplica dos
+    veces. Es la causa más común de que alguien que acaba de clonar el repo crea
+    que el proyecto no funciona.
+    """
+    try:
+        return psycopg.connect(
+            url,
+            autocommit=True,
+            connect_timeout=int(os.getenv("DB_CONNECT_TIMEOUT", "5")),
+        )
+    except psycopg.OperationalError as e:
+        destino = re.sub(r"//[^@/]*@", "//", url)  # oculta usuario:clave
+        primera = str(e).strip().splitlines()[0]
+        raise SystemExit(
+            "[bootstrap] No se pudo conectar a PostgreSQL.\n"
+            f"    destino: {destino}\n"
+            f"    causa  : {primera}\n"
+            "\n"
+            "    Comprueba que:\n"
+            "      - PostgreSQL esté levantado y escuchando en ese host y puerto.\n"
+            "      - El puerto de DATABASE_URL sea el real. Ojo: el PostgreSQL\n"
+            "        portable de este proyecto escucha en 5433, no en 5432.\n"
+            "      - El usuario y la contraseña de DATABASE_URL sean correctos.\n"
+        ) from None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Inicializa la base de datos de FreshTrack")
     ap.add_argument("--db", default=os.getenv("POSTGRES_DB", "retail_perecederos"),
@@ -93,7 +125,7 @@ def main() -> int:
 
     # --- 1) La base existe? -------------------------------------------------
     url_admin = _url_superusuario("postgres")
-    with psycopg.connect(url_admin, autocommit=True) as conn:
+    with _conectar(url_admin) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db,))
             existe = cur.fetchone() is not None
@@ -112,7 +144,7 @@ def main() -> int:
     auditor = _parametros("APP_AUDITOR_PASSWORD")
     print("[bootstrap] Creando/actualizando roles app_backend, app_auditor, app_etl…")
 
-    with psycopg.connect(url, autocommit=True) as conn:
+    with _conectar(url) as conn:
         with conn.cursor() as cur:
             for rol, clave in (("app_backend", backend), ("app_auditor", auditor),
                                ("app_etl", backend)):
@@ -138,7 +170,7 @@ def main() -> int:
             print(f"[bootstrap]   ! falta {nombre}, se omite", file=sys.stderr)
             continue
         print(f"[bootstrap] Ejecutando {nombre}…")
-        with psycopg.connect(url, autocommit=True) as conn:
+        with _conectar(url) as conn:
             try:
                 _ejecutar_sql(conn, ruta)
             except psycopg.Error as e:
@@ -170,7 +202,7 @@ def _verificar(url: str) -> int:
         ("auditoria", "bitacora_eventos"),
     ]
     fallos = []
-    with psycopg.connect(url, autocommit=True) as conn, conn.cursor() as cur:
+    with _conectar(url) as conn, conn.cursor() as cur:
         for esquema, tabla in esperado:
             cur.execute(
                 "SELECT COUNT(*) FROM information_schema.tables "

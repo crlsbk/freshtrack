@@ -58,6 +58,29 @@ class Config:
     JWT_ALGORITHM = "HS256"
     JWT_HORAS_VIGENCIA = int(os.getenv("JWT_HORAS_VIGENCIA", "8"))
 
+    # --- Redis (Caché, Bloqueos, Denylist JWT y Bus de Eventos) ------------
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+    REDIS_URL = os.getenv("REDIS_URL") or (
+        f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+        if REDIS_PASSWORD
+        else f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    )
+
+    # --- MongoDB (Pronósticos de series temporales, ASN y Alertas) --------
+    MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
+    MONGO_PORT = int(os.getenv("MONGO_PORT", "27017"))
+    MONGO_USER = os.getenv("MONGO_USER", "freshtrack_mongo")
+    MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "")
+    MONGO_DB = os.getenv("MONGO_DB", "retail_perecederos")
+    MONGO_URI = os.getenv("MONGO_URI") or (
+        f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}?authSource=admin"
+        if MONGO_USER and MONGO_PASSWORD
+        else f"mongodb://{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}"
+    )
+
     # --- Parámetros de negocio (valores por defecto; la BD manda) ----------
     HORIZONTE_PRONOSTICO_DIAS = int(os.getenv("HORIZONTE_PRONOSTICO_DIAS", "7"))
     VENTANA_MEDIA_MOVIL = int(os.getenv("VENTANA_MEDIA_MOVIL", "28"))

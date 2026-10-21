@@ -27,6 +27,7 @@ from app import auditoria
 from app.config import Config
 from app.db import escalar, one, transaccion
 from app.navegacion import puede_ver, ruta_inicial
+from app.services.cache_service import esta_jwt_revocado, revocar_jwt
 
 MAX_INTENTOS_DEFECTO = 5
 MINUTOS_BLOQUEO = 15
@@ -80,7 +81,7 @@ def autenticar(email: str, password: str, ip: str | None = None, user_agent: str
                u.bloqueado_hasta,
                r.clave       AS rol_clave,
                r.nombre_rol,
-               (crypt(:password, u.password_hash) = u.password_hash) AS password_ok
+               (public.crypt(:password, u.password_hash) = u.password_hash) AS password_ok
         FROM operacion.usuario u
         JOIN operacion.rol r ON r.id_rol = u.id_rol
         WHERE lower(u.email) = lower(:email)
@@ -225,9 +226,17 @@ def decodificar_token(token: str) -> dict | None:
     except jwt.PyJWTError:
         return None
 
+    jti = payload.get("jti")
+    if not jti:
+        return None
+
+    # Verificación ultra-rápida en la denylist de Redis
+    if esta_jwt_revocado(jti):
+        return None
+
     vigente = one(
         "SELECT revocado, expira_en FROM operacion.sesion_usuario WHERE jti = :jti",
-        jti=payload.get("jti"),
+        jti=jti,
     )
     if vigente is None or vigente["revocado"]:
         return None
@@ -246,6 +255,9 @@ def revocar_token(jti: str) -> None:
             ),
             {"jti": jti},
         )
+    # Refleja la revocación en la denylist de Redis de inmediato
+    horas = _horas_vigencia()
+    revocar_jwt(jti, ttl_segundos=int(horas * 3600))
 
 
 # ---------------------------------------------------------------------------

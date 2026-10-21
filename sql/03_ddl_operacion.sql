@@ -365,6 +365,8 @@ BEGIN
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_auditor') THEN
         GRANT SELECT ON ALL TABLES IN SCHEMA operacion TO app_auditor;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA operacion
+            GRANT SELECT ON TABLES TO app_auditor;
     END IF;
 END
 $$;

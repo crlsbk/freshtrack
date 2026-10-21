@@ -10,10 +10,14 @@
   'El cálculo es: demanda pronosticada + stock de seguridad − inventario útil − entradas confirmadas. Se distingue el inventario físico del que está en riesgo de vencer, porque lo que caduca no cubre demanda futura.'
 ) }}
 
+{# Los contadores enlazan a su lista: al decidir una orden, ésta sale de
+   «Pendiente», así que hay que poder volver a encontrarla con un clic. #}
 <div class="stat-grid-4">
-  {{ ui.kpi('Órdenes pendientes', resumen.pendientes, 'Esperan aprobación humana', '#fbbf24') }}
+  {{ ui.kpi('Órdenes pendientes', resumen.pendientes, 'Esperan aprobación humana',
+            '#fbbf24', href=url_for('analitica.reabastecimiento', estado='PENDIENTE')) }}
   {{ ui.kpi('Urgentes', resumen.urgentes, 'Prioridad alta', '#f87171') }}
-  {{ ui.kpi('Aprobadas', resumen.aprobadas) }}
+  {{ ui.kpi('Aprobadas', resumen.aprobadas, 'Ver el listado →',
+            href=url_for('analitica.reabastecimiento', estado='APROBADA')) }}
   {{ ui.kpi('Valor estimado pendiente', ui.moneda(resumen.valor_estimado)) }}
 </div>
 
@@ -36,9 +40,10 @@
     <div class="campo">
       <label class="form-label">Estado</label>
       <select class="input" name="estado">
-        {% for e in ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'TODAS'] %}
+        {% for e in estados %}
           <option value="{{ e }}" {% if estado_filtro == e %}selected{% endif %}>{{ e }}</option>
         {% endfor %}
+        <option value="TODAS" {% if estado_filtro == 'TODAS' %}selected{% endif %}>TODAS</option>
       </select>
     </div>
     <button class="btn btn-ghost" type="submit">Filtrar</button>
@@ -143,6 +148,8 @@
       <form method="post"
             action="{{ url_for('analitica.reabastecimiento_decidir', id_orden=o.id_orden) }}"
             style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;">
+        {# El filtro activo viaja con la decisión para volver a la misma lista. #}
+        <input type="hidden" name="filtro" value="{{ estado_filtro }}"/>
         <div class="campo" style="min-width:160px;">
           <label class="form-label">Cantidad a aprobar</label>
           <input class="input" name="cantidad" type="number" step="0.01" min="0"
@@ -167,6 +174,10 @@
       <div class="tabla-vacia-texto">
         Pulsa «Generar recomendaciones» para que el motor evalúe cada combinación de
         producto y tienda contra su pronóstico de demanda.
+        {% if estado_filtro != 'TODAS' and (resumen.aprobadas or resumen.rechazadas) %}
+          Ya hay {{ resumen.aprobadas }} aprobada(s) y {{ resumen.rechazadas }} rechazada(s):
+          cámbialas en el filtro «Estado».
+        {% endif %}
       </div>
     </div>
   </div>

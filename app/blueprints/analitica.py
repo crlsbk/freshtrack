@@ -93,11 +93,24 @@ def pronostico_ejecutar():
 # ===========================================================================
 # REABASTECIMIENTO
 # ===========================================================================
+# Estados posibles de una orden: los mismos que valida el CHECK chk_or_estado
+# de analitica.orden_reabastecimiento. El desplegable «Estado» se genera desde
+# aquí para que no se desincronice del filtro del listado.
+ESTADOS_ORDEN = ("PENDIENTE", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA")
+
+
+def _filtro_ordenes(estado: str | None) -> str:
+    """Normaliza el filtro del listado; cualquier valor desconocido cae en PENDIENTE."""
+    if estado == "TODAS" or estado in ESTADOS_ORDEN:
+        return estado
+    return "PENDIENTE"
+
+
 @bp.route("/reabastecimiento")
 @login_required
 @requiere_vista("replenishment")
 def reabastecimiento():
-    estado = request.args.get("estado") or "PENDIENTE"
+    estado = _filtro_ordenes(request.args.get("estado"))
     return render_template(
         "analitica/reabastecimiento.html",
         active="replenishment",
@@ -105,6 +118,7 @@ def reabastecimiento():
         resumen=motor_reab.resumen_ordenes(),
         sobreinventario=motor_reab.sobreinventario(),
         estado_filtro=estado,
+        estados=ESTADOS_ORDEN,
     )
 
 
@@ -143,6 +157,10 @@ def reabastecimiento_generar():
 def reabastecimiento_decidir(id_orden: str):
     aprobar = request.form.get("decision") == "aprobar"
     cantidad = request.form.get("cantidad")
+    # El formulario viaja con el filtro activo: al decidir, el usuario vuelve a
+    # la misma lista desde la que actuó (si venía de «Pendiente» no pierde la
+    # cola) y el aviso le dice con qué filtro encontrar la orden ya decidida.
+    filtro = _filtro_ordenes(request.form.get("filtro"))
     try:
         resultado = motor_reab.decidir_orden(
             id_orden,
@@ -152,12 +170,13 @@ def reabastecimiento_decidir(id_orden: str):
         )
         flash(
             f"Orden {resultado['estado'].lower()}"
-            + (f" por {resultado['cantidad']:g} unidades." if aprobar else "."),
+            + (f" por {resultado['cantidad']:g} unidades." if aprobar else ".")
+            + f" La encuentras con el filtro «{resultado['estado']}».",
             "ok",
         )
     except (ValueError, SQLAlchemyError) as e:
         flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
-    return redirect(url_for("analitica.reabastecimiento"))
+    return redirect(url_for("analitica.reabastecimiento", estado=filtro))
 
 
 # ===========================================================================

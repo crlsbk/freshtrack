@@ -99,13 +99,17 @@
 
 {% macro moneda(valor) %}${{ "{:,.2f}".format(valor | float) }}{% endmacro %}
 
-{# --- Tarjeta KPI --------------------------------------------------------- #}
-{% macro kpi(etiqueta, valor, sub=None, acento=None) %}
-  <div class="card kpi-card">
+{# --- Tarjeta KPI ---------------------------------------------------------
+   Con `href` la tarjeta se vuelve un enlace (misma caja: la etiqueta <a> lleva
+   las clases de la tarjeta, así que la rejilla la estira igual que a un <div>).
+   Sirve para que un contador lleve a la lista que lo explica. #}
+{% macro kpi(etiqueta, valor, sub=None, acento=None, href=None) %}
+  {%- if href %}<a href="{{ href }}" class="card kpi-card kpi-enlace">
+  {%- else %}<div class="card kpi-card">{% endif %}
     <div class="kpi-label">{{ etiqueta }}</div>
     <div class="kpi-value" {% if acento %}style="color: {{ acento }};"{% endif %}>{{ valor }}</div>
     {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
-  </div>
+  {%- if href %}</a>{% else %}</div>{% endif %}
 {% endmacro %}
 
 {# --- Bloque de explicación (reabastecimiento / transferencia) ------------ #}

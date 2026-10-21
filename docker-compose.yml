@@ -1,5 +1,3 @@
-version: '3.8'
-
 # FreshTrack — persistencia políglota.
 #
 # El brief pide contenedores de PostgreSQL, MongoDB y Redis. Los tres se levantan
@@ -107,17 +105,208 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # La aplicación solo depende de PostgreSQL: es su única fuente de datos.
-    # No se le añade depends_on de mongo/redis a propósito, para no dar a entender
-    # que los necesita para arrancar.
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
         condition: service_healthy
     ports:
       - "${APP_PORT:-5000}:5000"
     volumes:
       - .:/app:z
     command: ["python", "run.py"]
+
+  # --- Microservicio 1: Autenticación, Identidad y Sesiones (svc-auth) -------
+  svc_auth:
+    build:
+      context: .
+      dockerfile: app/services/auth_service/Dockerfile
+    container_name: freshtrack_svc_auth
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - AUTH_SERVICE_PORT=5001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5001:5001"
+    volumes:
+      - .:/app:z
+
+  # --- Microservicio 2: Catálogos Maestros y Locaciones (svc-catalog) --------
+  svc_catalog:
+    build:
+      context: .
+      dockerfile: app/services/catalog_service/Dockerfile
+    container_name: freshtrack_svc_catalog
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - CATALOG_SERVICE_PORT=5002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5002:5002"
+    volumes:
+      - .:/app:z
+
+  # --- Microservicio 3: Inventario y Motor FEFO (svc-inventory) --------------
+  svc_inventory:
+    build:
+      context: .
+      dockerfile: app/services/inventory_service/Dockerfile
+    container_name: freshtrack_svc_inventory
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - INVENTORY_SERVICE_PORT=5003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5003:5003"
+    volumes:
+      - .:/app:z
+
+  # --- Microservicio 4: Comercial, POS y Mermas (svc-commercial) -------------
+  svc_commercial:
+    build:
+      context: .
+      dockerfile: app/services/commercial_service/Dockerfile
+    container_name: freshtrack_svc_commercial
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - COMMERCIAL_SERVICE_PORT=5004
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5004:5004"
+    volumes:
+      - .:/app:z
+
+  # --- Microservicio 5: Logística Inbound y Manifiestos ASN (svc-asn) --------
+  svc_asn:
+    build:
+      context: .
+      dockerfile: app/services/asn_service/Dockerfile
+    container_name: freshtrack_svc_asn
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - MONGO_HOST=mongo
+      - ASN_SERVICE_PORT=5005
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    ports:
+      - "5005:5005"
+    volumes:
+      - .:/app:z
+
+  # --- Microservicio 6: Planeación y Pronósticos de Demanda (svc-planning) ----
+  svc_planning:
+    build:
+      context: .
+      dockerfile: app/services/planning_service/Dockerfile
+    container_name: freshtrack_svc_planning
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - MONGO_HOST=mongo
+      - PLANNING_SERVICE_PORT=5006
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    ports:
+      - "5006:5006"
+    volumes:
+      - .:/app:z
+
+  # --- Microservicio 7: Alertas Pre-Merma y Sostenibilidad ESG (svc-alerts) ---
+  svc_alerts:
+    build:
+      context: .
+      dockerfile: app/services/alerts_service/Dockerfile
+    container_name: freshtrack_svc_alerts
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - MONGO_HOST=mongo
+      - ALERTS_SERVICE_PORT=5007
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    ports:
+      - "5007:5007"
+    volumes:
+      - .:/app:z
+
+  # --- Microservicio 8: Auditoría Inmutable y Cumplimiento (svc-audit) --------
+  svc_audit:
+    build:
+      context: .
+      dockerfile: app/services/audit_service/Dockerfile
+    container_name: freshtrack_svc_audit
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - AUDIT_SERVICE_PORT=5008
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5008:5008"
+    volumes:
+      - .:/app:z
 
 volumes:
   postgres_data:

@@ -54,6 +54,13 @@
 /* ── Tarjeta KPI ── */
 .kpi-card { padding: 16px 18px; }
 
+/* Tarjeta KPI que además es un enlace (p. ej. «Aprobadas» → lista filtrada). */
+.kpi-enlace {
+  text-decoration: none; color: inherit; display: block;
+  transition: border-color .15s, transform .15s;
+}
+.kpi-enlace:hover { border-color: var(--muted-foreground); transform: translateY(-1px); }
+
 /* ── Grids adicionales ── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }

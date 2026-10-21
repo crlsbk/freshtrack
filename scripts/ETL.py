@@ -248,19 +248,21 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
                 Reparte `cantidad` entre los lotes disponibles, empezando por el
                 que vence antes. Devuelve [(lote, cantidad_consumida)].
                 """
-                restante = cantidad
+                restante = round(cantidad, 2)
                 consumos = []
                 for lote in sorted(
-                    (l for l in activos if l["restante"] > 0),
+                    (l for l in activos if round(l["restante"], 2) >= 0.01),
                     key=lambda l: (l["f_cad"], l["codigo"]),
                 ):
-                    if restante <= 1e-9:
+                    if restante < 0.01:
                         break
                     if lote["f_cad"] < dia:
                         continue  # ya vencido: no se vende
-                    toma = min(lote["restante"], restante)
-                    lote["restante"] -= toma
-                    restante -= toma
+                    toma = round(min(round(lote["restante"], 2), restante), 2)
+                    if toma < 0.01:
+                        continue
+                    lote["restante"] = round(lote["restante"] - toma, 2)
+                    restante = round(restante - toma, 2)
                     consumos.append((lote, toma))
                 return consumos
 

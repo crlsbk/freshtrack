@@ -28,12 +28,14 @@ from __future__ import annotations
 
 import math
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, escalar, one, query, transaccion
+from app.events.dispatcher import publicar_evento
+from app.services.doc_store import guardar_pronostico
 
 METODOS = {
     "MEDIA_MOVIL": {
@@ -396,6 +398,54 @@ def ejecutar_pronostico(
         },
         id_usuario=usuario["id_usuario"],
         usuario_email=usuario["email"],
+    )
+
+    # Persistir proyecciones en MongoDB para consulta de series temporales
+    try:
+        for res in resultados:
+            puntos_mongo = [
+                {
+                    "fecha": datetime.combine(p["fecha"], datetime.min.time(), tzinfo=timezone.utc),
+                    "demanda_pronosticada": float(p["valor"]),
+                    "intervalo_inferior": round(float(p["valor"]) * 0.85, 2),
+                    "intervalo_superior": round(float(p["valor"]) * 1.15, 2),
+                    "percentil": 50,
+                }
+                for p in res.get("pronostico", [])
+            ]
+            if puntos_mongo:
+                guardar_pronostico(
+                    id_sku=res["id_sku"],
+                    id_locacion=res["id_locacion"],
+                    modelo=metodo,
+                    puntos=puntos_mongo,
+                    fecha_inicio=puntos_mongo[0]["fecha"],
+                    fecha_fin=puntos_mongo[-1]["fecha"],
+                    dias_horizonte=max(7, horizonte),
+                    version_modelo="1.0",
+                    linaje={"id_run": id_run, "generado_por": usuario.get("email")},
+                    metricas=res.get("metricas"),
+                )
+    except Exception:
+        pass
+
+    # Publicar evento asíncrono en Redis Streams
+    publicar_evento(
+        "PRONOSTICO_CALCULADO",
+        {
+            "id_run": id_run,
+            "metodo": metodo,
+            "horizonte": horizonte,
+            "series_count": series_procesadas,
+            "mae": mae_global,
+            "rmse": rmse_global,
+            "wmape": wmape_global,
+        },
+        contexto={
+            "user_id": usuario.get("id_usuario"),
+            "user_role": usuario.get("rol_clave"),
+            "correlation_id": id_run,
+        },
     )
 
     return {

@@ -31,9 +31,12 @@ from app.domain import kpis as motor_kpis
 from app.domain import mermas as dom_mermas
 from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as motor_reab
+from app.domain import saga_venta
 from app.domain import transferencias as motor_tr
 from app.domain import ventas as dom_ventas
+from app.events.dispatcher import leer_ultimos_eventos, publicar_evento
 from app.security import rol_en_token, token_requerido
+from app.services import doc_store
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -239,3 +242,80 @@ def api_pronostico_ejecutar():
         return jsonify({"error": "pronostico_rechazado", "mensaje": str(e)}), 400
     except SQLAlchemyError as e:
         return _error(e)
+
+
+# ===========================================================================
+# Microservicios y Persistencia Políglota (Saga, Redis Streams, MongoDB)
+# ===========================================================================
+@bp.post("/ventas/saga")
+@token_requerido
+@rol_en_token("admin", "store_manager", "warehouse")
+def api_venta_saga():
+    """Ejecuta una venta utilizando el patrón de Saga Orquestada (Inventario + Ventas)."""
+    datos = request.get_json(silent=True) or request.form
+    try:
+        id_locacion = int(datos.get("id_locacion"))
+        lineas = datos.get("lineas")
+        if not lineas:
+            lineas = [
+                {"id_sku": int(datos.get("id_sku")), "cantidad": float(datos.get("cantidad"))}
+            ]
+        resultado = saga_venta.ejecutar_saga_venta(
+            id_locacion=id_locacion,
+            lineas=lineas,
+            usuario=_usuario(),
+            canal=datos.get("canal", "TIENDA"),
+        )
+        return jsonify(resultado), 201
+    except (TypeError, ValueError, saga_venta.ErrorSagaVenta) as e:
+        return jsonify({"error": "saga_venta_rechazada", "mensaje": str(e)}), 400
+    except SQLAlchemyError as e:
+        return _error(e)
+
+
+@bp.get("/eventos/recientes")
+@token_requerido
+@rol_en_token("admin", "auditor")
+def api_eventos_recientes():
+    """Consulta los últimos eventos de dominio emitidos en Redis Streams."""
+    cantidad = a_int(request.args.get("n"), 20)
+    eventos = leer_ultimos_eventos(cantidad=cantidad)
+    return jsonify({"total": len(eventos), "eventos": eventos})
+
+
+@bp.get("/alertas/documentos")
+@token_requerido
+def api_alertas_documentos():
+    """Consulta alertas operativas indexadas en MongoDB con retención TTL."""
+    id_locacion = a_int(request.args.get("id_locacion"), 0) or None
+    criticidad = request.args.get("criticidad")
+    alertas = doc_store.listar_alertas_operativas(
+        id_locacion=id_locacion,
+        criticidad=criticidad,
+        limite=a_int(request.args.get("limite"), 50),
+    )
+    return jsonify({"total": len(alertas), "alertas": alertas})
+
+
+@bp.post("/alertas/documentos")
+@token_requerido
+@rol_en_token("admin", "store_manager", "warehouse")
+def api_crear_alerta_documento():
+    """Registra una alerta operativa directamente en MongoDB."""
+    datos = request.get_json(silent=True) or {}
+    try:
+        inserted_id = doc_store.guardar_alerta_operativa(
+            tipo=datos.get("tipo", "RIESGO_PRE_MERMA"),
+            criticidad=datos.get("criticidad", "WARNING"),
+            mensaje=datos.get("mensaje", "Alerta automática"),
+            id_sku=datos.get("id_sku"),
+            id_locacion=datos.get("id_locacion"),
+            id_lote=datos.get("id_lote"),
+            contexto=datos.get("contexto"),
+        )
+        if not inserted_id:
+            return jsonify({"error": "No se pudo insertar alerta en MongoDB"}), 500
+        return jsonify({"inserted_id": inserted_id, "estado": "REGISTRADA"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+

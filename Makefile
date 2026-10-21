@@ -19,7 +19,7 @@ else
 	PYBIN := $(VENV)/bin/python
 endif
 
-.PHONY: help setup venv bootstrap etl app demo verify smoke test up infra down clean
+.PHONY: help setup venv bootstrap etl app demo verify smoke test up infra down clean verify-polyglot verify-microservices
 
 help:
 	@echo "FreshTrack — objetivos disponibles:"
@@ -30,8 +30,10 @@ help:
 	@echo "  make app        Levanta la aplicacion Flask"
 	@echo "  make demo       Ejecuta el escenario extremo a extremo"
 	@echo "  make verify     Comprueba la persistencia en un proceso nuevo"
+	@echo "  make verify-polyglot Comprueba PostgreSQL, Redis, Mongo y Sagas"
+	@echo "  make verify-microservices Comprueba los 8 microservicios contenerizados (JSON/XML/Saga)"
 	@echo "  make smoke      Recorre todas las pantallas con los 7 roles"
-	@echo "  make test       smoke + demo + verify"
+	@echo "  make test       smoke + verify-polyglot + verify-microservices + demo + verify"
 	@echo "  make infra      Levanta solo PostgreSQL, MongoDB y Redis"
 	@echo "  make up/down/clean  Docker Compose (los 3 motores + la app)"
 
@@ -63,7 +65,13 @@ verify:
 smoke:
 	$(PYBIN) scripts/smoke_rutas.py
 
-test: smoke demo verify
+verify-polyglot:
+	$(PYBIN) scripts/verify_polyglot.py
+
+verify-microservices:
+	$(PYBIN) scripts/verify_all_microservices.py
+
+test: smoke verify-polyglot verify-microservices demo verify
 
 up: setup
 	docker compose up -d

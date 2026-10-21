@@ -222,9 +222,14 @@ BEGIN
         GRANT EXECUTE ON FUNCTION auditoria.fn_registrar_accion(
             varchar, varchar, text, text, jsonb, jsonb, uuid, varchar, text, text
         ) TO app_backend;
+        -- Por si más adelante se añade otra tabla de bitácora al esquema.
+        ALTER DEFAULT PRIVILEGES IN SCHEMA auditoria
+            GRANT INSERT ON TABLES TO app_backend;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_auditor') THEN
         GRANT SELECT ON auditoria.bitacora_eventos TO app_auditor;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA auditoria
+            GRANT SELECT ON TABLES TO app_auditor;
     END IF;
 END
 $$;

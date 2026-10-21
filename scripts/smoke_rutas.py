@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
-RAIZ = r"C:\VSCode\ProyectoIAC"
-sys.path.insert(0, RAIZ)
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
 os.chdir(RAIZ)
 
 from dotenv import load_dotenv

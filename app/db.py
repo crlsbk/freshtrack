@@ -35,6 +35,7 @@ def get_engine() -> Engine:
             pool_size=5,
             max_overflow=10,
             future=True,
+            connect_args={"options": "-c search_path=operacion,public"}
         )
     return _engine
 

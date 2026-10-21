@@ -621,7 +621,8 @@ def crear_usuario(datos: dict, usuario: dict) -> dict:
                 """
                 INSERT INTO operacion.usuario
                     (id_rol, id_locacion, nombre_completo, email, password_hash, estado_activo)
-                VALUES (:rol, :loc, :nombre, :email, crypt(:password, gen_salt('bf')), true)
+                VALUES (:rol, :loc, :nombre, :email,
+                        public.crypt(:password, public.gen_salt('bf')), true)
                 RETURNING id_usuario::text
                 """
             ),

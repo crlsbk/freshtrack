@@ -151,6 +151,39 @@ def aprobar_orden(id_orden: str):
     return render_response({"id_orden": id_orden, "estado": "APROBADA"}, status=200, root_tag="orden_aprobada")
 
 
+@app.get("/api/v1/planning/forecast/analytics/kpis")
+@requiere_auth()
+def analitica_kpis_pronosticos():
+    """Ejecuta pipeline de agregación en MongoDB ($group + $project + $sort) calculando métricas de modelos."""
+    kpis = doc_store.analitica_kpis_pronosticos()
+    return render_response({"total_modelos": len(kpis), "kpis_modelos": kpis}, status=200, root_tag="kpis_pronosticos")
+
+
+@app.get("/api/v1/planning/sku/<int:sku_id>/full-context")
+@requiere_auth()
+def contexto_completo_sku(sku_id: int):
+    """
+    Recuperación híbrida: Consulta datos maestros de producto en PostgreSQL y los
+    enriquece con el linaje de pronóstico y alertas operativas activas desde MongoDB.
+    """
+    ctx = g.contexto
+    locacion_id = a_int(ctx.get("location_id") or request.args.get("id_locacion"), 1)
+
+    # 1. PostgreSQL (fuente de verdad relacional)
+    prod = one("SELECT id_sku, nombre, categoria, vida_util_dias, precio_unitario FROM operacion.producto WHERE id_sku = :sku", sku=sku_id)
+    if not prod:
+        return render_response({"error": "not_found", "mensaje": f"SKU {sku_id} no existe en PostgreSQL."}, status=404, root_tag="sku_context")
+
+    # 2. MongoDB (almacén documental de contexto y analítica)
+    doc_context = doc_store.obtener_contexto_documental_sku(sku_id, locacion_id)
+
+    respuesta = {
+        "producto_postgres": dict(prod),
+        "contexto_mongo": doc_context,
+    }
+    return render_response(respuesta, status=200, root_tag="sku_full_context")
+
+
 registrar_openapi(
     app,
     titulo="Planning, Forecasting & Replenishment Service (FreshTrack)",

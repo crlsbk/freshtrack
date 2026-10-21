@@ -220,10 +220,13 @@ services:
     env_file:
       - .env
     environment:
+      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_HOST=redis
       - MONGO_HOST=mongo
       - ASN_SERVICE_PORT=5005
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       mongo:

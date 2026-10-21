@@ -198,6 +198,43 @@ def actualizar_estado_asn(folio_asn: str):
     return render_response({"folio_asn": folio_asn, "estado": nuevo_estado}, status=200, root_tag="asn_status")
 
 
+@app.get("/api/v1/asn/analytics/summary")
+@requiere_auth()
+def analitica_resumen_asn():
+    """Ejecuta pipeline de agregación en MongoDB ($unwind + $group) para consolidar carga ASN por proveedor."""
+    resumen = doc_store.analitica_carga_asn_por_proveedor()
+    return render_response({"total_grupos": len(resumen), "carga_consolidada": resumen}, status=200, root_tag="asn_analytics")
+
+
+@app.post("/api/v1/asn/<folio_asn>/inspection")
+@requiere_auth("admin", "warehouse", "quality")
+def registrar_inspeccion_asn(folio_asn: str):
+    """Agrega atómicamente una evidencia/inspección de calidad a un ASN con operador $push en MongoDB."""
+    datos = request.get_json(silent=True) or {}
+    inspector = datos.get("inspector") or g.usuario_actual.get("sub", "auditor_cedis")
+    resultado = datos.get("resultado", "CONFORME")
+    temperatura = datos.get("temperatura_registrada")
+    if temperatura is not None:
+        try:
+            temperatura = float(temperatura)
+        except (ValueError, TypeError):
+            temperatura = None
+    obs = datos.get("observaciones", "")
+
+    ok = doc_store.agregar_inspeccion_asn(
+        folio_asn,
+        inspector=inspector,
+        resultado=resultado,
+        temperatura_registrada=temperatura,
+        observaciones=obs,
+    )
+    if not ok:
+        return render_response({"error": "not_found", "mensaje": f"ASN {folio_asn} no encontrado en MongoDB."}, status=404, root_tag="asn_inspection")
+
+    publicar_evento("ASN_INSPECCION_REGISTRADA", {"folio_asn": folio_asn, "resultado": resultado, "temperatura": temperatura})
+    return render_response({"folio_asn": folio_asn, "status": "INSPECCION_AGREGADA", "resultado": resultado}, status=201, root_tag="asn_inspection")
+
+
 registrar_openapi(
     app,
     titulo="Inbound Logistics & ASN Reception Service (FreshTrack)",

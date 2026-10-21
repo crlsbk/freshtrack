@@ -181,6 +181,14 @@ def calcular_esg():
     }, status=200, root_tag="reporte_esg_sostenibilidad")
 
 
+@app.get("/api/v1/alerts/analytics/kpis")
+@requiere_auth()
+def analitica_kpis_alertas():
+    """Ejecuta pipeline de agregación en MongoDB ($match + $group + $project) agrupando alertas por locación y criticidad."""
+    kpis = doc_store.analitica_alertas_por_locacion()
+    return render_response({"total_grupos": len(kpis), "kpis_alertas": kpis}, status=200, root_tag="kpis_alertas")
+
+
 registrar_openapi(
     app,
     titulo="Context-Aware Alerts & ESG Sustainability Service (FreshTrack)",

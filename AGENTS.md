@@ -105,6 +105,16 @@ make test             # smoke + verify-polyglot + demo + verify
 - [x] Phase 2: Documentación OpenAPI 3.0 y Swagger UI interactiva (`/api/v1/openapi.json`, `/api/v1/docs`) en cada microservicio.
 - [x] Phase 2: Documentación técnica obligatoria generada en `docs/DOCUMENTACION_TECNICA_MICROSERVICIOS.md`.
 - [x] Phase 2: Suite de verificación integral `scripts/verify_all_microservices.py` incorporada en `make test`.
+- [x] Phase 3: Suite Completa de MongoDB & Persistencia Políglota con demostración de las 7 operaciones:
+  - 1. Inserción individual y masiva (`insert_one`, `insert_many` en `app/services/doc_store.py`).
+  - 2. Consultas y proyecciones selectivas (`find_one`, `projection`).
+  - 3. Actualizaciones avanzadas atómicas (`$set`, `$push` para inspecciones de calidad de ASN).
+  - 4. Filtrado multi-criterio (`$in`, `$gte`, `$lte`, filtros en objetos anidados).
+  - 5. Agregaciones analíticas mediante pipelines complejos (`$match`, `$unwind`, `$group`, `$project`, `$sort`).
+  - 6. Creación y uso de índices validado con `explain()` (`uq_asn_folio` único, compuestos, y TTL a 180 días en `alertas_operativas`).
+  - 7. Recuperación contextual vinculada a identidades relacionales de PostgreSQL (`id_sku`, `id_locacion`, `id_proveedor`).
+  - Suite automatizada `scripts/verify_mongo.py` integrada en `make verify-mongo` y `make test`.
+  - Tablero web interactivo `/mongo` en FreshTrack y documentación técnica en `docs/DISENO_PERSISTENCIA_MONGODB.md`.
 
 ### Next Steps
 - [ ] Implementar Gateway perimetral dedicado / Reverse Proxy Nginx o Kong si se requiere enrutamiento unificado de puertos externos.

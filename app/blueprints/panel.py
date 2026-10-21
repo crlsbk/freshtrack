@@ -25,6 +25,7 @@ from app.domain import inventario as dom_inv
 from app.domain import kpis as motor_kpis
 from app.domain import pronostico as motor_pron
 from app.repos import catalogo as repo
+from app.services import doc_store
 from app.security import login_required, requiere_rol, requiere_vista, usuario_actual
 
 bp = Blueprint("panel", __name__)
@@ -380,3 +381,44 @@ def _guardar_configuracion(form) -> None:
         id_usuario=usuario["id_usuario"],
         usuario_email=usuario["email"],
     )
+
+
+# ===========================================================================
+# EXPLORADOR MONGODB POLÍGLOTA
+# ===========================================================================
+@bp.route("/mongo")
+@login_required
+@requiere_vista("mongo_explorer")
+def mongo_explorer():
+    """Tablero interactivo para visualización de colecciones, pipelines e índices de MongoDB."""
+    db = doc_store.get_mongo_db()
+    estado = {}
+    if db is not None:
+        estado = {
+            "conectado": True,
+            "db_name": db.name,
+            "host": db.client.address[0] if db.client.address else "localhost",
+            "port": db.client.address[1] if db.client.address else 27017,
+            "colecciones": {
+                "avisos_asn": db.avisos_asn.count_documents({}),
+                "pronosticos_demanda": db.pronosticos_demanda.count_documents({}),
+                "alertas_operativas": db.alertas_operativas.count_documents({}),
+            },
+            "indices": {
+                "avisos_asn": [idx["name"] for idx in db.avisos_asn.list_indexes()],
+                "alertas_operativas": [idx["name"] for idx in db.alertas_operativas.list_indexes()],
+                "pronosticos_demanda": [idx["name"] for idx in db.pronosticos_demanda.list_indexes()],
+            },
+            "pipeline_alertas": doc_store.analitica_alertas_por_locacion(),
+            "pipeline_asn": doc_store.analitica_carga_asn_por_proveedor(),
+            "pipeline_pronosticos": doc_store.analitica_kpis_pronosticos(),
+        }
+    else:
+        estado = {"conectado": False}
+
+    return render_template(
+        "panel/mongo_dashboard.html",
+        active="mongo_explorer",
+        estado=estado,
+    )
+

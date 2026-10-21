@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}MongoDB Políglota{% endblock %}
+{% block breadcrumb %}Analítica › MongoDB Políglota{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Persistencia Políglota',
+  'Almacén Documental & Agregaciones MongoDB',
+  'MongoDB complementa a PostgreSQL gestionando documentos con esquemas flexibles, series temporales inmutables con linaje algorítmico, manifiestos ASN de proveedores y eventos de alta frecuencia con TTL a 180 días.'
+) }}
+
+{# ── KPIs Generales de MongoDB ── #}
+<div class="stat-grid-4">
+  {{ ui.kpi('Estado MongoDB', 'CONECTADO' if estado.conectado else 'DESCONECTADO', estado.db_name ~ ' en puerto ' ~ estado.port, '#4ade80' if estado.conectado else '#f87171') }}
+  {{ ui.kpi('Avisos ASN', estado.colecciones.get('avisos_asn', 0), 'Manifiestos con carga anidada', '#38bdf8') }}
+  {{ ui.kpi('Pronósticos', estado.colecciones.get('pronosticos_demanda', 0), 'Series temporales y percentiles', '#a78bfa') }}
+  {{ ui.kpi('Alertas TTL', estado.colecciones.get('alertas_operativas', 0), 'Retención automática 180 días', '#fbbf24') }}
+</div>
+
+{# ── Tarjetas de Microservicios y Swagger UI ── #}
+<div class="card" style="margin-bottom:24px;border-left:4px solid #38bdf8;">
+  <div class="card-title">Microservicios Desacoplados y Documentación Interactiva (Swagger UI)</div>
+  <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
+    Los microservicios de FreshTrack exponen estas colecciones mediante endpoints REST con negociación dual JSON/XML:
+  </p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;">
+    <div style="background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+      <div style="font-weight:600;font-size:14px;color:#38bdf8;">Logística ASN (5005)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin:4px 0 8px 0;">Manifiestos XML/JSON y evidencias $push.</div>
+      <a href="http://127.0.0.1:5005/api/v1/docs" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;">Swagger UI ›</a>
+      <a href="http://127.0.0.1:5005/api/v1/asn/analytics/summary" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;margin-left:4px;">Pipeline API ›</a>
+    </div>
+    <div style="background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+      <div style="font-weight:600;font-size:14px;color:#a78bfa;">Planeación & Demanda (5006)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin:4px 0 8px 0;">Percentiles P10/P50/P90 y cruce relacional.</div>
+      <a href="http://127.0.0.1:5006/api/v1/docs" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;">Swagger UI ›</a>
+      <a href="http://127.0.0.1:5006/api/v1/planning/forecast/analytics/kpis" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;margin-left:4px;">KPIs Modelos ›</a>
+    </div>
+    <div style="background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+      <div style="font-weight:600;font-size:14px;color:#fbbf24;">Alertas Pre-Merma & ESG (5007)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin:4px 0 8px 0;">Alertas operativas con TTL y CO2e evitado.</div>
+      <a href="http://127.0.0.1:5007/api/v1/docs" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;">Swagger UI ›</a>
+      <a href="http://127.0.0.1:5007/api/v1/alerts/analytics/kpis" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;margin-left:4px;">Pipeline Alertas ›</a>
+    </div>
+  </div>
+</div>
+
+{# ── Pipeline de Agregación 1: Alertas por Locación ── #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>Pipeline 1: Analítica de Alertas Operativas por Sucursal ($match + $group + $project + $sort)</span>
+    <span class="badge badge-info">alertas_operativas</span>
+  </div>
+  <p style="color:var(--text-muted);font-size:12.5px;margin-bottom:12px;">
+    Filtra alertas abiertas, las agrupa por <code>id_locacion</code> y <code>criticidad</code>, acumulando el total y calculando el promedio de días restantes antes de merma.
+  </p>
+  {% if estado.pipeline_alertas %}
+    <table>
+      <thead>
+        <tr>
+          <th>Locación (FK Lógica)</th>
+          <th>Criticidad</th>
+          <th>Total Alertas</th>
+          <th>Promedio Días a Caducidad</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in estado.pipeline_alertas %}
+          <tr>
+            <td><strong>Locación #{{ fila.id_locacion }}</strong></td>
+            <td>
+              {% if fila.criticidad == 'CRITICAL' %}
+                <span class="badge badge-danger">CRITICAL</span>
+              {% elif fila.criticidad == 'WARNING' %}
+                <span class="badge badge-warning">WARNING</span>
+              {% else %}
+                <span class="badge badge-info">INFO</span>
+              {% endif %}
+            </td>
+            <td><span class="mono" style="font-weight:600;">{{ fila.total_alertas }}</span></td>
+            <td>{{ fila.promedio_dias_restantes }} días</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div style="padding:16px;text-align:center;color:var(--text-muted);">Sin alertas abiertas actualmente en MongoDB.</div>
+  {% endif %}
+</div>
+
+{# ── Pipeline de Agregación 2: Carga ASN Desenrollada ── #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>Pipeline 2: Consolidación de Carga ASN por Proveedor y SKU ($unwind + $group + $project + $sort)</span>
+    <span class="badge badge-info">avisos_asn</span>
+  </div>
+  <p style="color:var(--text-muted);font-size:12.5px;margin-bottom:12px;">
+    Desenrolla el arreglo embebido <code>detalle_carga</code>, agrupando por <code>id_proveedor</code> y <code>id_sku</code> para totalizar piezas declaradas y despachos asociados.
+  </p>
+  {% if estado.pipeline_asn %}
+    <table>
+      <thead>
+        <tr>
+          <th>Proveedor (FK Lógica)</th>
+          <th>SKU (FK Lógica)</th>
+          <th>Piezas Totales Declaradas</th>
+          <th>Despachos Asociados</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in estado.pipeline_asn %}
+          <tr>
+            <td><strong>Proveedor #{{ fila.id_proveedor }}</strong></td>
+            <td>SKU #{{ fila.id_sku }}</td>
+            <td><span class="mono" style="font-weight:600;">{{ fila.piezas_totales }} unidades</span></td>
+            <td>{{ fila.despachos_asociados }} aviso(s)</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div style="padding:16px;text-align:center;color:var(--text-muted);">Sin partidas de ASN registradas en MongoDB.</div>
+  {% endif %}
+</div>
+
+{# ── Pipeline de Agregación 3: Precisión de Pronósticos ── #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>Pipeline 3: Rendimiento Algorítmico de Pronósticos ($group + $project + $sort)</span>
+    <span class="badge badge-info">pronosticos_demanda</span>
+  </div>
+  <p style="color:var(--text-muted);font-size:12.5px;margin-bottom:12px;">
+    Consolida las métricas de error (MAE y RMSE) calculadas en las corridas inmutables agrupadas por modelo estadístico.
+  </p>
+  {% if estado.pipeline_pronosticos %}
+    <table>
+      <thead>
+        <tr>
+          <th>Modelo Algorítmico</th>
+          <th>Total Corridas Inmutables</th>
+          <th>MAE Promedio</th>
+          <th>RMSE Promedio</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in estado.pipeline_pronosticos %}
+          <tr>
+            <td><span class="mono" style="font-weight:600;color:#a78bfa;">{{ fila.modelo }}</span></td>
+            <td>{{ fila.total_corridas }}</td>
+            <td>{{ fila.mae_promedio }}</td>
+            <td>{{ fila.rmse_promedio }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div style="padding:16px;text-align:center;color:var(--text-muted);">Sin corridas de pronóstico en MongoDB.</div>
+  {% endif %}
+</div>
+
+{# ── Índices Activos y Políticas de Retención TTL ── #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-title">Índices Activos & Políticas de Almacenamiento</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Colección</th>
+        <th>Índices Registrados</th>
+        <th>Propósito Arquitectónico</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>avisos_asn</strong></td>
+        <td><code class="mono">{{ estado.indices.get('avisos_asn', []) | join(', ') }}</code></td>
+        <td>Garantiza unicidad de folio (<code>uq_asn_folio</code>) y optimiza búsquedas por proveedor y estado.</td>
+      </tr>
+      <tr>
+        <td><strong>pronosticos_demanda</strong></td>
+        <td><code class="mono">{{ estado.indices.get('pronosticos_demanda', []) | join(', ') }}</code></td>
+        <td>Índice compuesto <code>(id_sku, id_locacion, fecha_calculo DESC)</code> para recuperación en O(log N).</td>
+      </tr>
+      <tr>
+        <td><strong>alertas_operativas</strong></td>
+        <td><code class="mono">{{ estado.indices.get('alertas_operativas', []) | join(', ') }}</code></td>
+        <td>Índice TTL <code>idx_alerta_retencion_ttl</code> purga alertas solas a los 180 días sin degradar PostgreSQL.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

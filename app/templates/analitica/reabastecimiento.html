@@ -14,8 +14,8 @@
    «Pendiente», así que hay que poder volver a encontrarla con un clic. #}
 <div class="stat-grid-4">
   {{ ui.kpi('Órdenes pendientes', resumen.pendientes, 'Esperan aprobación humana',
-            '#fbbf24', href=url_for('analitica.reabastecimiento', estado='PENDIENTE')) }}
-  {{ ui.kpi('Urgentes', resumen.urgentes, 'Prioridad alta', '#f87171') }}
+            '#d97706', href=url_for('analitica.reabastecimiento', estado='PENDIENTE')) }}
+  {{ ui.kpi('Urgentes', resumen.urgentes, 'Prioridad alta', '#dc2626') }}
   {{ ui.kpi('Aprobadas', resumen.aprobadas, 'Ver el listado →',
             href=url_for('analitica.reabastecimiento', estado='APROBADA')) }}
   {{ ui.kpi('Valor estimado pendiente', ui.moneda(resumen.valor_estimado)) }}
@@ -75,12 +75,12 @@
 
     <div class="stat-grid-4" style="margin:16px 0 0;">
       {{ ui.kpi('Cantidad sugerida', (o.cantidad_sugerida) | cantidad(2),
-                o.unidad_medida, '#4ade80') }}
+                o.unidad_medida, '#16a34a') }}
       {{ ui.kpi('Necesidad neta', (o.necesidad_neta) | cantidad(2), o.unidad_medida) }}
       {{ ui.kpi('Inventario útil', (o.inventario_util) | cantidad(2),
                 'Descontado lo que está por vencer') }}
       {{ ui.kpi('Inventario en riesgo', (o.inventario_riesgo) | cantidad(2),
-                'No cubre demanda futura', '#f87171') }}
+                'No cubre demanda futura', '#dc2626') }}
     </div>
 
     <details class="acordeon">

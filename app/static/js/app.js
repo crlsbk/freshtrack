@@ -92,3 +92,15 @@ document.addEventListener("click", e => {
   const ayuda = e.target.closest(".ayuda");
   if (ayuda) { e.preventDefault(); e.stopPropagation(); ayuda.focus(); }
 }, true);
+
+// ── Pestañas de contenido (data-pestanas) ───────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll("[data-pestanas]").forEach(panel => {
+    const botones = panel.querySelectorAll(":scope > .tabs [data-pestana]");
+    const contenidos = panel.querySelectorAll(":scope > [data-pestana-id]");
+    botones.forEach(b => b.addEventListener("click", () => {
+      botones.forEach(x => x.classList.toggle("active", x === b));
+      contenidos.forEach(c => { c.hidden = c.dataset.pestanaId !== b.dataset.pestana; });
+    }));
+  });
+});

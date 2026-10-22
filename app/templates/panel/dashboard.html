@@ -10,224 +10,217 @@
 {% set puede = allowed_views or [] %}
 
 <div class="view-head">
-  <div class="view-eyebrow">Principal</div>
   <h1 class="view-title">Panel de control</h1>
-  <p class="view-desc">
-    Resumen de toda la red de tiendas y CEDIS. Empieza por lo que requiere atención;
-    haz clic en cualquier tarjeta con «Ver detalle» para ir a la pantalla donde se resuelve.
-  </p>
+  <p class="view-desc">Cómo va la red de tiendas hoy y qué necesita atención.</p>
 </div>
 
 {# ── 1. Qué atender hoy ── #}
-{{ ui.seccion('Qué atender hoy', 'Lo que puede convertirse en merma o en faltante si no se actúa.') }}
+{{ ui.seccion('Qué atender hoy') }}
 <div class="atender">
-  {{ ui.kpi('Lotes críticos', inv.lotes_criticos | cantidad,
-            (inv.criticas | cantidad) ~ ' unidades vencen en 2 días o menos', '#f87171',
+  {{ ui.kpi('Lotes por vencer', inv.lotes_criticos,
+            (inv.criticas | cantidad) ~ ' unidades vencen en 2 días o menos', '#dc2626',
             url_for('operacion.inventario') if 'inventory' in puede else None,
-            'Lotes con muy poca vida útil restante. Conviene venderlos con descuento, transferirlos o darlos de baja.',
-            'reloj') }}
-  {{ ui.kpi('Alertas abiertas', alertas.total | cantidad,
-            (alertas.por_severidad.get('CRITICA', 0) | string) ~ ' críticas · ' ~
-            (alertas.por_severidad.get('ALTA', 0) | string) ~ ' altas · ' ~
-            ((alertas.por_tipo.get('LOTE_POR_VENCER', 0) + alertas.por_tipo.get('LOTE_VENCIDO', 0)) | string) ~
-            ' de caducidad', '#fbbf24',
+            'Lotes con muy poca vida útil. Conviene venderlos con descuento, transferirlos o darlos de baja.', 'reloj') }}
+  {{ ui.kpi('Alertas abiertas', alertas.total,
+            (alertas.por_severidad.get('CRITICA', 0) | string) ~ ' críticas y ' ~
+            (alertas.por_severidad.get('ALTA', 0) | string) ~ ' altas', '#d97706',
             url_for('panel.alertas') if 'alerts' in puede else None,
-            'Avisos generados automáticamente: lotes por vencer, riesgo de faltante, sobreinventario y órdenes pendientes.',
-            'campana') }}
-  {{ ui.kpi('Compras por aprobar', kpis.ordenes.pendientes | cantidad,
-            (kpis.ordenes.aprobadas | string) ~ ' ya aprobadas', '#38bdf8',
+            'Avisos automáticos: lotes por vencer, riesgo de faltante, sobreinventario y órdenes pendientes.', 'campana') }}
+  {{ ui.kpi('Compras por aprobar', kpis.ordenes.pendientes,
+            (kpis.ordenes.aprobadas | string) ~ ' ya aprobadas', '#0284c7',
             url_for('analitica.reabastecimiento') if 'replenishment' in puede else None,
-            'Órdenes de reabastecimiento que el sistema sugiere y esperan la decisión de una persona.',
-            'carrito') }}
-  {{ ui.kpi('Transferencias sugeridas', kpis.transferencias.sugeridas | cantidad,
-            (kpis.transferencias.aprobadas | string) ~ ' aprobadas · ' ~
-            (kpis.transferencias.ejecutadas | string) ~ ' ejecutadas', '#a78bfa',
+            'Órdenes de compra que el sistema sugiere y esperan la decisión de una persona.', 'carrito') }}
+  {{ ui.kpi('Transferencias sugeridas', kpis.transferencias.sugeridas,
+            (kpis.transferencias.ejecutadas | string) ~ ' ya ejecutadas', '#7c3aed',
             url_for('analitica.transferencias') if 'transfers' in puede else None,
-            'Mover producto que está por vencer de una tienda donde sobra a otra donde sí se vende.',
-            'camion') }}
+            'Mover producto por vencer de una tienda donde sobra a otra donde sí se vende.', 'camion') }}
 </div>
 
-{# ── 2. Inventario ── #}
-{{ ui.seccion('Inventario', 'Lo que hay hoy en tiendas y CEDIS.') }}
+{# ── 2. Resumen del negocio ── #}
+{{ ui.seccion('Resumen') }}
 <div class="stat-grid-4">
-  {{ ui.kpi('Unidades en existencia', inv.unidades | cantidad,
-            (inv.lotes | string) ~ ' lotes en ' ~ (inv.locaciones | string) ~ ' ubicaciones', None, None,
-            'Suma de las unidades disponibles de todos los lotes.', 'caja') }}
-  {{ ui.kpi('Valor del inventario', ui.moneda(inv.valor), 'Calculado al costo de compra de cada lote', None, None,
-            'Cuánto dinero está invertido en el producto que hay en anaquel y bodega.', 'dinero') }}
-  {{ ui.kpi('Lotes en vigilancia', inv.lotes_vigilancia | cantidad,
-            (inv.vigilancia | cantidad) ~ ' unidades cerca de su fecha límite', '#fbbf24', None,
-            'Todavía se pueden vender, pero ya entraron en la ventana de riesgo de caducidad.', 'alerta') }}
-  {{ ui.kpi('Riesgo de faltante', alertas.por_tipo.get('RIESGO_DE_FALTANTE', 0),
-            'Productos que se acabarían antes de que llegue el pedido', '#fb923c', None,
-            'La existencia alcanza para menos días que el tiempo de entrega del proveedor.', 'flechas') }}
-</div>
-
-{# ── 3. Ventas y merma ── #}
-{{ ui.seccion('Ventas y merma', 'Lo vendido frente a lo que se perdió.') }}
-<div class="stat-grid-4">
-  {{ ui.kpi('Unidades vendidas', ven.unidades | cantidad,
-            (ven.tickets | cantidad) ~ ' tickets en total', '#4ade80', None, None, 'tendencia') }}
-  {{ ui.kpi('Ingreso acumulado', ui.moneda(ven.ingreso),
-            (ven.unidades_30d | cantidad) ~ ' unidades en los últimos 30 días', '#4ade80', None, None, 'dinero') }}
-  {{ ui.kpi('Merma acumulada', ui.moneda(mer.valor),
-            (mer.unidades | cantidad) ~ ' unidades · ' ~ (mer.eventos | cantidad) ~ ' registros', '#f87171', None,
+  {{ ui.kpi('Valor del inventario', ui.moneda(inv.valor, 0), (inv.unidades | cantidad) ~ ' unidades en existencia', None, None,
+            'Dinero invertido en el producto que hay hoy en tiendas y CEDIS, a costo de compra.', 'caja') }}
+  {{ ui.kpi('Ventas acumuladas', ui.moneda(ven.ingreso, 0), (ven.unidades | cantidad) ~ ' unidades vendidas', None, None,
+            'Ingreso total registrado en el sistema.', 'tendencia') }}
+  {{ ui.kpi('Merma acumulada', ui.moneda(mer.valor, 0), (mer.unidades | cantidad) ~ ' unidades perdidas', '#dc2626', None,
             'Valor del producto que se perdió: caducado, dañado, fuera de cadena de frío, etc.', 'basura') }}
-  {{ ui.kpi('Tasa de merma (180 días)', (tasa.tasa_pct | cantidad(2)) ~ '%',
-            (tasa.mermado | cantidad) ~ ' de ' ~ (tasa.recibido | cantidad) ~ ' unidades recibidas', '#f87171', None,
-            'De cada 100 unidades que llegaron, cuántas terminaron en merma. Se vendió el ' ~ (tasa.tasa_venta_pct | cantidad(1)) ~ '% de lo recibido.',
-            'diana') }}
+  {{ ui.kpi('Tasa de merma', (tasa.tasa_pct | cantidad(2)) ~ '%', 'De lo recibido en los últimos 180 días', None, None,
+            'De cada 100 unidades que llegaron, cuántas terminaron en merma. Se vendió el ' ~ (tasa.tasa_venta_pct | cantidad(1)) ~ '% de lo recibido.', 'diana') }}
 </div>
 
-<div class="card" style="margin-bottom:20px;">
+<div class="card" style="margin-bottom:24px;">
   <div class="card-title">Ventas y merma por mes</div>
-  <div class="chart-wrap" style="height:300px;">
+  <div class="chart-wrap" style="height:280px;">
     <canvas id="grafica-mensual"></canvas>
   </div>
 </div>
 
-{# ── 4. Pronóstico ── #}
-{{ ui.seccion('Calidad del pronóstico', 'Qué tan cerca estuvo la demanda estimada de la real.') }}
-{% if precision and precision.id_run %}
-  <div class="stat-grid-3">
-    {{ ui.kpi('Error promedio (MAE)', precision.mae | cantidad(2), 'Unidades de diferencia por producto y día', '#38bdf8', None,
-              'En promedio, el pronóstico se equivoca por esta cantidad de unidades al día. Menor es mejor.', 'diana') }}
-    {{ ui.kpi('Error con castigo (RMSE)', precision.rmse | cantidad(2), 'Penaliza más los errores grandes', '#38bdf8', None,
-              'Parecido al anterior, pero un error grande pesa mucho más. Si es muy distinto al MAE, hubo días con errores fuertes.', 'diana') }}
-    {{ ui.kpi('Error porcentual (WMAPE)', (precision.wmape | cantidad(1)) ~ '%', 'Sobre la demanda total', '#fbbf24',
-              url_for('analitica.pronostico') if 'forecast' in puede else None,
-              'Porcentaje de la demanda total que el pronóstico no acertó. Por debajo de 30% suele considerarse bueno en perecederos.', 'tendencia') }}
-  </div>
-  <div class="text-muted" style="font-size:12px;margin:-10px 0 4px;">
-    Horizonte de {{ precision.horizonte_dias }} días · {{ precision.puntos }} puntos comparados ·
-    calculado el {{ precision.fecha_ejecucion | fecha_hora }}
-  </div>
-{% else %}
-  <div class="card text-muted" style="font-size:13px;">
-    Todavía no se ha ejecutado ningún pronóstico.
-    {% if 'forecast' in puede %}<a href="{{ url_for('analitica.pronostico') }}" style="color:var(--role-accent);">Ejecutar ahora →</a>{% endif %}
-  </div>
-{% endif %}
-
-{# ── 5. Detalle ── #}
-{{ ui.seccion('Detalle', 'Dónde se concentra la merma y el inventario.') }}
-{# ── Tablas de apoyo ── #}
-<div class="grid-2" style="margin-bottom:20px;">
-  <div class="card">
-    <div class="card-title">Productos con más merma (valorizada)</div>
-    <table>
-      <thead><tr><th>Producto</th><th>Categoría</th><th>Unidades</th><th>Valor</th></tr></thead>
-      <tbody>
-        {% for s in top_sku %}
-          <tr>
-            <td style="font-weight:600;">{{ s.producto }}</td>
-            <td><span class="badge badge-neutral">{{ s.categoria }}</span></td>
-            <td class="mono">{{ (s.unidades) | cantidad(2) }}</td>
-            <td class="mono">{{ ui.moneda(s.valor) }}</td>
-          </tr>
-        {% else %}
-          {{ ui.vacio('Sin mermas registradas.', 4) }}
-        {% endfor %}
-      </tbody>
-    </table>
+{# ── 3. Detalle: un tema a la vez ── #}
+{{ ui.seccion('Detalle', 'Elige un tema para ver sus cifras completas.') }}
+<div class="panel-pestanas" data-pestanas>
+  <div class="tabs" role="tablist">
+    <button class="tab active" type="button" data-pestana="inventario">Inventario</button>
+    <button class="tab" type="button" data-pestana="ventas">Ventas</button>
+    <button class="tab" type="button" data-pestana="merma">Merma</button>
+    <button class="tab" type="button" data-pestana="pronostico">Pronóstico</button>
   </div>
 
-  <div class="card">
-    <div class="card-title">Tiendas con más merma (valorizada)</div>
-    <table>
-      <thead><tr><th>Tienda</th><th>Unidades</th><th>Valor</th></tr></thead>
-      <tbody>
-        {% for t in top_tienda %}
-          <tr>
-            <td style="font-weight:600;">{{ t.locacion }}</td>
-            <td class="mono">{{ (t.unidades) | cantidad(2) }}</td>
-            <td class="mono">{{ ui.moneda(t.valor) }}</td>
-          </tr>
-        {% else %}
-          {{ ui.vacio('Sin mermas registradas.', 3) }}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="grid-2" style="margin-bottom:20px;">
-  <div class="card">
-    <div class="card-title">Lotes críticos o vencidos</div>
-    <table>
-      <thead>
-        <tr><th>Producto</th><th>Tienda</th><th>Lote</th><th>Caduca</th><th>Días</th><th>Cantidad</th><th>Riesgo</th></tr>
-      </thead>
-      <tbody>
-        {% for l in criticos %}
-          <tr>
-            <td style="font-weight:600;">{{ l.producto }}</td>
-            <td>{{ l.locacion }}</td>
-            <td class="mono" style="font-size:11px;">{{ l.codigo_lote_prov }}</td>
-            <td class="mono" style="font-size:11px;">{{ l.fecha_caducidad | fecha_hora }}</td>
-            <td class="mono text-danger">{{ l.dias_restantes }}</td>
-            <td class="mono">{{ (l.cantidad_disponible) | cantidad(2) }}</td>
-            <td>{{ ui.riesgo(l.clasificacion) }}</td>
-          </tr>
-        {% else %}
-          {{ ui.vacio('Ningún lote está en estado crítico o vencido.', 7) }}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Inventario por ubicación</div>
-    <table>
-      <thead>
-        <tr><th>Ubicación</th><th>Tipo</th><th>Unidades</th><th>Valor</th><th>Lotes en riesgo</th></tr>
-      </thead>
-      <tbody>
-        {% for l in por_locacion %}
-          <tr>
-            <td style="font-weight:600;">{{ l.locacion }}</td>
-            <td>
-              <span class="badge badge-{{ 'info' if l.tipo_locacion == 'CEDIS' else 'success' }}">
-                {{ l.tipo_locacion }}
-              </span>
-            </td>
-            <td class="mono">{{ (l.unidades) | cantidad(2) }}</td>
-            <td class="mono">{{ ui.moneda(l.valor) }}</td>
-            <td class="mono {{ 'text-danger' if l.lotes_en_riesgo else '' }}">
-              {{ l.lotes_en_riesgo }}
-            </td>
-          </tr>
-        {% else %}
-          {{ ui.vacio('Sin inventario registrado.', 5) }}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-title">Merma por categoría</div>
-  <div class="grid-2">
-    <table>
-      <thead><tr><th>Categoría</th><th>Unidades</th><th>Valor</th></tr></thead>
-      <tbody>
-        {% for c in por_categoria %}
-          <tr>
-            <td style="font-weight:600;">{{ c.name }}</td>
-            <td class="mono">{{ (c.unidades) | cantidad(2) }}</td>
-            <td class="mono">{{ ui.moneda(c.valor) }}</td>
-          </tr>
-        {% else %}
-          {{ ui.vacio('Sin mermas registradas.', 3) }}
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="chart-wrap" style="height:220px;">
-      <canvas id="grafica-categoria"></canvas>
+  {# Inventario #}
+  <div class="pestana-contenido" data-pestana-id="inventario">
+    <div class="stat-grid-4">
+      {{ ui.kpi('Unidades en existencia', inv.unidades, (inv.lotes | string) ~ ' lotes en ' ~ (inv.locaciones | string) ~ ' ubicaciones') }}
+      {{ ui.kpi('Lotes críticos', inv.lotes_criticos, (inv.criticas | cantidad) ~ ' unidades', '#dc2626') }}
+      {{ ui.kpi('Lotes en vigilancia', inv.lotes_vigilancia, (inv.vigilancia | cantidad) ~ ' unidades cerca de su fecha límite', '#d97706') }}
+      {{ ui.kpi('Riesgo de faltante', alertas.por_tipo.get('RIESGO_DE_FALTANTE', 0), 'Productos que se acabarían antes del siguiente pedido', None, None,
+                'La existencia alcanza para menos días que el tiempo de entrega del proveedor.') }}
     </div>
+    <div class="grid-2">
+      <div>
+        <div class="card-title">Inventario por ubicación</div>
+        <table>
+          <thead><tr><th>Ubicación</th><th>Unidades</th><th>Valor</th><th>Lotes en riesgo</th></tr></thead>
+          <tbody>
+            {% for l in por_locacion %}
+              <tr>
+                <td><strong>{{ l.locacion }}</strong><span class="sub-dato">{{ l.tipo_locacion }}</span></td>
+                <td>{{ l.unidades | cantidad }}</td>
+                <td>{{ ui.moneda(l.valor) }}</td>
+                <td class="{{ 'text-danger' if l.lotes_en_riesgo else 'text-muted' }}">{{ l.lotes_en_riesgo }}</td>
+              </tr>
+            {% else %}
+              {{ ui.vacio('Sin inventario registrado.', 4) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="card-title">Lotes críticos o vencidos</div>
+        <table>
+          <thead><tr><th>Producto</th><th>Caduca</th><th>Cantidad</th><th>Estado</th></tr></thead>
+          <tbody>
+            {% for l in criticos %}
+              <tr>
+                <td><strong>{{ l.producto }}</strong><span class="sub-dato">{{ l.locacion }} · lote {{ l.codigo_lote_prov }}</span></td>
+                <td style="white-space:nowrap;">{{ l.fecha_caducidad | fecha_hora }}
+                  <span class="sub-dato">{% if l.dias_restantes < 0 %}venció hace {{ -l.dias_restantes }} días{% elif l.dias_restantes == 0 %}vence hoy{% else %}en {{ l.dias_restantes }} días{% endif %}</span></td>
+                <td>{{ l.cantidad_disponible | cantidad }}</td>
+                <td>{{ ui.riesgo(l.clasificacion) }}</td>
+              </tr>
+            {% else %}
+              {{ ui.vacio('Ningún lote está en estado crítico o vencido.', 4) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# Ventas #}
+  <div class="pestana-contenido" data-pestana-id="ventas" hidden>
+    <div class="stat-grid-3">
+      {{ ui.kpi('Unidades vendidas', ven.unidades, 'Desde el inicio del registro') }}
+      {{ ui.kpi('Tickets', ven.tickets, 'Ventas registradas') }}
+      {{ ui.kpi('Últimos 30 días', ven.unidades_30d, 'Unidades vendidas') }}
+    </div>
+    <p class="text-muted" style="font-size:14px;">
+      El detalle de cada venta y el registro de nuevas ventas están en
+      {% if 'sales' in puede %}<a href="{{ url_for('operacion.ventas') }}">Ventas</a>{% else %}la pantalla de Ventas{% endif %}.
+    </p>
+  </div>
+
+  {# Merma #}
+  <div class="pestana-contenido" data-pestana-id="merma" hidden>
+    <div class="stat-grid-3">
+      {{ ui.kpi('Valor perdido', ui.moneda(mer.valor), (mer.eventos | cantidad) ~ ' registros de merma', '#dc2626') }}
+      {{ ui.kpi('Unidades perdidas', mer.unidades, 'Todas las causas') }}
+      {{ ui.kpi('Tasa de merma', (tasa.tasa_pct | cantidad(2)) ~ '%',
+                (tasa.mermado | cantidad) ~ ' de ' ~ (tasa.recibido | cantidad) ~ ' unidades recibidas (180 días)') }}
+    </div>
+    <div class="grid-2" style="margin-bottom:28px;">
+      <div>
+        <div class="card-title">Productos con más merma</div>
+        <table>
+          <thead><tr><th>Producto</th><th>Unidades</th><th>Valor</th></tr></thead>
+          <tbody>
+            {% for s in top_sku %}
+              <tr>
+                <td><strong>{{ s.producto }}</strong><span class="sub-dato">{{ s.categoria }}</span></td>
+                <td>{{ s.unidades | cantidad }}</td>
+                <td>{{ ui.moneda(s.valor) }}</td>
+              </tr>
+            {% else %}
+              {{ ui.vacio('Sin mermas registradas.', 3) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="card-title">Tiendas con más merma</div>
+        <table>
+          <thead><tr><th>Tienda</th><th>Unidades</th><th>Valor</th></tr></thead>
+          <tbody>
+            {% for t in top_tienda %}
+              <tr>
+                <td><strong>{{ t.locacion }}</strong></td>
+                <td>{{ t.unidades | cantidad }}</td>
+                <td>{{ ui.moneda(t.valor) }}</td>
+              </tr>
+            {% else %}
+              {{ ui.vacio('Sin mermas registradas.', 3) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-title">Merma por categoría</div>
+    <div class="grid-2">
+      <table>
+        <thead><tr><th>Categoría</th><th>Unidades</th><th>Valor</th></tr></thead>
+        <tbody>
+          {% for c in por_categoria %}
+            <tr>
+              <td><strong>{{ c.name }}</strong></td>
+              <td>{{ c.unidades | cantidad }}</td>
+              <td>{{ ui.moneda(c.valor) }}</td>
+            </tr>
+          {% else %}
+            {{ ui.vacio('Sin mermas registradas.', 3) }}
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="chart-wrap" style="height:240px;">
+        <canvas id="grafica-categoria"></canvas>
+      </div>
+    </div>
+  </div>
+
+  {# Pronóstico #}
+  <div class="pestana-contenido" data-pestana-id="pronostico" hidden>
+    {% if precision and precision.id_run %}
+      <div class="stat-grid-3">
+        {{ ui.kpi('Error promedio (MAE)', precision.mae | cantidad(2), 'Unidades de diferencia por producto y día', None, None,
+                  'En promedio, el pronóstico se equivoca por esta cantidad de unidades al día. Menor es mejor.') }}
+        {{ ui.kpi('Error con castigo (RMSE)', precision.rmse | cantidad(2), 'Pesa más los errores grandes', None, None,
+                  'Si es mucho mayor que el MAE, hubo días con errores fuertes.') }}
+        {{ ui.kpi('Error porcentual (WMAPE)', (precision.wmape | cantidad(1)) ~ '%', 'Sobre la demanda total', None,
+                  url_for('analitica.pronostico') if 'forecast' in puede else None,
+                  'Porcentaje de la demanda que el pronóstico no acertó. Menos de 30% suele considerarse bueno en perecederos.') }}
+      </div>
+      <p class="text-muted" style="font-size:14px;">
+        Horizonte de {{ precision.horizonte_dias }} días · {{ precision.puntos }} puntos comparados ·
+        calculado el {{ precision.fecha_ejecucion | fecha_hora }}
+      </p>
+    {% else %}
+      <p class="text-muted" style="font-size:14px;">
+        Todavía no se ha ejecutado ningún pronóstico.
+        {% if 'forecast' in puede %}<a href="{{ url_for('analitica.pronostico') }}">Ejecutar ahora →</a>{% endif %}
+      </p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
+
 
 {% block scripts %}
 <script>
@@ -245,12 +238,12 @@ const fmt = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 });
 const fmtMoneda = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
 const enCurso = serieMensual.map(f => f.mes === mesActual);
 
-Chart.defaults.font.family = "'Outfit', sans-serif";
-Chart.defaults.color = '#8a9e8e';
+Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+Chart.defaults.color = '#6b7280';
 const ejes = {
-  x: { ticks: { color: '#8a9e8e', font: { size: 11 } }, grid: { display: false } },
-  y: { ticks: { color: '#8a9e8e', font: { size: 11 }, callback: v => fmt.format(v) },
-       grid: { color: 'rgba(138,158,142,.10)' }, border: { display: false } }
+  x: { ticks: { color: '#6b7280', font: { size: 11 } }, grid: { display: false } },
+  y: { ticks: { color: '#6b7280', font: { size: 11 }, callback: v => fmt.format(v) },
+       grid: { color: 'rgba(17,24,39,.06)' }, border: { display: false } }
 };
 
 if (document.getElementById('grafica-mensual')) {
@@ -260,11 +253,11 @@ if (document.getElementById('grafica-mensual')) {
       datasets: [
         { type: 'bar', label: 'Unidades vendidas', yAxisID: 'y', order: 2,
           data: serieMensual.map(f => Number(f.ventas_unidades)),
-          backgroundColor: enCurso.map(e => e ? 'rgba(74,222,128,.22)' : 'rgba(74,222,128,.7)'),
+          backgroundColor: enCurso.map(e => e ? 'rgba(22,163,74,.25)' : 'rgba(22,163,74,.8)'),
           borderRadius: 6, maxBarThickness: 56 },
         { type: 'line', label: 'Valor de la merma', yAxisID: 'y1', order: 1,
           data: serieMensual.map(f => Number(f.merma_valor)),
-          borderColor: '#f87171', backgroundColor: '#f87171', borderWidth: 2,
+          borderColor: '#dc2626', backgroundColor: '#dc2626', borderWidth: 2,
           tension: .35, pointRadius: 4, pointHoverRadius: 6,
           segment: { borderDash: ctx => enCurso[ctx.p1DataIndex] ? [5, 5] : undefined } }
       ]
@@ -273,7 +266,7 @@ if (document.getElementById('grafica-mensual')) {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: '#c5d6c8' } },
+        legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: '#374151' } },
         tooltip: {
           callbacks: {
             label: c => c.dataset.yAxisID === 'y1'
@@ -285,7 +278,7 @@ if (document.getElementById('grafica-mensual')) {
       scales: {
         ...ejes,
         y1: { position: 'right', grid: { display: false }, border: { display: false },
-              ticks: { color: '#f87171', font: { size: 11 }, callback: v => fmtMoneda.format(v) } }
+              ticks: { color: '#dc2626', font: { size: 11 }, callback: v => fmtMoneda.format(v) } }
       }
     }
   });
@@ -298,13 +291,13 @@ if (document.getElementById('grafica-categoria')) {
       labels: mermaCategoria.map(c => c.name),
       datasets: [{
         data: mermaCategoria.map(c => Number(c.valor)),
-        backgroundColor: ['#f87171', '#fbbf24', '#38bdf8', '#a78bfa', '#4ade80', '#2dd4bf', '#f472b6'],
-        borderColor: '#121a15', borderWidth: 3, hoverOffset: 6
+        backgroundColor: ['#dc2626', '#d97706', '#0284c7', '#7c3aed', '#16a34a', '#0d9488', '#db2777'],
+        borderColor: '#ffffff', borderWidth: 3, hoverOffset: 6
       }]
     },
     options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
                plugins: {
-                 legend: { position: 'right', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: '#c5d6c8' } },
+                 legend: { position: 'right', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: '#374151' } },
                  tooltip: { callbacks: { label: c => ` ${c.label}: ${fmtMoneda.format(c.parsed)}` } }
                } }
   });

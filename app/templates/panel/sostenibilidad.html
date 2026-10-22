@@ -12,12 +12,12 @@
 
 <div class="stat-grid-4">
   {{ ui.kpi('Unidades recuperadas', (indicadores.unidades_recuperadas) | cantidad(2),
-            'Vendidas antes de caducar gracias a una intervención', '#4ade80') }}
+            'Vendidas antes de caducar gracias a una intervención', '#16a34a') }}
   {{ ui.kpi('Unidades mermadas', (indicadores.unidades_mermadas) | cantidad(2),
-            'Pérdida inevitable registrada', '#f87171') }}
+            'Pérdida inevitable registrada', '#dc2626') }}
   {{ ui.kpi('Tasa de aprovechamiento',
             ((indicadores.tasa_aprovechamiento) | cantidad(1)) ~ '%',
-            'Recuperado sobre recuperado + mermado', '#fbbf24') }}
+            'Recuperado sobre recuperado + mermado', '#d97706') }}
   {{ ui.kpi('CO₂e evitado', ((indicadores.co2e_evitado_kg) | cantidad(1)) ~ ' kg',
             'Equivalencia declarada abajo') }}
 </div>
@@ -98,19 +98,19 @@ if (canvas) {
       labels: serie.map(f => f.mes),
       datasets: [
         { label: 'Unidades vendidas', data: serie.map(f => Number(f.ventas_unidades)),
-          borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,.12)',
+          borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.12)',
           fill: true, tension: .3, pointRadius: 3 },
         { label: 'Unidades mermadas', data: serie.map(f => Number(f.merma_unidades)),
-          borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,.12)',
+          borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.10)',
           fill: true, tension: .3, pointRadius: 3 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#c5d6c8', font: { size: 11 } } } },
+      plugins: { legend: { labels: { color: '#374151', font: { size: 11 } } } },
       scales: {
-        x: { ticks: { color: '#8a9e8e', font: { size: 10 } }, grid: { color: 'rgba(138,158,142,.10)' } },
-        y: { ticks: { color: '#8a9e8e', font: { size: 10 } }, grid: { color: 'rgba(138,158,142,.10)' } }
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(17,24,39,.06)' } },
+        y: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(17,24,39,.06)' } }
       }
     }
   });

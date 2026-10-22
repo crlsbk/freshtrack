@@ -39,8 +39,8 @@
 <div class="stat-grid-4">
   {{ ui.kpi('Intervenciones registradas', t.intervenciones, 'Transferencias y descuentos') }}
   {{ ui.kpi('Unidades mermadas igualmente', (t.mermado) | cantidad(2),
-            'Merma residual del mismo lote y periodo', '#f87171') }}
-  {{ ui.kpi('Valor recuperado', ui.moneda(t.valor), None, '#4ade80') }}
+            'Merma residual del mismo lote y periodo', '#dc2626') }}
+  {{ ui.kpi('Valor recuperado', ui.moneda(t.valor), None, '#16a34a') }}
   {{ ui.kpi('CO₂e evitado', ((sostenibilidad.co2e_evitado_kg) | cantidad(1)) ~ ' kg',
             '2.5 kg CO₂e por kg de alimento (FAO)') }}
 </div>

@@ -146,18 +146,18 @@ VISTA_INICIAL: dict[str, str] = {
 # Color con el que se pinta la interfaz según el rol activo. Sirve para que en
 # la demostración se vea de un vistazo con qué perfil se inició sesión.
 ACENTO_POR_ROL: dict[str, str] = {
-    "admin": "#4ade80",
-    "buyer": "#38bdf8",
-    "planner": "#a78bfa",
-    "store_manager": "#fbbf24",
-    "warehouse": "#2dd4bf",
-    "supplier": "#f472b6",
-    "auditor": "#f87171",
+    "admin": "#16a34a",
+    "buyer": "#0284c7",
+    "planner": "#7c3aed",
+    "store_manager": "#d97706",
+    "warehouse": "#0d9488",
+    "supplier": "#db2777",
+    "auditor": "#dc2626",
 }
 
 
 def acento_para(clave_rol: str) -> str:
-    return ACENTO_POR_ROL.get(clave_rol, "#4ade80")
+    return ACENTO_POR_ROL.get(clave_rol, "#16a34a")
 
 
 def menu_para(clave_rol: str) -> list[dict]:

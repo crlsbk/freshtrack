@@ -12,7 +12,7 @@
 
 <div class="stat-grid-4">
   {{ ui.kpi('Unidades mermadas (180 d)', (resumen.totales.unidades) | cantidad(2)) }}
-  {{ ui.kpi('Valor de la merma', ui.moneda(resumen.totales.valor), None, '#f87171') }}
+  {{ ui.kpi('Valor de la merma', ui.moneda(resumen.totales.valor), None, '#dc2626') }}
   {{ ui.kpi('Eventos registrados', resumen.totales.eventos) }}
   {{ ui.kpi('Merma por caducidad',
             (resumen.por_caducidad.unidades_caducidad) | cantidad(2),

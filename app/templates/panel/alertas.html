@@ -12,8 +12,8 @@
 
 <div class="stat-grid-4">
   {{ ui.kpi('Abiertas', resumen.total, 'En total ahora mismo') }}
-  {{ ui.kpi('Críticas', resumen.por_severidad.get('CRITICA', 0), 'Requieren acción inmediata', '#f87171') }}
-  {{ ui.kpi('Altas', resumen.por_severidad.get('ALTA', 0), None, '#fb923c') }}
+  {{ ui.kpi('Críticas', resumen.por_severidad.get('CRITICA', 0), 'Requieren acción inmediata', '#dc2626') }}
+  {{ ui.kpi('Altas', resumen.por_severidad.get('ALTA', 0), None, '#ea580c') }}
   {{ ui.kpi('Tipos con actividad',
             resumen.por_tipo | length, 'De los 7 tipos definidos') }}
 </div>

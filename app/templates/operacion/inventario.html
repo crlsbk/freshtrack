@@ -20,11 +20,11 @@
 
 <div class="grid-3" style="margin-bottom:20px;">
   {{ ui.kpi('Unidades en riesgo crítico', (resumen.criticas) | cantidad(2),
-            'Lotes a 2 días o menos de vencer', '#f87171') }}
+            'Lotes a 2 días o menos de vencer', '#dc2626') }}
   {{ ui.kpi('Unidades en vigilancia', (resumen.vigilancia) | cantidad(2),
-            'Lotes que entran en la ventana de riesgo', '#fbbf24') }}
+            'Lotes que entran en la ventana de riesgo', '#d97706') }}
   {{ ui.kpi('Unidades vencidas', (resumen.vencidas) | cantidad(2),
-            'Requieren baja inmediata', '#8a9e8e') }}
+            'Requieren baja inmediata', '#6b7280') }}
 </div>
 
 <form class="filtros" method="get" action="{{ url_for('operacion.inventario') }}">

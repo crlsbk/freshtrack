@@ -11,9 +11,9 @@
 ) }}
 
 <div class="stat-grid-4">
-  {{ ui.kpi('Sugeridas', resumen.sugeridas, 'Esperan decisión', '#38bdf8') }}
-  {{ ui.kpi('Aprobadas', resumen.aprobadas, 'Listas para ejecutar', '#fbbf24') }}
-  {{ ui.kpi('Ejecutadas', resumen.ejecutadas, 'Inventario ya movido', '#4ade80') }}
+  {{ ui.kpi('Sugeridas', resumen.sugeridas, 'Esperan decisión', '#0284c7') }}
+  {{ ui.kpi('Aprobadas', resumen.aprobadas, 'Listas para ejecutar', '#d97706') }}
+  {{ ui.kpi('Ejecutadas', resumen.ejecutadas, 'Inventario ya movido', '#16a34a') }}
   {{ ui.kpi('Unidades movidas', (resumen.unidades_movidas) | cantidad(2)) }}
 </div>
 
@@ -67,9 +67,9 @@
       {{ ui.kpi('Faltante en el destino', (t.faltante_destino) | cantidad(2),
                 'Lo que necesita ' ~ t.destino) }}
       {{ ui.kpi('Días para vencer', t.dias_para_vencer,
-                'Al momento de sugerir', '#fbbf24') }}
+                'Al momento de sugerir', '#d97706') }}
       {{ ui.kpi('Unidades a mover', (t.cantidad) | cantidad(2),
-                'Cantidad propuesta', '#4ade80') }}
+                'Cantidad propuesta', '#16a34a') }}
     </div>
 
     {% if t.validaciones %}

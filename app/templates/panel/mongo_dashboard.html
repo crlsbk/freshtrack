@@ -12,33 +12,33 @@
 
 {# ── KPIs Generales de MongoDB ── #}
 <div class="stat-grid-4">
-  {{ ui.kpi('Estado MongoDB', 'CONECTADO' if estado.conectado else 'DESCONECTADO', estado.db_name ~ ' en puerto ' ~ estado.port, '#4ade80' if estado.conectado else '#f87171') }}
-  {{ ui.kpi('Avisos ASN', estado.colecciones.get('avisos_asn', 0), 'Manifiestos con carga anidada', '#38bdf8') }}
-  {{ ui.kpi('Pronósticos', estado.colecciones.get('pronosticos_demanda', 0), 'Series temporales y percentiles', '#a78bfa') }}
-  {{ ui.kpi('Alertas TTL', estado.colecciones.get('alertas_operativas', 0), 'Retención automática 180 días', '#fbbf24') }}
+  {{ ui.kpi('Estado MongoDB', 'CONECTADO' if estado.conectado else 'DESCONECTADO', estado.db_name ~ ' en puerto ' ~ estado.port, '#16a34a' if estado.conectado else '#dc2626') }}
+  {{ ui.kpi('Avisos ASN', estado.colecciones.get('avisos_asn', 0), 'Manifiestos con carga anidada', '#0284c7') }}
+  {{ ui.kpi('Pronósticos', estado.colecciones.get('pronosticos_demanda', 0), 'Series temporales y percentiles', '#7c3aed') }}
+  {{ ui.kpi('Alertas TTL', estado.colecciones.get('alertas_operativas', 0), 'Retención automática 180 días', '#d97706') }}
 </div>
 
 {# ── Tarjetas de Microservicios y Swagger UI ── #}
-<div class="card" style="margin-bottom:24px;border-left:4px solid #38bdf8;">
+<div class="card" style="margin-bottom:24px;border-left:4px solid #0284c7;">
   <div class="card-title">Microservicios Desacoplados y Documentación Interactiva (Swagger UI)</div>
   <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
     Los microservicios de FreshTrack exponen estas colecciones mediante endpoints REST con negociación dual JSON/XML:
   </p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;">
-    <div style="background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
-      <div style="font-weight:600;font-size:14px;color:#38bdf8;">Logística ASN (5005)</div>
+    <div style="background:rgba(17,24,39,0.03);padding:12px;border-radius:8px;border:1px solid rgba(17,24,39,0.06);">
+      <div style="font-weight:600;font-size:14px;color:#0284c7;">Logística ASN (5005)</div>
       <div style="font-size:12px;color:var(--text-muted);margin:4px 0 8px 0;">Manifiestos XML/JSON y evidencias $push.</div>
       <a href="http://127.0.0.1:5005/api/v1/docs" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;">Swagger UI ›</a>
       <a href="http://127.0.0.1:5005/api/v1/asn/analytics/summary" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;margin-left:4px;">Pipeline API ›</a>
     </div>
-    <div style="background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
-      <div style="font-weight:600;font-size:14px;color:#a78bfa;">Planeación & Demanda (5006)</div>
+    <div style="background:rgba(17,24,39,0.03);padding:12px;border-radius:8px;border:1px solid rgba(17,24,39,0.06);">
+      <div style="font-weight:600;font-size:14px;color:#7c3aed;">Planeación & Demanda (5006)</div>
       <div style="font-size:12px;color:var(--text-muted);margin:4px 0 8px 0;">Percentiles P10/P50/P90 y cruce relacional.</div>
       <a href="http://127.0.0.1:5006/api/v1/docs" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;">Swagger UI ›</a>
       <a href="http://127.0.0.1:5006/api/v1/planning/forecast/analytics/kpis" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;margin-left:4px;">KPIs Modelos ›</a>
     </div>
-    <div style="background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
-      <div style="font-weight:600;font-size:14px;color:#fbbf24;">Alertas Pre-Merma & ESG (5007)</div>
+    <div style="background:rgba(17,24,39,0.03);padding:12px;border-radius:8px;border:1px solid rgba(17,24,39,0.06);">
+      <div style="font-weight:600;font-size:14px;color:#d97706;">Alertas Pre-Merma & ESG (5007)</div>
       <div style="font-size:12px;color:var(--text-muted);margin:4px 0 8px 0;">Alertas operativas con TTL y CO2e evitado.</div>
       <a href="http://127.0.0.1:5007/api/v1/docs" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;">Swagger UI ›</a>
       <a href="http://127.0.0.1:5007/api/v1/alerts/analytics/kpis" target="_blank" class="btn btn-secondary" style="font-size:11.5px;padding:4px 8px;margin-left:4px;">Pipeline Alertas ›</a>
@@ -146,7 +146,7 @@
       <tbody>
         {% for fila in estado.pipeline_pronosticos %}
           <tr>
-            <td><span class="mono" style="font-weight:600;color:#a78bfa;">{{ fila.modelo }}</span></td>
+            <td><span class="mono" style="font-weight:600;color:#7c3aed;">{{ fila.modelo }}</span></td>
             <td>{{ fila.total_corridas }}</td>
             <td>{{ fila.mae_promedio }}</td>
             <td>{{ fila.rmse_promedio }}</td>

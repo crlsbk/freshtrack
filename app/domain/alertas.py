@@ -42,10 +42,10 @@ TIPOS = {
 }
 
 SEVERIDADES = {
-    "CRITICA": {"etiqueta": "Crítica", "color": "#f87171"},
-    "ALTA": {"etiqueta": "Alta", "color": "#fb923c"},
-    "MEDIA": {"etiqueta": "Media", "color": "#facc15"},
-    "BAJA": {"etiqueta": "Baja", "color": "#60a5fa"},
+    "CRITICA": {"etiqueta": "Crítica", "color": "#dc2626"},
+    "ALTA": {"etiqueta": "Alta", "color": "#ea580c"},
+    "MEDIA": {"etiqueta": "Media", "color": "#ca8a04"},
+    "BAJA": {"etiqueta": "Baja", "color": "#2563eb"},
 }
 
 

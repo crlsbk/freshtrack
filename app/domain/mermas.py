@@ -20,13 +20,13 @@ from app.db import a_float, one, query, transaccion
 
 # Las 7 causas mínimas exigidas, con su etiqueta para la interfaz
 CAUSAS: list[dict] = [
-    {"codigo": "CADUCIDAD", "etiqueta": "Caducidad", "color": "#f87171"},
-    {"codigo": "DANO", "etiqueta": "Daño", "color": "#fb923c"},
-    {"codigo": "CALIDAD", "etiqueta": "Calidad", "color": "#facc15"},
-    {"codigo": "CADENA_DE_FRIO", "etiqueta": "Cadena de frío", "color": "#38bdf8"},
-    {"codigo": "MANIPULACION", "etiqueta": "Manipulación", "color": "#a78bfa"},
-    {"codigo": "DEVOLUCION", "etiqueta": "Devolución", "color": "#f472b6"},
-    {"codigo": "OTRA", "etiqueta": "Otra", "color": "#94a3b8"},
+    {"codigo": "CADUCIDAD", "etiqueta": "Caducidad", "color": "#dc2626"},
+    {"codigo": "DANO", "etiqueta": "Daño", "color": "#ea580c"},
+    {"codigo": "CALIDAD", "etiqueta": "Calidad", "color": "#ca8a04"},
+    {"codigo": "CADENA_DE_FRIO", "etiqueta": "Cadena de frío", "color": "#0284c7"},
+    {"codigo": "MANIPULACION", "etiqueta": "Manipulación", "color": "#7c3aed"},
+    {"codigo": "DEVOLUCION", "etiqueta": "Devolución", "color": "#db2777"},
+    {"codigo": "OTRA", "etiqueta": "Otra", "color": "#64748b"},
 ]
 CAUSAS_CODIGOS = [c["codigo"] for c in CAUSAS]
 ETIQUETA_CAUSA = {c["codigo"]: c["etiqueta"] for c in CAUSAS}

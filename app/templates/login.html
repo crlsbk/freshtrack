@@ -57,14 +57,14 @@
 
     <div class="login-hints" id="login-hints" style="display:none;">
       {% set demo = [
-        ('admin@freshtrack.mx',     'Admin2026!',     'Administrador',    '#4ade80'),
-        ('buyer@freshtrack.mx',     'Compras2026!',   'Comprador',        '#38bdf8'),
-        ('planner@freshtrack.mx',   'Plan2026!',      'Planeador',        '#a78bfa'),
-        ('gerente@freshtrack.mx',   'Tienda2026!',    'Gerente de tienda','#fbbf24'),
-        ('almacen@freshtrack.mx',   'Almacen2026!',   'Almacén',          '#2dd4bf'),
-        ('proveedor@freshtrack.mx', 'Proveedor2026!', 'Proveedor',        '#f472b6'),
-        ('auditor@freshtrack.mx',   'Auditor2026!',   'Auditor',          '#f87171'),
-        ('inactivo@freshtrack.mx',  'Inactivo2026!',  'Usuario inactivo', '#536b57')
+        ('admin@freshtrack.mx',     'Admin2026!',     'Administrador',    '#16a34a'),
+        ('buyer@freshtrack.mx',     'Compras2026!',   'Comprador',        '#0284c7'),
+        ('planner@freshtrack.mx',   'Plan2026!',      'Planeador',        '#7c3aed'),
+        ('gerente@freshtrack.mx',   'Tienda2026!',    'Gerente de tienda','#d97706'),
+        ('almacen@freshtrack.mx',   'Almacen2026!',   'Almacén',          '#0d9488'),
+        ('proveedor@freshtrack.mx', 'Proveedor2026!', 'Proveedor',        '#db2777'),
+        ('auditor@freshtrack.mx',   'Auditor2026!',   'Auditor',          '#dc2626'),
+        ('inactivo@freshtrack.mx',  'Inactivo2026!',  'Usuario inactivo', '#6b7280')
       ] %}
       {% for correo, clave, rol, color in demo %}
         <button type="button" class="hint-row"
@@ -86,7 +86,7 @@
     </div>
 
     <div class="login-footer">
-      <a href="{{ url_for('publico.inicio') }}" style="color:#4a6a4e;">← Volver a la página principal</a>
+      <a href="{{ url_for('publico.inicio') }}" style="color:#6b7280;">← Volver a la página principal</a>
     </div>
   </div>
 
@@ -94,13 +94,13 @@
   <div class="login-roles-panel">
     <div class="login-roles-label">Perfiles del sistema</div>
     {% set perfiles = [
-      ('Administrador',     'Acceso completo, usuarios y bitácora',    '#4ade80'),
-      ('Comprador',         'Proveedores, lotes y reabastecimiento',   '#38bdf8'),
-      ('Planeador',         'Pronósticos, transferencias y descuentos','#a78bfa'),
-      ('Gerente de tienda', 'Recepción, ventas, FEFO y mermas',        '#fbbf24'),
-      ('Almacén',           'Inventario, FEFO y transferencias',       '#2dd4bf'),
-      ('Proveedor',         'Consulta de productos y órdenes',         '#f472b6'),
-      ('Auditor',           'Bitácora, mermas y trazabilidad',         '#f87171')
+      ('Administrador',     'Acceso completo, usuarios y bitácora',    '#16a34a'),
+      ('Comprador',         'Proveedores, lotes y reabastecimiento',   '#0284c7'),
+      ('Planeador',         'Pronósticos, transferencias y descuentos','#7c3aed'),
+      ('Gerente de tienda', 'Recepción, ventas, FEFO y mermas',        '#d97706'),
+      ('Almacén',           'Inventario, FEFO y transferencias',       '#0d9488'),
+      ('Proveedor',         'Consulta de productos y órdenes',         '#db2777'),
+      ('Auditor',           'Bitácora, mermas y trazabilidad',         '#dc2626')
     ] %}
     {% for nombre, funcion, color in perfiles %}
       <div class="login-role-row">

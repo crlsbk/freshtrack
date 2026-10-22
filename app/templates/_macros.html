@@ -99,7 +99,8 @@
 {# --- Formato ------------------------------------------------------------- #}
 {% macro num(valor, decimales=2) %}{{ valor | cantidad(decimales) }}{% endmacro %}
 
-{% macro moneda(valor) %}${{ "{:,.2f}".format(valor | float) }}{% endmacro %}
+{# Montos de $100,000 o más se muestran sin centavos: se leen mejor y caben en las tarjetas. #}
+{% macro moneda(valor, decimales=2) %}{% set v = valor | float %}{% set d = 0 if (v >= 100000 or v <= -100000) else decimales %}${{ ("{:,.%df}" % d).format(v) }}{% endmacro %}
 
 {# --- Íconos de tarjetas (SVG 20x20 en línea) ------------------------------ #}
 {% set ICONOS = {
@@ -135,7 +136,7 @@
    Con `href` la tarjeta se vuelve un enlace (muestra una flecha "Ver →").
    `ayuda` agrega una explicación en lenguaje simple; `icono` una clave de ICONOS. #}
 {% macro kpi(etiqueta, valor, sub=None, acento=None, href=None, ayuda=None, icono=None) %}
-  {%- set color = acento or 'var(--role-accent)' %}
+  {%- set color = acento or '#6b7280' %}
   {%- set ns = namespace(icono=icono) %}
   {%- if not icono %}
     {%- set e = etiqueta | lower %}

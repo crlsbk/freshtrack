@@ -90,7 +90,7 @@
       {{ ui.kpi('RMSE', (corrida.rmse) | cantidad(2),
                 'Penaliza más los errores grandes') }}
       {{ ui.kpi('WMAPE', ((corrida.wmape) | cantidad(1)) ~ '%',
-                'Error sobre la demanda total', '#fbbf24') }}
+                'Error sobre la demanda total', '#d97706') }}
       {{ ui.kpi('Duración', (corrida.duracion_ms | string) ~ ' ms', 'Tiempo de cómputo') }}
     </div>
 

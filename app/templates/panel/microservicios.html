@@ -13,11 +13,11 @@
 <div class="stat-grid-3">
   {{ ui.kpi('Servicios en línea', sanos ~ ' / ' ~ servicios | length,
             'Responden /health con todas sus dependencias',
-            '#4ade80' if sanos == servicios | length else '#fbbf24') }}
+            '#16a34a' if sanos == servicios | length else '#d97706') }}
   {{ ui.kpi('Tu sesión en svc-auth',
             'Válida' if verificacion else ('Sin respuesta' if estado_verificacion == 0 else 'Rechazada'),
             ('Rol ' ~ verificacion.usuario.rol ~ ' · expira en ' ~ ((verificacion.sesion_ttl_segundos or 0) // 60) ~ ' min') if verificacion else 'El token de la web se valida en el servicio de seguridad',
-            '#4ade80' if verificacion else '#f87171') }}
+            '#16a34a' if verificacion else '#dc2626') }}
   {{ ui.kpi('Contadores en Redis', contadores | length, 'Operaciones registradas hoy por los servicios') }}
 </div>
 

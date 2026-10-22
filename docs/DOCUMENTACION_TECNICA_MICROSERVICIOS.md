@@ -1,6 +1,12 @@
 # Documentación Técnica Exhaustiva de Microservicios — FreshTrack
 
-Documento oficial de especificación, diseño, arquitectura e interoperabilidad de los 8 microservicios de la plataforma FreshTrack, desarrollado conforme a la guía [`instrucciones_microservicios.md`](file:///home/vrdtska/Documents/integracion/iac-proyecto/instrucciones_microservicios.md).
+> **Actualización del segundo parcial:** los códigos de error, la paginación, los contratos XSD,
+> los endpoints nuevos (PUT/PATCH de productos, `/auth/me`, generación y rechazo de órdenes,
+> carrito con PUT) y la verificación de sesión en Redis se describen en
+> [`SEGUNDO_PARCIAL.md`](SEGUNDO_PARCIAL.md). El catálogo exacto de endpoints, generado desde
+> el OpenAPI de cada servicio, está en [`ENDPOINTS_MICROSERVICIOS.md`](ENDPOINTS_MICROSERVICIOS.md).
+
+Documento oficial de especificación, diseño, arquitectura e interoperabilidad de los 8 microservicios de la plataforma FreshTrack, desarrollado conforme a la guía [`instrucciones_microservicios.md`](../instrucciones_microservicios.md).
 
 ---
 
@@ -118,7 +124,7 @@ Arquitectura desacoplada en Flask con capa de seguridad apoyada en `pgcrypto`. A
 
 #### 11. Despliegue
 - Contenedor: `freshtrack_svc_auth`
-- Dockerfile: [`app/services/auth_service/Dockerfile`](file:///home/vrdtska/Documents/integracion/iac-proyecto/app/services/auth_service/Dockerfile)
+- Dockerfile: [`app/services/auth_service/Dockerfile`](../app/services/auth_service/Dockerfile)
 - Puerto: `5001`
 
 #### 12. Evidencias

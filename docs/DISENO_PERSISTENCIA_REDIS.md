@@ -131,7 +131,7 @@ Toda clave almacenada en Redis sigue un esquema jerárquico estandarizado con se
 
 ## 4. Mecanismo Común de Autenticación y Autorización
 
-Todos los microservicios protegidos (`svc-auth`, `svc-catalog`, `svc-inventory`, `svc-commercial`, `svc-asn`, `svc-planning`, `svc-alerts`, `svc-audit`) y el monolito comparten el decorador `@requiere_auth` en [`app/services/common/auth.py`](file:///home/vrdtska/Documents/integracion/iac-proyecto/app/services/common/auth.py):
+Todos los microservicios protegidos (`svc-auth`, `svc-catalog`, `svc-inventory`, `svc-commercial`, `svc-asn`, `svc-planning`, `svc-alerts`, `svc-audit`) y el monolito comparten el decorador `@requiere_auth` en [`app/services/common/auth.py`](../app/services/common/auth.py):
 
 1. **Extracción**: Lee el token `Bearer <JWT>` del encabezado `Authorization`.
 2. **Validación Criptográfica**: Comprueba la firma HS256 y vigencia con `decodificar_token(token)`.
@@ -194,7 +194,7 @@ Permite observar en tiempo real cada `GET`, `SETEX`, `INCRBY` y script `EVAL` qu
 
 ## 6. Evidencias de Operaciones Reales sobre Redis
 
-A continuación se documenta la ejecución automatizada completa de la suite de pruebas mediante el script [`scripts/verify_redis.py`](file:///home/vrdtska/Documents/integracion/iac-proyecto/scripts/verify_redis.py) integrado en `make verify-redis` y `make test`:
+A continuación se documenta la ejecución automatizada completa de la suite de pruebas mediante el script [`scripts/verify_redis.py`](../scripts/verify_redis.py) integrado en `make verify-redis` y `make test`:
 
 ```text
 $ .venv/bin/python scripts/verify_redis.py

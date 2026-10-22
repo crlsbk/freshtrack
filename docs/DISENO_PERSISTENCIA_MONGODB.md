@@ -10,7 +10,7 @@
 
 ## 1. Justificación Arquitectónica: ¿Por qué MongoDB?
 
-En el diseño original ([`docs/BD_Diseño.docx`](file:///home/vrdtska/Documents/integracion/iac-proyecto/docs/BD_Diseño.docx)), PostgreSQL fue establecido como la **única fuente de verdad para el negocio transaccional** (catálogos de usuarios, productos, locaciones, transacciones de venta, deducciones de inventario FEFO y bitácora de auditoría inmutable regulada).
+En el diseño original ([`docs/BD_Diseño.docx`](../docs/BD_Diseño.docx)), PostgreSQL fue establecido como la **única fuente de verdad para el negocio transaccional** (catálogos de usuarios, productos, locaciones, transacciones de venta, deducciones de inventario FEFO y bitácora de auditoría inmutable regulada).
 
 Sin embargo, los entornos modernos de comercio minorista y logística de perecederos enfrentan tres desafíos que degradan severamente a un motor relacional puro si se fuerza su almacenamiento en tablas rígidas:
 
@@ -52,7 +52,7 @@ operacion.lote (id_lote) ----------------> alertas_operativas.id_lote
 
 ## 3. Catálogo de Colecciones y Validación de Esquema
 
-MongoDB implementa validadores a nivel de colección mediante `$jsonSchema` (`validationLevel: "moderate"`, `validationAction: "error"`) configurados en [`mongo/01_init_freshtrack.js`](file:///home/vrdtska/Documents/integracion/iac-proyecto/mongo/01_init_freshtrack.js) y asegurados por [`app/services/doc_store.py`](file:///home/vrdtska/Documents/integracion/iac-proyecto/app/services/doc_store.py):
+MongoDB implementa validadores a nivel de colección mediante `$jsonSchema` (`validationLevel: "moderate"`, `validationAction: "error"`) configurados en [`mongo/01_init_freshtrack.js`](../mongo/01_init_freshtrack.js) y asegurados por [`app/services/doc_store.py`](../app/services/doc_store.py):
 
 ### 3.1 Colección: `avisos_asn`
 Almacena avisos anticipados de despacho enviados por proveedores antes del arribo al CEDIS.
@@ -132,7 +132,7 @@ Almacena incidentes de pre-merma y desviación térmica.
 
 ## 4. Demostración y Validación de las 7 Operaciones Requeridas
 
-La suite automatizada [`scripts/verify_mongo.py`](file:///home/vrdtska/Documents/integracion/iac-proyecto/scripts/verify_mongo.py) (ejecutable vía `make verify-mongo`) comprueba punto por punto las 7 operaciones:
+La suite automatizada [`scripts/verify_mongo.py`](../scripts/verify_mongo.py) (ejecutable vía `make verify-mongo`) comprueba punto por punto las 7 operaciones:
 
 ### 1. Inserción de Documentos
 - **Individual**: `doc_store.registrar_aviso_asn(...)` utiliza `db.avisos_asn.insert_one(documento)` respetando el validador JSON Schema.

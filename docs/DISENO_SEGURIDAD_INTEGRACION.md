@@ -108,7 +108,7 @@ Al autenticarse en `/api/v1/auth/login`, el microservicio valida las credenciale
 ```
 
 ### 3.2 El Decorador Común `@requiere_auth`
-Ubicado en [`app/services/common/auth.py`](file:///home/vrdtska/Documents/integracion/iac-proyecto/app/services/common/auth.py), actúa como interceptor en cada petición:
+Ubicado en [`app/services/common/auth.py`](../app/services/common/auth.py), actúa como interceptor en cada petición:
 
 1. **Extracción**: Valida la existencia del prefijo `Bearer ` en la cabecera `Authorization`.
 2. **Inspección de Denylist en Redis**: Extrae el `jti` sin costo de verificación criptográfica completa y consulta `EXISTS jwt:denylist:{jti}` en memoria (< 0.2 ms). Si fue revocado, rechaza con:

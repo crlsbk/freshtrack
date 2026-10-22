@@ -1,63 +1,47 @@
 # FreshTrack — Gestión de inventario perecedero con FEFO, pronóstico y control de merma
 
-Sistema web para tiendas y CEDIS que trabaja **exclusivamente contra PostgreSQL**.
-No hay datos simulados en el flujo principal: todo lo que la interfaz muestra —catálogos,
-lotes, existencias, ventas, mermas, pronósticos, alertas y bitácora— se lee y se escribe
-en la base de datos.
+Sistema distribuido para tiendas y CEDIS: un **sistema web** (Flask) y **8 microservicios**
+REST, cada uno en su contenedor, sobre **PostgreSQL** (fuente de verdad transaccional),
+**MongoDB** (pronósticos, avisos ASN y alertas como documentos) y **Redis** (sesiones,
+revocación de JWT, caché, contadores, rate limiting, bloqueos distribuidos y eventos).
 
-> **Avance 2 · Equipo 05 · Proyecto IAC**
-> Entrega: todo lo presentado como funcional opera con datos reales almacenados en
-> PostgreSQL. El módulo `mock_data.py` fue eliminado del repositorio.
+> **Segundo parcial · Equipo 05 · Proyecto IAC**
+> Documentación de la entrega: [`docs/SEGUNDO_PARCIAL.md`](docs/SEGUNDO_PARCIAL.md)
+> (contratos JSON/XML, catálogo de endpoints, seguridad, Redis, pruebas, CI/CD y matriz de
+> trazabilidad). Fichas por microservicio: [`docs/DOCUMENTACION_TECNICA_MICROSERVICIOS.md`](docs/DOCUMENTACION_TECNICA_MICROSERVICIOS.md).
 
 ---
 
 ## 1. Puesta en marcha
 
-> **¿Solo quieres ver el sistema funcionando?** Usa la vía con Docker (§1.1). Es un
-> comando, y `env.example` funciona tal cual: el contenedor crea la base con las claves
-> que ya vienen en ese archivo, así que no hay que inventar ninguna contraseña.
->
-> La vía sin Docker (§1.2) es para quien va a desarrollar: **exige tener PostgreSQL ya
-> instalado y corriendo**. Si no lo tienes, el sistema no arranca.
+### 1.1 Con Docker (todo el sistema)
 
-### 1.1 Con Docker (la forma rápida)
-
-Requisito: Docker y Docker Compose.
+Requisito: Docker con Docker Compose v2.
 
 ```bash
-cp env.example .env
-docker compose up -d postgres     # levanta solo la base
-pip install -r requirements.txt
-python scripts/ETL.py             # carga 180 días de historia operativa
-python run.py                     # http://127.0.0.1:5000
+cp env.example .env                  # las claves de ejemplo funcionan tal cual en local
+docker compose up -d --build --wait  # 3 bases + web + 8 microservicios, espera a "healthy"
+docker compose ps                    # evidencia del estado de los contenedores
+python scripts/smoke_http.py         # prueba de comunicación entre contenedores
 ```
 
-Si prefieres todo dentro de contenedores (base + aplicación):
-
-```bash
-cp env.example .env
-make up                           # PostgreSQL, MongoDB, Redis y la aplicación
-```
-
-Al crear el volumen por primera vez, cada motor ejecuta sus scripts de inicialización
-(`docker-entrypoint-initdb.d`): PostgreSQL los de `sql/`, MongoDB los de `mongo/`.
-
-**Los tres motores están desplegados; solo uno es fuente de datos.** Vale la pena ser
-explícito porque es fácil confundir "desplegado" con "funcional":
-
-| Motor | Puerto | Papel hoy |
+| Componente | Puerto | Documentación |
 |---|---|---|
-| PostgreSQL 17 | 5432 | **Única fuente de verdad.** Todo el flujo funcional vive aquí. |
-| MongoDB 7 | 27017 | Desplegado con sus colecciones e índices creados. Aún sin flujo que lo consuma. |
-| Redis 7 | 6379 | Desplegado. Aún sin flujo que lo consuma. |
+| Sistema web | 5000 | http://localhost:5000 (pantalla *Administración → Microservicios*) |
+| svc-auth · svc-catalog · svc-inventory · svc-commercial | 5001–5004 | `http://localhost:500X/api/v1/docs` |
+| svc-asn · svc-planning · svc-alerts · svc-audit | 5005–5008 | `http://localhost:500X/api/v1/docs` |
+| PostgreSQL 17 / MongoDB 7 / Redis 7 | 5432 / 27017 / 6379 | — |
 
-MongoDB y Redis corresponden a la arquitectura políglota ya diseñada en
-`docs/Documento_Analitico_FreshTrack.pdf` (pronósticos y alertas como documentos;
-sesiones, denylist de JWT, caché de catálogos y bloqueos distribuidos en memoria) y se
-activan en las siguientes parciales. La aplicación **no** depende de ellos para arrancar:
-su único `depends_on` es PostgreSQL.
+Al crear los volúmenes por primera vez, PostgreSQL ejecuta `sql/` (roles, esquemas, DDL,
+funciones, vistas y datos base) y MongoDB ejecuta `mongo/` (colecciones con validador e
+índices únicos, compuestos y TTL). Para cargar 180 días de historia operativa:
+`python scripts/ETL.py` (o `make etl`).
 
-El ETL se corre aparte con `make etl`.
+Detener: `docker compose down` (conserva datos) · `docker compose down -v` (borra volúmenes).
+
+Pruebas: `make test-unit` (sin bases de datos) y `make test-integration` (con la
+arquitectura levantada). Evidencias request/response reales:
+`python scripts/generar_evidencias.py` → `docs/evidencias/EVIDENCIAS_REQUEST_RESPONSE.md`.
 
 ### 1.2 Sin Docker (para desarrollo)
 
@@ -302,7 +286,7 @@ aplicación fija al abrir cada transacción (`app/db.py`).
 Proveedor → recepción → tienda/CEDIS → inventario → ventas FEFO → transferencias →
 mermas → estado final, reconstruida desde `analitica.v_trazabilidad_lote` y el kardex.
 
-### 4.13 API JSON con JWT
+### 4.13 API JSON con JWT (sistema web)
 
 `/api/kpis`, `/api/inventario`, `/api/inventario/fefo`, `/api/alertas`, `/api/pronostico`,
 `/api/reabastecimiento`, `/api/transferencias`, `/api/mermas`,
@@ -392,3 +376,5 @@ sí.
 - Hay bloqueo temporal tras varios intentos fallidos y los usuarios inactivos se rechazan.
 - La bitácora de auditoría es inmutable por disparador.
 - `.env` está en `.gitignore`. Las claves de demostración deben rotarse antes de publicar.
+- Microservicios: JWT verificado en cada petición (firma, expiración, registro en
+  PostgreSQL, denylist y sesión viva en Redis) y RBAC por endpoint. Ver `docs/SEGUNDO_PARCIAL.md`.

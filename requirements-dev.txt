@@ -1,0 +1,6 @@
+# Dependencias solo para pruebas (no van en las imágenes Docker)
+-r requirements.txt
+pytest>=8.0
+fakeredis[lua]>=2.26
+mongomock>=4.1
+pyyaml>=6.0

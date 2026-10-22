@@ -67,3 +67,28 @@ function fillLogin(email, password) {
   if (emailInput)    emailInput.value    = email;
   if (passwordInput) passwordInput.value = password;
 }
+
+// ── Columnas numéricas a la derecha ──────────────────────────────────────────
+// Si todas las celdas con texto de una columna son cifras ($, %, comas, unidades
+// cortas), la columna y su encabezado se alinean a la derecha para comparar fácil.
+document.addEventListener("DOMContentLoaded", () => {
+  const esCifra = t => /^[-+$]?\s?[\d.,]+\s?(%|d|días?|u\.?|ms)?$/i.test(t);
+  document.querySelectorAll("table").forEach(tabla => {
+    const filas = [...tabla.querySelectorAll("tbody tr")].filter(f => !f.querySelector("td[colspan]"));
+    if (!filas.length) return;
+    const columnas = Math.max(...filas.map(f => f.children.length));
+    for (let i = 0; i < columnas; i++) {
+      const textos = filas.map(f => f.children[i]?.innerText.trim()).filter(Boolean);
+      if (textos.length && textos.every(esCifra)) {
+        filas.forEach(f => f.children[i]?.classList.add("num"));
+        tabla.querySelector(`thead tr`)?.children[i]?.classList.add("num");
+      }
+    }
+  });
+});
+
+// ── Ayuda (?) dentro de tarjetas enlazadas: mostrar, no navegar ─────────────
+document.addEventListener("click", e => {
+  const ayuda = e.target.closest(".ayuda");
+  if (ayuda) { e.preventDefault(); e.stopPropagation(); ayuda.focus(); }
+}, true);

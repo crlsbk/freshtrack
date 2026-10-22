@@ -286,3 +286,64 @@ details.acordeon > .acordeon-cuerpo { padding: 0 14px 14px; }
 /* Cifras en tablas: misma tipografía que el resto, con dígitos de ancho fijo */
 td.mono { font-family: 'Outfit', sans-serif; font-weight: 500; font-size: 13px; }
 .cifra { font-variant-numeric: tabular-nums; letter-spacing: -.4px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Componentes de legibilidad (segundo parcial)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Fondo con un leve degradado para separar visualmente las tarjetas */
+.content { background: radial-gradient(1200px 600px at 20% -10%, rgba(74,222,128,.05), transparent 60%), var(--background); }
+.card { box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 8px 24px -16px rgba(0,0,0,.6); }
+
+/* Secciones dentro de una vista */
+.seccion { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 30px 0 14px; }
+.seccion:first-of-type { margin-top: 8px; }
+.seccion-titulo { font-size: 17px; font-weight: 700; letter-spacing: -.3px; color: var(--foreground); }
+.seccion-sub { font-size: 13px; color: var(--muted-foreground); }
+
+/* Tarjetas KPI con ícono, acento y enlace */
+.kpi-card { position: relative; overflow: visible; }
+.kpi-card::before {
+  content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--kpi-color, var(--role-accent)); opacity: .85;
+}
+.kpi-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.kpi-top .kpi-label { margin-bottom: 0; display: flex; align-items: center; gap: 6px; }
+.kpi-icono {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--kpi-color, var(--role-accent)) 14%, transparent);
+}
+.kpi-icono svg { width: 16px; height: 16px; fill: var(--kpi-color, var(--role-accent)); }
+.kpi-ir { margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--kpi-color, var(--role-accent)); opacity: .85; }
+.kpi-enlace:hover .kpi-ir { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Ayuda contextual (?) */
+.ayuda {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0;
+  border: 1px solid rgba(138,158,142,.5); color: var(--muted-foreground);
+  font-size: 9.5px; font-weight: 700; cursor: help; line-height: 1;
+  text-transform: none; letter-spacing: 0;
+}
+.ayuda:hover, .ayuda:focus { color: var(--foreground); border-color: var(--foreground); outline: none; }
+.ayuda::after {
+  content: attr(data-ayuda); position: absolute; z-index: 50; left: 50%; bottom: calc(100% + 8px);
+  transform: translateX(-50%); width: max-content; max-width: 280px;
+  background: #1b2620; color: var(--foreground); border: 1px solid #2c3d31;
+  border-radius: 8px; padding: 9px 11px; font-size: 12px; font-weight: 400; line-height: 1.45;
+  white-space: normal; text-align: left; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+.ayuda:hover::after, .ayuda:focus::after { opacity: 1; }
+
+/* Columnas numéricas alineadas a la derecha (las marca app.js) */
+th.num, td.num { text-align: right; }
+
+/* Lista "Qué atender hoy" */
+.atender { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 1200px) { .atender { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px)  { .atender { grid-template-columns: 1fr; } }
+
+/* Etiqueta secundaria bajo un texto principal en tablas */
+.sub-dato { display: block; font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }

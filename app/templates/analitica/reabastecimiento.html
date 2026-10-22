@@ -67,7 +67,7 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <span class="badge badge-{{ 'danger' if o.prioridad == 'ALTA' else ('warning' if o.prioridad == 'MEDIA' else 'neutral') }}">
-          Prioridad {{ o.prioridad }}
+          Prioridad {{ o.prioridad | legible | lower }}
         </span>
         {{ ui.estado(o.estado) }}
       </div>

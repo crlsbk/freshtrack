@@ -32,7 +32,8 @@
 {% macro riesgo(clasificacion) %}
   {% set mapa = {'NORMAL': 'success', 'VIGILANCIA': 'warning',
                  'CRITICO': 'danger', 'VENCIDO': 'neutral'} %}
-  <span class="badge badge-{{ mapa.get(clasificacion, 'neutral') }}">{{ clasificacion }}</span>
+  {% set texto = {'NORMAL': 'Normal', 'VIGILANCIA': 'En vigilancia', 'CRITICO': 'Crítico', 'VENCIDO': 'Vencido'} %}
+  <span class="badge badge-{{ mapa.get(clasificacion, 'neutral') }}">{{ texto.get(clasificacion, clasificacion) }}</span>
 {% endmacro %}
 
 {# --- Barra de vida útil restante ----------------------------------------- #}
@@ -48,7 +49,8 @@
 {# --- Badge de severidad de alerta ---------------------------------------- #}
 {% macro severidad(nivel) %}
   {% set mapa = {'CRITICA': 'danger', 'ALTA': 'warning', 'MEDIA': 'info', 'BAJA': 'neutral'} %}
-  <span class="badge badge-{{ mapa.get(nivel, 'neutral') }}">{{ nivel }}</span>
+  {% set texto = {'CRITICA': 'Crítica', 'ALTA': 'Alta', 'MEDIA': 'Media', 'BAJA': 'Baja'} %}
+  <span class="badge badge-{{ mapa.get(nivel, 'neutral') }}">{{ texto.get(nivel, nivel) }}</span>
 {% endmacro %}
 
 {# --- Badge de estado genérico -------------------------------------------- #}
@@ -60,7 +62,7 @@
       'ABIERTA': 'danger', 'ATENDIDA': 'success', 'DESCARTADA': 'neutral',
       'AGOTADO': 'neutral', 'DISPONIBLE': 'success', 'VENCIDO': 'danger',
       'BLOQUEADO': 'warning'} %}
-  <span class="badge badge-{{ mapa.get(valor, 'neutral') }}">{{ valor }}</span>
+  <span class="badge badge-{{ mapa.get(valor, 'neutral') }}">{{ valor | legible }}</span>
 {% endmacro %}
 
 {# --- Fila de tabla vacía ------------------------------------------------- #}
@@ -99,18 +101,77 @@
 
 {% macro moneda(valor) %}${{ "{:,.2f}".format(valor | float) }}{% endmacro %}
 
+{# --- Íconos de tarjetas (SVG 20x20 en línea) ------------------------------ #}
+{% set ICONOS = {
+  'caja': 'M10 2 2 6v8l8 4 8-4V6l-8-4zm0 2.2L15.6 7 10 9.8 4.4 7 10 4.2zM4 8.6l5 2.5v5.6l-5-2.5V8.6zm7 8.1v-5.6l5-2.5v5.6l-5 2.5z',
+  'dinero': 'M10 2a8 8 0 100 16 8 8 0 000-16zm.9 12.4V16H9.2v-1.6c-1.4-.2-2.5-1-2.6-2.4h1.6c.1.7.7 1.1 1.8 1.1 1.1 0 1.6-.5 1.6-1 0-.6-.4-.9-1.8-1.2-1.8-.4-2.9-1-2.9-2.4 0-1.2.9-2 2.3-2.3V4.6h1.7v1.6c1.3.3 2.1 1.1 2.2 2.3h-1.6c-.1-.6-.6-1-1.5-1-1 0-1.4.4-1.4.9 0 .5.4.8 1.8 1.1 1.8.4 2.9 1 2.9 2.5 0 1.3-1 2.1-2.4 2.4z',
+  'alerta': 'M10 2 1 18h18L10 2zm1 13H9v-2h2v2zm0-4H9V7h2v4z',
+  'reloj': 'M10 2a8 8 0 100 16 8 8 0 000-16zm1 8.4 3.3 2-1 1.6L9 11V5h2v5.4z',
+  'carrito': 'M7 16a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm8 0a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM2 2h2.3l.7 2H18l-2.4 7.2c-.2.5-.7.8-1.2.8H7.2l-.7 1.5h9.8V15H5l1.6-3.2L3.6 3.5H2V2z',
+  'tendencia': 'M2 15l5-5 3 3 6-6v3h2V3h-7v2h3l-4 4-3-3-7 7z',
+  'basura': 'M7 2h6l1 1h4v2H2V3h4l1-1zM4 6h12l-1 12H5L4 6z',
+  'campana': 'M10 2a6 6 0 00-6 6v3.6l-1.7 1.7A1 1 0 003 15h14a1 1 0 00.7-1.7L16 11.6V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z',
+  'camion': 'M1 4h11v9h1V7h3l3 4v4h-2a2 2 0 11-4 0H8a2 2 0 11-4 0H1V4z',
+  'flechas': 'M6 3 2 7l4 4V8h8V6H6V3zm8 6v3H6v2h8v3l4-4-4-4z',
+  'diana': 'M10 2a8 8 0 100 16 8 8 0 000-16zm0 3a5 5 0 110 10 5 5 0 010-10zm0 3a2 2 0 100 4 2 2 0 000-4z',
+  'hoja': 'M17 3C8 3 3 7 3 13c0 1.4.3 2.7.9 3.8L5.5 15C7 11 10 9 13 8c-3 2-5.5 4.5-6.5 8 1 .6 2.2 1 3.5 1 6 0 9-6 7-14z',
+  'check': 'M10 2a8 8 0 100 16 8 8 0 000-16zm-1.2 11.6L5 9.8l1.4-1.4 2.4 2.4 4.8-4.8L15 7.4l-6.2 6.2z',
+} %}
+
+{# --- Ayuda contextual: ícono (?) con explicación al pasar el mouse ------- #}
+{% macro ayuda(texto) -%}
+  <span class="ayuda" tabindex="0" data-ayuda="{{ texto }}" aria-label="{{ texto }}">?</span>
+{%- endmacro %}
+
+{# --- Título de sección dentro de una vista -------------------------------- #}
+{% macro seccion(titulo, subtitulo=None) %}
+  <div class="seccion">
+    <h2 class="seccion-titulo">{{ titulo }}</h2>
+    {% if subtitulo %}<p class="seccion-sub">{{ subtitulo }}</p>{% endif %}
+  </div>
+{% endmacro %}
+
 {# --- Tarjeta KPI ---------------------------------------------------------
-   Con `href` la tarjeta se vuelve un enlace (misma caja: la etiqueta <a> lleva
-   las clases de la tarjeta, así que la rejilla la estira igual que a un <div>).
-   Sirve para que un contador lleve a la lista que lo explica. #}
-{% macro kpi(etiqueta, valor, sub=None, acento=None, href=None) %}
-  {%- if href %}<a href="{{ href }}" class="card kpi-card kpi-enlace">
-  {%- else %}<div class="card kpi-card">{% endif %}
-    <div class="kpi-label">{{ etiqueta }}</div>
-    <div class="kpi-value" {% if acento %}style="color: {{ acento }};"{% endif %}>{{ valor }}</div>
+   Con `href` la tarjeta se vuelve un enlace (muestra una flecha "Ver →").
+   `ayuda` agrega una explicación en lenguaje simple; `icono` una clave de ICONOS. #}
+{% macro kpi(etiqueta, valor, sub=None, acento=None, href=None, ayuda=None, icono=None) %}
+  {%- set color = acento or 'var(--role-accent)' %}
+  {%- set ns = namespace(icono=icono) %}
+  {%- if not icono %}
+    {%- set e = etiqueta | lower %}
+    {%- set reglas = [
+      (['merma', 'desperdicio', 'baja'], 'basura'),
+      (['alerta', 'crític', 'critic', 'urgente', 'riesgo'], 'alerta'),
+      (['valor', 'ingreso', 'costo', 'ahorro', 'recuperado', '$', 'precio', 'ticket promedio'], 'dinero'),
+      (['venc', 'días', 'dias', 'caduc', 'vida'], 'reloj'),
+      (['vendid', 'venta', 'demanda', 'pronóst', 'tendencia'], 'tendencia'),
+      (['orden', 'compra', 'reabast', 'pendiente'], 'carrito'),
+      (['transfer', 'proveedor', 'asn', 'embarque'], 'camion'),
+      (['error', 'mae', 'rmse', 'wmape', 'precisión', 'tasa'], 'diana'),
+      (['co2', 'emisi', 'sosten', 'rescat', 'evitad'], 'hoja'),
+      (['aprobad', 'ejecutad', 'atendid', 'en línea', 'válid', 'activos'], 'check'),
+      (['descuento', 'promoción'], 'flechas'),
+      (['lote', 'unidad', 'inventario', 'existencia', 'producto', 'sku', 'tienda', 'ubicac'], 'caja'),
+    ] %}
+    {%- for palabras, ic in reglas if not ns.icono %}
+      {%- for palabra in palabras if not ns.icono and palabra in e %}{% set ns.icono = ic %}{% endfor %}
+    {%- endfor %}
+  {%- endif %}
+  {%- if href %}<a href="{{ href }}" class="card kpi-card kpi-enlace" style="--kpi-color: {{ color }};">
+  {%- else %}<div class="card kpi-card" style="--kpi-color: {{ color }};">{% endif %}
+    <div class="kpi-top">
+      {% if ns.icono and ns.icono in ICONOS %}
+        <span class="kpi-icono"><svg viewBox="0 0 20 20"><path d="{{ ICONOS[ns.icono] }}"/></svg></span>
+      {% endif %}
+      <div class="kpi-label">{{ etiqueta }}{% if ayuda %} {{ _ayuda(ayuda) }}{% endif %}</div>
+    </div>
+    <div class="kpi-value" {% if acento %}style="color: {{ acento }};"{% endif %}>{{ valor | cantidad if (valor is number and valor is not boolean) else valor }}</div>
     {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
+    {% if href %}<div class="kpi-ir">Ver detalle →</div>{% endif %}
   {%- if href %}</a>{% else %}</div>{% endif %}
 {% endmacro %}
+
+{% macro _ayuda(texto) %}{{ ayuda(texto) }}{% endmacro %}
 
 {# --- Bloque de explicación (reabastecimiento / transferencia) ------------ #}
 {% macro explicacion(texto) %}

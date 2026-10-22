@@ -22,12 +22,16 @@
 <div class="card" style="margin-bottom:20px;">
   <div class="card-title">Alertas abiertas por tipo</div>
   <table>
-    <thead><tr><th>Tipo</th><th>Descripción</th><th>Abiertas</th></tr></thead>
+    <thead><tr><th>Tipo de alerta</th><th>Qué significa</th><th>Abiertas</th></tr></thead>
     <tbody>
       {% for clave, meta in tipos.items() %}
         <tr>
-          <td class="mono" style="font-size:11.5px;font-weight:600;">{{ clave }}</td>
-          <td>{{ meta.etiqueta }}</td>
+          <td style="font-weight:600;">
+            {% if resumen.por_tipo.get(clave, 0) %}
+              <a href="{{ url_for('panel.alertas', tipo=clave) }}" style="color:inherit;">{{ meta.etiqueta }}</a>
+            {% else %}{{ meta.etiqueta }}{% endif %}
+          </td>
+          <td class="text-muted">{{ meta.descripcion }}</td>
           <td>
             {% set n = resumen.por_tipo.get(clave, 0) %}
             {% if n %}
@@ -75,7 +79,7 @@
       <label class="form-label">Estado</label>
       <select class="input" name="estado">
         {% for e in ['ABIERTA', 'ATENDIDA', 'DESCARTADA'] %}
-          <option value="{{ e }}" {% if filtro_estado == e %}selected{% endif %}>{{ e }}</option>
+          <option value="{{ e }}" {% if filtro_estado == e %}selected{% endif %}>{{ e | capitalize }}s</option>
         {% endfor %}
       </select>
     </div>
@@ -90,7 +94,7 @@
       <div class="alerta-cuerpo">
         <div class="alerta-meta">
           {{ ui.severidad(a.severidad) }}
-          <span class="badge badge-neutral mono" style="font-size:9.5px;">{{ a.tipo }}</span>
+          <span class="badge badge-neutral" title="{{ tipos.get(a.tipo, {}).get('descripcion', '') }}">{{ tipos.get(a.tipo, {}).get('etiqueta', a.tipo) }}</span>
           {% if a.producto %}
             <span style="font-size:12px;font-weight:600;">{{ a.producto }}</span>
           {% endif %}
@@ -108,14 +112,24 @@
           <details class="acordeon">
             <summary>Detalle del cálculo</summary>
             <div class="acordeon-cuerpo">
-              <pre class="explicacion">{{ a.detalle | tojson(indent=2) }}</pre>
+              {% if a.detalle is mapping %}
+                <div class="detalle-grid">
+                  {% for k, v in a.detalle.items() if v is not none and v is not mapping %}
+                    <div class="detalle-item">
+                      <div class="detalle-etiqueta">{{ k | replace('_', ' ') }}</div>
+                      <div class="detalle-valor">{{ v | cantidad if v is number else v }}</div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <pre class="explicacion">{{ a.detalle | tojson(indent=2) }}</pre>
+              {% endif %}
             </div>
           </details>
         {% endif %}
 
         <div class="alerta-pie">
-          Generada el {{ a.fecha_generacion | fecha_hora }} · estado {{ a.estado }}
-          {% if a.referencia_tipo %} · referencia: {{ a.referencia_tipo }}{% endif %}
+          Generada el {{ a.fecha_generacion | fecha_hora }} · {{ a.estado | lower }}
         </div>
       </div>
 

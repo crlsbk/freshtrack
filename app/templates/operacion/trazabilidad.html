@@ -18,7 +18,7 @@
       {% for l in lotes %}
         <option value="{{ l.id_lote }}" {% if id_lote == l.id_lote %}selected{% endif %}>
           {{ l.codigo_lote_prov }} — {{ l.producto }} — vence {{ l.fecha_caducidad | fecha_hora }}
-          ({{ l.clasificacion }})
+          ({{ l.clasificacion | legible | lower }})
         </option>
       {% endfor %}
     </select>
@@ -213,7 +213,7 @@
         <div class="timeline-item">
           <div class="timeline-fecha">{{ m.fecha | fecha_hora }}</div>
           <div class="timeline-titulo">
-            {{ m.tipo }}
+            {{ m.tipo | legible }}
             <span class="mono" style="font-size:12px;">
               {{ "%+.2f" | format(m.cantidad | float) }}
             </span>

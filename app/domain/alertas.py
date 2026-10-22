@@ -25,13 +25,20 @@ from app import auditoria
 from app.db import a_float, a_int, config_valor, query, transaccion
 
 TIPOS = {
-    "LOTE_POR_VENCER": {"etiqueta": "Lote por vencer", "icono": "clock"},
-    "LOTE_VENCIDO": {"etiqueta": "Lote vencido", "icono": "alert"},
-    "RIESGO_DE_MERMA": {"etiqueta": "Riesgo de merma", "icono": "trash"},
-    "SOBREINVENTARIO": {"etiqueta": "Sobreinventario", "icono": "box"},
-    "RIESGO_DE_FALTANTE": {"etiqueta": "Riesgo de faltante", "icono": "down"},
-    "REABASTECIMIENTO_REQUERIDO": {"etiqueta": "Reabastecimiento requerido", "icono": "truck"},
-    "TRANSFERENCIA_SUGERIDA": {"etiqueta": "Transferencia sugerida", "icono": "transfer"},
+    "LOTE_POR_VENCER": {"etiqueta": "Lote por vencer", "icono": "clock",
+                        "descripcion": "Le quedan pocos días; conviene venderlo primero o ponerle descuento."},
+    "LOTE_VENCIDO": {"etiqueta": "Lote vencido", "icono": "alert",
+                     "descripcion": "Ya pasó su fecha de caducidad y debe retirarse del anaquel."},
+    "RIESGO_DE_MERMA": {"etiqueta": "Riesgo de merma", "icono": "trash",
+                        "descripcion": "Al ritmo de venta actual no se alcanzará a vender antes de caducar."},
+    "SOBREINVENTARIO": {"etiqueta": "Sobreinventario", "icono": "box",
+                        "descripcion": "Hay mucho más producto del que se espera vender."},
+    "RIESGO_DE_FALTANTE": {"etiqueta": "Riesgo de faltante", "icono": "down",
+                           "descripcion": "La existencia se acabaría antes de que llegue un nuevo pedido."},
+    "REABASTECIMIENTO_REQUERIDO": {"etiqueta": "Reabastecimiento requerido", "icono": "truck",
+                                   "descripcion": "Hay una orden de compra sugerida esperando aprobación."},
+    "TRANSFERENCIA_SUGERIDA": {"etiqueta": "Transferencia sugerida", "icono": "transfer",
+                               "descripcion": "Conviene mover producto a otra tienda donde se vende mejor."},
 }
 
 SEVERIDADES = {

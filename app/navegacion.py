@@ -43,7 +43,7 @@ SECCIONES = [
     {
         "label": "Principal",
         "items": [
-            {"id": "dashboard", "label": "Panel de Control", "endpoint": "panel.dashboard"},
+            {"id": "dashboard", "label": "Panel de control", "endpoint": "panel.dashboard"},
             {"id": "alerts", "label": "Alertas", "endpoint": "panel.alertas"},
         ],
     },
@@ -61,7 +61,7 @@ SECCIONES = [
             {"id": "batches", "label": "Lotes y Recepción", "endpoint": "operacion.lotes"},
             {"id": "inventory", "label": "Inventario", "endpoint": "operacion.inventario"},
             {"id": "sales", "label": "Ventas", "endpoint": "operacion.ventas"},
-            {"id": "fefo", "label": "Cola FEFO", "endpoint": "operacion.fefo"},
+            {"id": "fefo", "label": "Orden de salida (FEFO)", "endpoint": "operacion.fefo"},
             {"id": "traceability", "label": "Trazabilidad", "endpoint": "operacion.trazabilidad"},
         ],
     },
@@ -72,14 +72,14 @@ SECCIONES = [
             {"id": "replenishment", "label": "Reabastecimiento", "endpoint": "analitica.reabastecimiento"},
             {"id": "transfers", "label": "Transferencias", "endpoint": "analitica.transferencias"},
             {"id": "discounts", "label": "Descuentos", "endpoint": "analitica.descuentos"},
-            {"id": "mongo_explorer", "label": "MongoDB Políglota", "endpoint": "panel.mongo_explorer"},
+            {"id": "mongo_explorer", "label": "Documentos (MongoDB)", "endpoint": "panel.mongo_explorer"},
         ],
     },
     {
         "label": "Desperdicio",
         "items": [
             {"id": "shrinkage", "label": "Mermas", "endpoint": "operacion.mermas"},
-            {"id": "savings", "label": "Desperdicio Evitado", "endpoint": "panel.desperdicio_evitado"},
+            {"id": "savings", "label": "Desperdicio evitado", "endpoint": "panel.desperdicio_evitado"},
             {"id": "sustainability", "label": "Sostenibilidad", "endpoint": "panel.sostenibilidad"},
         ],
     },

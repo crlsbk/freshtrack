@@ -48,6 +48,21 @@ def _registrar_filtros(app: Flask) -> None:
             decimales = 0
         return f"{n:,.{decimales}f}"
 
+    acentos = {
+        "critico": "crítico", "critica": "crítica", "recepcion": "recepción", "dano": "daño",
+        "frio": "frío", "devolucion": "devolución", "transito": "tránsito", "revision": "revisión",
+        "manipulacion": "manipulación", "transferencia": "transferencia", "media": "media",
+    }
+
+    @app.template_filter("legible")
+    def legible(valor) -> str:
+        """CADENA_DE_FRIO → «Cadena de frío»: convierte códigos internos en texto para personas."""
+        if not valor:
+            return ""
+        palabras = [acentos.get(p, p) for p in str(valor).lower().split("_")]
+        texto = " ".join(palabras)
+        return texto[:1].upper() + texto[1:]
+
     @app.template_filter("fecha_hora")
     def fecha_hora(valor) -> str:
         if isinstance(valor, str):

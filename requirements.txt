@@ -16,3 +16,4 @@ pandas>=2.2.0
 Faker>=25.0.0
 redis>=5.0.0
 pymongo>=4.6.0
+xmlschema>=3.0.0

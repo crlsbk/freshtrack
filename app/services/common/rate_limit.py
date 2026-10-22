@@ -15,10 +15,10 @@ from __future__ import annotations
 import functools
 from typing import Any, Callable
 
-from flask import Response, g, request
+from flask import g, make_response, request
 
 from app.services.cache_service import incrementar_contador, verificar_rate_limit
-from app.services.common.response import render_response
+from app.services.common.response import error_response
 
 
 def _extraer_identificador_cliente(por_ip: bool = True, por_usuario: bool = True) -> str:
@@ -83,28 +83,25 @@ def limite_tasa(
             if not permitido:
                 incrementar_contador("ratelimit", "throttled")
                 headers_rl["Retry-After"] = str(ttl_reset)
-                return render_response(
-                    {
-                        "error": "too_many_requests",
-                        "mensaje": f"Límite de solicitudes excedido ({limite} por {ventana_segundos}s). Intente nuevamente en {ttl_reset} segundos.",
-                        "retry_after": ttl_reset,
-                    },
-                    status=429,
-                    root_tag="rate_limit_error",
+                return error_response(
+                    429,
+                    "limite_excedido",
+                    f"Límite de solicitudes excedido ({limite} por {ventana_segundos}s). "
+                    f"Intente nuevamente en {ttl_reset} segundos.",
+                    {"retry_after": ttl_reset},
                     headers=headers_rl,
                 )
 
             # Ejecutar la función original
             res = fn(*args, **kwargs)
 
-            # Si es una tupla o Response, anexar las cabeceras de rate limit
-            if isinstance(res, Response):
-                for k, v in headers_rl.items():
-                    res.headers[k] = v
-                return res
-
+            # Cualquier valor de retorno (dict, tupla o Response) lleva las cabeceras.
+            res = make_response(res)
+            for k, v in headers_rl.items():
+                res.headers[k] = v
             return res
 
+        wrapper._rate_limit = (limite, ventana_segundos)  # type: ignore[attr-defined]
         return wrapper
 
     return decorador

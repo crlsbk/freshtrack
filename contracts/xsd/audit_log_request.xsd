@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-audit POST /api/v1/audit/log -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="audit_log_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="accion">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:pattern value="[A-Za-z_]{3,40}"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="tabla" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:maxLength value="60"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="descripcion">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:minLength value="1"/><xs:maxLength value="500"/></xs:restriction></xs:simpleType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

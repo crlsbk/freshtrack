@@ -3,233 +3,324 @@ Microservicio 2: Master Catalog & Locations Service (`svc-catalog`) — FreshTra
 
 Puerto: 5002
 Responsabilidad:
-- Catálogo maestro de productos perecederos, reglas de riesgo, categorías y proveedores.
-- Gestión de tiendas y CEDIS con contexto de red de distribución.
-- Patrón Cache-Aside en Redis para consultas de ultra-baja latencia (< 1 ms).
-- Soporte dual JSON y XML (estándar GS1 XML B2B).
+- Catálogo maestro de productos perecederos (alta, consulta, edición total/parcial, baja lógica).
+- Tiendas y CEDIS de la red de distribución; proveedores con lead time y MOQ.
+- Patrón Cache-Aside en Redis con invalidación por patrón al escribir.
+- Soporte dual JSON y XML (entrada validada con XSD producto_request).
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from flask import Flask, request
+from flask import request
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from app.config import Config
-from app.db import a_float, a_int, one, query, transaccion
+from app.db import a_float, one, query, transaccion
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service
 from app.services.common.auth import requiere_auth
 from app.services.common.rate_limit import limite_tasa
-from app.services.common.response import render_response
-from app.services.common.swagger import registrar_openapi
+from app.services.common.response import (
+    ErrorApi,
+    decimal_pos,
+    entero,
+    error_response,
+    leer_cuerpo,
+    meta_paginacion,
+    paginacion,
+    render_response,
+    requerir_campos,
+)
+from app.services.common.servicio import crear_servicio, ejecutar
+from app.services.common.swagger import documentar
 
-app = Flask(__name__)
-app.config.from_object(Config)
+app = crear_servicio(
+    "svc-catalog",
+    "Master Catalog & Locations Service (FreshTrack)",
+    "Productos perecederos, proveedores, tiendas y CEDIS con Cache-Aside en Redis.",
+    dependencias=("postgres", "redis"),
+)
 
-CACHE_KEY_PRODUCTS = "catalog:products:all"
+CACHE_PREFIX_PRODUCTS = "catalog:products:"
 CACHE_KEY_LOCATIONS = "catalog:locations:all"
+CAMPOS_PRODUCTO = """p.id_sku, p.codigo_gtin, p.nombre, p.categoria, p.unidad_medida,
+                     p.vida_util_estandar, p.precio_costo, p.precio_venta, p.activo"""
+
+_PRODUCTO_EJEMPLO = {
+    "codigo_gtin": "7501234567890",
+    "nombre": "Fresa orgánica 500 g",
+    "categoria": "Frutas",
+    "unidad_medida": "Pieza",
+    "vida_util_estandar": 6,
+    "precio_costo": 28.5,
+    "precio_venta": 45.9,
+}
 
 
-@app.get("/health")
-def health():
-    pg_ok = False
-    try:
-        res = one("SELECT 1 AS ok")
-        pg_ok = bool(res and res["ok"] == 1)
-    except Exception:
-        pass
+def _producto(fila: dict) -> dict:
+    d = dict(fila)
+    d["precio_venta"] = a_float(d["precio_venta"])
+    d["precio_costo"] = a_float(d["precio_costo"])
+    d.pop("_total", None)
+    return d
 
-    redis_ok = False
-    try:
-        r = cache_service.get_redis_client()
-        redis_ok = bool(r and r.ping())
-    except Exception:
-        pass
 
-    estado = "HEALTHY" if (pg_ok and redis_ok) else "DEGRADED"
-    return render_response({
-        "service": "svc-catalog",
-        "status": estado,
-        "dependencies": {"postgres": pg_ok, "redis": redis_ok},
-    }, status=200 if estado == "HEALTHY" else 503, root_tag="service_health")
+def _validar_producto(datos: dict, parcial: bool) -> dict:
+    """Normaliza y valida los campos de un producto. En PATCH solo valida los presentes."""
+    if not parcial:
+        requerir_campos(datos, "nombre", "categoria", "precio_venta", "precio_costo")
+    limpio: dict = {}
+    for campo, largo in (("codigo_gtin", 14), ("nombre", 150), ("categoria", 60), ("unidad_medida", 20)):
+        if campo in datos and datos[campo] not in (None, ""):
+            valor = str(datos[campo]).strip()
+            if len(valor) > largo:
+                raise ErrorApi(400, "parametro_invalido", f"'{campo}' admite como máximo {largo} caracteres.")
+            limpio[campo] = valor
+    if "vida_util_estandar" in datos or "vida_util_dias" in datos:
+        limpio["vida_util_estandar"] = entero(
+            {"vida_util_estandar": datos.get("vida_util_estandar", datos.get("vida_util_dias"))},
+            "vida_util_estandar", minimo=1,
+        )
+    if "precio_venta" in datos:
+        limpio["precio_venta"] = decimal_pos(datos, "precio_venta")
+    if "precio_costo" in datos:
+        limpio["precio_costo"] = decimal_pos(datos, "precio_costo")
+    if "activo" in datos:
+        v = datos["activo"]
+        limpio["activo"] = v if isinstance(v, bool) else str(v).lower() in ("true", "1")
+    if not limpio:
+        raise ErrorApi(400, "cuerpo_vacio", "No se recibió ningún campo de producto para actualizar.")
+    return limpio
+
+
+def _validar_margen(venta: float | None, costo: float | None) -> None:
+    if venta is not None and costo is not None and venta < costo:
+        raise ErrorApi(409, "regla_negocio", "El precio de venta no puede ser menor que el costo.")
 
 
 @app.get("/api/v1/catalog/products")
+@documentar(
+    "Listado paginado de productos (Cache-Aside en Redis)",
+    consulta=[("categoria", "string", "Filtra por categoría"), ("q", "string", "Busca por nombre o GTIN"),
+              ("activo", "boolean", "true/false"), ("pagina", "integer", "Página"), ("por_pagina", "integer", "Tamaño (máx. 100)")],
+    raiz_respuesta="catalogo_productos",
+)
 @limite_tasa(limite=120, ventana_segundos=60)
 def listar_productos():
-    """Consulta de productos perecederos con estrategia Cache-Aside en Redis."""
+    """Consulta pública del catálogo. Cada combinación de filtros se cachea 5 minutos en Redis."""
+    pagina, por_pagina, offset = paginacion()
     categoria = request.args.get("categoria")
-    
-    # Si no hay filtros específicos, intentar servir desde memoria Redis
-    if not categoria:
-        cached = cache_service.get_json(CACHE_KEY_PRODUCTS)
-        if cached:
-            cache_service.incrementar_contador("catalog", "products_cache_hit")
-            return render_response({"total": len(cached), "productos": cached, "fuente": "redis_cache"}, status=200, root_tag="catalogo_productos")
+    q = request.args.get("q")
+    activo = request.args.get("activo")
 
-    cache_service.incrementar_contador("catalog", "products_db_miss")
+    firma = hashlib.sha1(f"{categoria}|{q}|{activo}|{pagina}|{por_pagina}".encode()).hexdigest()[:16]
+    clave = f"{CACHE_PREFIX_PRODUCTS}{firma}"
+    cached = cache_service.get_json(clave)
+    if cached:
+        cache_service.incrementar_contador("catalog", "products_cache_hit")
+        cached["fuente"] = "redis_cache"
+        cached["cache_ttl_segundos"] = cache_service.obtener_ttl(clave)
+        return render_response(cached, status=200, root_tag="catalogo_productos")
+    cache_service.incrementar_contador("catalog", "products_cache_miss")
 
-    filtro = "WHERE p.categoria = :cat" if categoria else ""
-    params = {"cat": categoria} if categoria else {}
-    sql = f"""
-        SELECT p.id_sku, p.codigo_gtin, p.nombre, p.categoria, p.unidad_medida,
-               p.vida_util_estandar, p.precio_costo, p.precio_venta, p.activo
+    condiciones, params = [], {"lim": por_pagina, "off": offset}
+    if categoria:
+        condiciones.append("p.categoria = :cat")
+        params["cat"] = categoria
+    if q:
+        condiciones.append("(p.nombre ILIKE :q OR p.codigo_gtin ILIKE :q)")
+        params["q"] = f"%{q}%"
+    if activo in ("true", "false"):
+        condiciones.append("p.activo = :act")
+        params["act"] = activo == "true"
+    where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
+    filas = query(
+        f"""
+        SELECT {CAMPOS_PRODUCTO}, COUNT(*) OVER () AS _total
         FROM operacion.producto p
-        {filtro}
+        {where}
         ORDER BY p.nombre ASC
-    """
-    filas = query(sql, **params)
-    productos = []
-    for f in filas:
-        d = dict(f)
-        d["precio_venta"] = a_float(d["precio_venta"])
-        d["precio_costo"] = a_float(d["precio_costo"])
-        productos.append(d)
-
-    if not categoria:
-        cache_service.set_json(CACHE_KEY_PRODUCTS, productos, ttl_segundos=300)
-
-    return render_response({"total": len(productos), "productos": productos, "fuente": "postgres_live"}, status=200, root_tag="catalogo_productos")
+        LIMIT :lim OFFSET :off
+        """,
+        **params,
+    )
+    total = filas[0]["_total"] if filas else 0
+    cuerpo = {"paginacion": meta_paginacion(pagina, por_pagina, total), "productos": [_producto(f) for f in filas]}
+    cache_service.set_json(clave, cuerpo, ttl_segundos=300)
+    cuerpo["fuente"] = "postgres"
+    return render_response(cuerpo, status=200, root_tag="catalogo_productos")
 
 
 @app.get("/api/v1/catalog/products/<int:id_sku>")
+@documentar("Detalle de un producto por SKU", respuesta={"id_sku": 1, **_PRODUCTO_EJEMPLO, "activo": True}, raiz_respuesta="producto")
 def detalle_producto(id_sku: int):
     """Consulta individual de un SKU."""
-    sql = """
-        SELECT p.id_sku, p.codigo_gtin, p.nombre, p.categoria, p.unidad_medida,
-               p.vida_util_estandar, p.precio_costo, p.precio_venta, p.activo
-        FROM operacion.producto p
-        WHERE p.id_sku = :s
-    """
-    prod = one(sql, s=id_sku)
+    prod = one(f"SELECT {CAMPOS_PRODUCTO} FROM operacion.producto p WHERE p.id_sku = :s", s=id_sku)
     if not prod:
-        return render_response({"error": "not_found", "mensaje": f"SKU {id_sku} no encontrado."}, status=404, root_tag="producto_detalle")
-    
-    d = dict(prod)
-    d["precio_venta"] = a_float(d["precio_venta"])
-    d["precio_costo"] = a_float(d["precio_costo"])
-    return render_response(d, status=200, root_tag="producto_detalle")
+        return error_response(404, "no_encontrado", f"SKU {id_sku} no encontrado.")
+    return render_response(_producto(prod), status=200, root_tag="producto")
+
+
+def _invalidar_y_publicar(evento: str, payload: dict) -> None:
+    cache_service.invalidar_patron(f"{CACHE_PREFIX_PRODUCTS}*")
+    cache_service.incrementar_contador("catalog", evento.lower())
+    publicar_evento(evento, payload)
 
 
 @app.post("/api/v1/catalog/products")
-@requiere_auth("admin", "buyer")
+@documentar(
+    "Alta de producto perecedero",
+    cuerpo=_PRODUCTO_EJEMPLO,
+    raiz_xml="producto_request",
+    contrato_xsd="producto_request",
+    respuesta={"id_sku": 101, "nombre": "Fresa orgánica 500 g", "status": "CREADO"},
+    raiz_respuesta="producto_creado",
+    errores=("400", "409", "415"),
+)
+@requiere_auth("buyer")
 def crear_producto():
-    """Alta de nuevo producto perecedero con invalidación de caché en Redis."""
-    datos = request.get_json(silent=True) or request.form
-    nombre = datos.get("nombre")
-    categoria = datos.get("categoria")
-    precio = a_float(datos.get("precio_venta"))
-    costo = a_float(datos.get("precio_costo") or datos.get("costo_estandar"))
-    vida_util = a_int(datos.get("vida_util_estandar") or datos.get("vida_util_dias"), 7)
+    """Crea un producto en PostgreSQL, invalida la caché de Redis y emite PRODUCTO_CREADO."""
+    datos = _validar_producto(leer_cuerpo("producto_request", requerido=True), parcial=False)
+    _validar_margen(datos["precio_venta"], datos["precio_costo"])
+    datos.setdefault("unidad_medida", "Pieza")
+    datos.setdefault("vida_util_estandar", 7)
+    # GTIN interno (prefijo 2 = uso interno GS1) cuando el comprador no lo captura.
+    datos.setdefault("codigo_gtin", f"2{time.time_ns() // 1_000_000 % 10**13:013d}")
+    try:
+        with transaccion() as conn:
+            id_sku = conn.execute(
+                text(
+                    """
+                    INSERT INTO operacion.producto
+                        (codigo_gtin, nombre, categoria, unidad_medida, vida_util_estandar, precio_venta, precio_costo)
+                    VALUES (:codigo_gtin, :nombre, :categoria, :unidad_medida, :vida_util_estandar, :precio_venta, :precio_costo)
+                    RETURNING id_sku
+                    """
+                ),
+                datos,
+            ).scalar()
+    except IntegrityError:
+        return error_response(409, "duplicado", "Ya existe un producto con ese código GTIN o nombre.")
 
-    if not nombre or not categoria or precio <= 0:
-        return render_response({"error": "bad_request", "mensaje": "Nombre, categoría y precio son obligatorios."}, status=400, root_tag="producto_creado")
+    _invalidar_y_publicar("PRODUCTO_CREADO", {"id_sku": id_sku, "nombre": datos["nombre"]})
+    return render_response({"id_sku": id_sku, "nombre": datos["nombre"], "status": "CREADO"}, status=201, root_tag="producto_creado")
 
-    with transaccion() as conn:
-        res = conn.execute(
-            text(
-                """
-                INSERT INTO operacion.producto
-                    (codigo_gtin, nombre, categoria, unidad_medida, vida_util_estandar,
-                     precio_venta, precio_costo)
-                VALUES (:cod, :nom, :cat, :uni, :vu, :p, :c)
-                RETURNING id_sku
-                """
-            ),
-            {
-                "cod": datos.get("codigo_gtin") or f"GTIN-{nombre[:3].upper()}",
-                "nom": nombre,
-                "cat": categoria,
-                "uni": datos.get("unidad_medida", "Pieza"),
-                "vu": vida_util,
-                "p": precio,
-                "c": costo,
-            },
-        ).scalar()
 
-    # Invalidar caché en Redis por patrón y emitir evento
-    cache_service.invalidar_patron("catalog:products:*")
-    cache_service.incrementar_contador("catalog", "product_created")
-    publicar_evento("PRODUCTO_CREADO", {"id_sku": res, "nombre": nombre, "categoria": categoria})
+def _actualizar(id_sku: int, parcial: bool):
+    actual = one("SELECT precio_venta, precio_costo FROM operacion.producto WHERE id_sku = :s", s=id_sku)
+    if not actual:
+        return error_response(404, "no_encontrado", f"SKU {id_sku} no encontrado.")
+    datos = _validar_producto(leer_cuerpo("producto_request", requerido=True), parcial=parcial)
+    _validar_margen(
+        datos.get("precio_venta", a_float(actual["precio_venta"])),
+        datos.get("precio_costo", a_float(actual["precio_costo"])),
+    )
+    asignaciones = ", ".join(f"{c} = :{c}" for c in datos)
+    try:
+        with transaccion() as conn:
+            conn.execute(text(f"UPDATE operacion.producto SET {asignaciones} WHERE id_sku = :id_sku"), {**datos, "id_sku": id_sku})
+    except IntegrityError:
+        return error_response(409, "duplicado", "El código GTIN ya pertenece a otro producto.")
+    _invalidar_y_publicar("PRODUCTO_ACTUALIZADO", {"id_sku": id_sku, "campos": sorted(datos)})
+    prod = one(f"SELECT {CAMPOS_PRODUCTO} FROM operacion.producto p WHERE p.id_sku = :s", s=id_sku)
+    return render_response(_producto(prod), status=200, root_tag="producto")
 
-    return render_response({"id_sku": res, "nombre": nombre, "status": "CREADO"}, status=201, root_tag="producto_creado")
+
+@app.put("/api/v1/catalog/products/<int:id_sku>")
+@documentar(
+    "Reemplazo completo de un producto",
+    cuerpo=_PRODUCTO_EJEMPLO,
+    raiz_xml="producto_request",
+    contrato_xsd="producto_request",
+    raiz_respuesta="producto",
+    errores=("400", "409"),
+    exito="200",
+)
+@requiere_auth("buyer")
+def reemplazar_producto(id_sku: int):
+    """PUT: exige todos los campos obligatorios del producto."""
+    return _actualizar(id_sku, parcial=False)
+
+
+@app.patch("/api/v1/catalog/products/<int:id_sku>")
+@documentar(
+    "Actualización parcial de un producto",
+    cuerpo={"precio_venta": 39.9},
+    raiz_xml="producto_request",
+    contrato_xsd="producto_request",
+    raiz_respuesta="producto",
+    errores=("400", "409"),
+    exito="200",
+)
+@requiere_auth("buyer")
+def modificar_producto(id_sku: int):
+    """PATCH: actualiza solo los campos enviados (precio, vida útil, estado...)."""
+    return _actualizar(id_sku, parcial=True)
 
 
 @app.delete("/api/v1/catalog/products/<int:id_sku>")
+@documentar("Baja lógica de producto", respuesta={"id_sku": 1, "activo": False}, raiz_respuesta="producto_baja")
 @requiere_auth("admin")
 def desactivar_producto(id_sku: int):
-    """Baja lógica de producto e invalidación de caché."""
+    """Desactiva el producto (no se borra: conserva la trazabilidad de sus lotes)."""
     with transaccion() as conn:
-        conn.execute(
-            text("UPDATE operacion.producto SET activo = false WHERE id_sku = :s"),
-            {"s": id_sku},
-        )
-    cache_service.invalidar_patron("catalog:products:*")
-    cache_service.incrementar_contador("catalog", "product_deactivated")
-    publicar_evento("PRODUCTO_DESACTIVADO", {"id_sku": id_sku})
+        res = conn.execute(text("UPDATE operacion.producto SET activo = false WHERE id_sku = :s"), {"s": id_sku})
+        if res.rowcount == 0:
+            return error_response(404, "no_encontrado", f"SKU {id_sku} no encontrado.")
+    _invalidar_y_publicar("PRODUCTO_DESACTIVADO", {"id_sku": id_sku})
     return render_response({"id_sku": id_sku, "activo": False}, status=200, root_tag="producto_baja")
 
 
 @app.get("/api/v1/catalog/locations")
+@documentar("Tiendas y CEDIS (Cache-Aside)", consulta=[("tipo", "string", "TIENDA o CEDIS")], raiz_respuesta="catalogo_locaciones")
 def listar_locaciones():
-    """Consulta de tiendas y CEDIS con Cache-Aside."""
-    cached = cache_service.get_json(CACHE_KEY_LOCATIONS)
-    if cached:
-        return render_response({"total": len(cached), "locaciones": cached, "fuente": "redis_cache"}, status=200, root_tag="catalogo_locaciones")
-
-    filas = query(
-        """
-        SELECT id_locacion, tipo_locacion, nombre, ciudad, direccion, activo
-        FROM operacion.locacion
-        ORDER BY id_locacion ASC
-        """
-    )
-    locs = [dict(f) for f in filas]
-    cache_service.set_json(CACHE_KEY_LOCATIONS, locs, ttl_segundos=600)
-    return render_response({"total": len(locs), "locaciones": locs, "fuente": "postgres_live"}, status=200, root_tag="catalogo_locaciones")
+    """Consulta de tiendas y CEDIS con caché de 10 minutos en Redis."""
+    locs = cache_service.get_json(CACHE_KEY_LOCATIONS)
+    fuente = "redis_cache"
+    if not locs:
+        fuente = "postgres"
+        locs = query(
+            """
+            SELECT id_locacion, tipo_locacion, nombre, ciudad, direccion, activo
+            FROM operacion.locacion
+            ORDER BY id_locacion ASC
+            """
+        )
+        cache_service.set_json(CACHE_KEY_LOCATIONS, locs, ttl_segundos=600)
+    tipo = (request.args.get("tipo") or "").upper()
+    if tipo:
+        locs = [l for l in locs if str(l.get("tipo_locacion", "")).upper() == tipo]
+    return render_response({"total": len(locs), "locaciones": locs, "fuente": fuente}, status=200, root_tag="catalogo_locaciones")
 
 
 @app.get("/api/v1/catalog/suppliers")
-@requiere_auth("admin", "buyer", "planner")
+@documentar("Proveedores con lead time y MOQ", consulta=[("q", "string", "Busca por razón social o RFC")], raiz_respuesta="catalogo_proveedores")
+@requiere_auth("buyer", "planner")
 def listar_proveedores():
-    """Consulta de proveedores con lead time y MOQ."""
+    """Consulta de proveedores."""
+    q = request.args.get("q")
+    filtro = "WHERE razon_social ILIKE :q OR rfc ILIKE :q" if q else ""
     filas = query(
-        """
+        f"""
         SELECT id_proveedor, rfc, razon_social, lead_time_dias, moq,
                contacto_email, telefono, activo
         FROM operacion.proveedor
+        {filtro}
         ORDER BY razon_social ASC
-        """
+        """,
+        **({"q": f"%{q}%"} if q else {}),
     )
-    provs = [dict(f) for f in filas]
-    return render_response({"total": len(provs), "proveedores": provs}, status=200, root_tag="catalogo_proveedores")
+    for f in filas:
+        f["moq"] = a_float(f.get("moq"))
+    return render_response({"total": len(filas), "proveedores": filas}, status=200, root_tag="catalogo_proveedores")
 
-
-registrar_openapi(
-    app,
-    titulo="Master Catalog & Locations Service (FreshTrack)",
-    descripcion="Microservicio para gestión de productos perecederos, reglas de riesgo, proveedores y tiendas con Cache-Aside en Redis.",
-    version="1.0.0",
-    paths={
-        "/health": {"get": {"summary": "Healthcheck del microservicio", "responses": {"200": {"description": "Estado saludable"}}}},
-        "/api/v1/catalog/products": {
-            "get": {"summary": "Listado de productos (con Cache-Aside y soporte XML/JSON)", "responses": {"200": {"description": "Lista de productos"}}},
-            "post": {"summary": "Creación de nuevo producto perecedero", "security": [{"bearerAuth": []}], "responses": {"201": {"description": "Producto creado"}}},
-        },
-        "/api/v1/catalog/products/{id_sku}": {
-            "get": {"summary": "Detalle de un producto por SKU", "responses": {"200": {"description": "Detalle del producto"}}},
-            "delete": {"summary": "Baja lógica de producto", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "Producto desactivado"}}},
-        },
-        "/api/v1/catalog/locations": {"get": {"summary": "Lista de tiendas y centros de distribución", "responses": {"200": {"description": "Lista de locaciones"}}}},
-        "/api/v1/catalog/suppliers": {"get": {"summary": "Lista de proveedores con Lead Time y MOQ", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "Lista de proveedores"}}}},
-    },
-)
 
 if __name__ == "__main__":
-    port = int(os.getenv("CATALOG_SERVICE_PORT", "5002"))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    ejecutar(app, "CATALOG_SERVICE_PORT", 5002)

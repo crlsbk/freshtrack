@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-planning POST /api/v1/planning/forecast/run -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="forecast_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="metodo" minOccurs="0">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="MEDIA_MOVIL"/>
+              <xs:enumeration value="MEDIA_MOVIL_PONDERADA"/>
+              <xs:enumeration value="SUAVIZACION_EXPONENCIAL"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="horizonte" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:positiveInteger"><xs:maxInclusive value="90"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="ventana" type="xs:positiveInteger" minOccurs="0"/>
+        <xs:element name="alpha" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:decimal"><xs:minExclusive value="0"/><xs:maxInclusive value="1"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="dias_historia" type="xs:positiveInteger" minOccurs="0"/>
+        <xs:element name="id_locacion" type="xs:positiveInteger" minOccurs="0"/>
+        <xs:element name="id_sku" type="xs:positiveInteger" minOccurs="0"/>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

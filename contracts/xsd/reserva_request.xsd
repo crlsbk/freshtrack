@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-inventory POST /api/v1/inventory/reserve-fefo (paso 1 de la Saga de ventas) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:complexType name="lineaType">
+    <xs:all>
+      <xs:element name="id_sku" type="xs:positiveInteger"/>
+      <xs:element name="cantidad">
+        <xs:simpleType><xs:restriction base="xs:decimal"><xs:minExclusive value="0"/></xs:restriction></xs:simpleType>
+      </xs:element>
+    </xs:all>
+  </xs:complexType>
+  <xs:element name="reserva_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="id_locacion" type="xs:positiveInteger"/>
+        <xs:element name="saga_id" type="xs:string" minOccurs="0"/>
+        <xs:element name="lineas">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="item" type="lineaType" maxOccurs="200"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -60,7 +60,8 @@ def publicar_evento(
 
     try:
         # XADD agrega el mensaje al stream con id automático '*'
-        msg_id = r.xadd(stream, mensaje)
+        # MAXLEN aproximado: el stream conserva los ~10 000 eventos más recientes.
+        msg_id = r.xadd(stream, mensaje, maxlen=10_000, approximate=True)
         logger.debug("Evento '%s' publicado en stream %s (ID: %s)", tipo_evento, stream, msg_id)
         return str(msg_id)
     except Exception as exc:

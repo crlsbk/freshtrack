@@ -76,7 +76,7 @@ def test_catalog_service():
     # Products JSON
     r_json = c.get("/api/v1/catalog/products")
     assert r_json.status_code == 200
-    print(f" [OK] /api/v1/catalog/products [JSON] -> {r_json.get_json()['total']} productos (Fuente: {r_json.get_json().get('fuente')})")
+    print(f" [OK] /api/v1/catalog/products [JSON] -> {r_json.get_json()['paginacion']['total']} productos (Fuente: {r_json.get_json().get('fuente')})")
 
     # Products XML (Content Negotiation)
     r_xml = c.get("/api/v1/catalog/products", headers={"Accept": "application/xml"})
@@ -133,10 +133,9 @@ def test_commercial_service():
     admin = one("SELECT id_usuario FROM operacion.usuario WHERE email = 'admin@freshtrack.mx'")
     r_checkout = c.post(
         "/api/v1/commercial/checkout",
-        headers={"Authorization": f"Bearer {TOKEN_ADMIN}", "X-Location-Id": "1"},
+        headers={"Authorization": f"Bearer {TOKEN_ADMIN}", "X-Location-Id": "3"},
         json={
-            "id_locacion": 1,
-            "id_usuario": str(admin["id_usuario"]),
+            "id_locacion": 3,
             "lineas": [{"id_sku": 1, "cantidad": 0.1}],
             "canal": "TIENDA",
         },
@@ -161,7 +160,7 @@ def test_asn_service():
     folio_test = f"ASN-XML-{uuid.uuid4().hex[:6].upper()}"
     # Ingesta ASN en formato XML nativo
     xml_payload = f"""<?xml version="1.0" encoding="UTF-8"?>
-    <aviso_embarque folio="{folio_test}">
+    <asn_request>
         <folio_asn>{folio_test}</folio_asn>
         <id_proveedor>1</id_proveedor>
         <estado>ANUNCIADO</estado>
@@ -170,24 +169,24 @@ def test_asn_service():
                 <id_sku>1</id_sku>
                 <cantidad_declarada>50.0</cantidad_declarada>
                 <lote_proveedor>LOT-XML-2026</lote_proveedor>
-                <fecha_caducidad>2026-11-15T00:00:00Z</fecha_caducidad>
+                <fecha_caducidad>2026-11-15</fecha_caducidad>
                 <rango_temperatura_controlada>2C a 5C</rango_temperatura_controlada>
             </item_carga>
         </detalle_carga>
-    </aviso_embarque>
+    </asn_request>
     """
     r_ingesta = c.post(
         "/api/v1/asn",
         data=xml_payload,
         headers={"Authorization": f"Bearer {TOKEN_ADMIN}", "Content-Type": "application/xml"},
     )
-    assert r_ingesta.status_code in (201, 500), f"Fallo en ingesta ASN XML: {r_ingesta.data}"
+    assert r_ingesta.status_code == 201, f"Fallo en ingesta ASN XML: {r_ingesta.data}"
     print(" [OK] /api/v1/asn [POST XML] -> Manifiesto XML parseado y registrado en MongoDB")
 
     # Consulta ASNs
     r_list = c.get("/api/v1/asn", headers={"Authorization": f"Bearer {TOKEN_ADMIN}"})
     assert r_list.status_code == 200
-    print(f" [OK] /api/v1/asn [GET] -> {r_list.get_json()['total']} avisos consultados en MongoDB")
+    print(f" [OK] /api/v1/asn [GET] -> {r_list.get_json()['paginacion']['total']} avisos consultados en MongoDB")
 
 
 def test_planning_service():

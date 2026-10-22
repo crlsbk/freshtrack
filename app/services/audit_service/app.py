@@ -1,97 +1,109 @@
 """
-Microservicio 8: Immutable Audit & Compliance Service (`svc-audit`) — FreshTrack (Flask).
+Microservicio 8: Immutable Audit & Compliance (`svc-audit`) — FreshTrack (Flask).
 
 Puerto: 5008
 Responsabilidad:
-- Bitácora inmutable de eventos operacionales en PostgreSQL ('auditoria.bitacora_eventos').
-- Consumo asíncrono de eventos desde Redis Streams ('freshtrack:events').
-- Reconstrucción de trazabilidad integral por lote perecedero (Recepción -> Existencia -> FEFO -> Merma/Venta).
-- Soporte dual JSON y XML (formatos regulatorios sanitarios y fiscales).
+- Consulta de la bitácora inmutable auditoria.bitacora_eventos (filtros, rango de fechas y paginación).
+- Reconstrucción de la trazabilidad completa de un lote (kardex de movimientos).
+- Registro explícito de eventos de cumplimiento, con la identidad tomada del JWT.
+- Monitoreo del stream de eventos de dominio en Redis Streams.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from flask import Flask, request
+from flask import g, request
 
 from app import auditoria
-from app.config import Config
-from app.db import a_int, one, query
-from app.events.dispatcher import asegurar_consumer_group, leer_ultimos_eventos
-from app.services import cache_service
+from app.db import a_float, one, query
+from app.events.dispatcher import leer_ultimos_eventos
 from app.services.common.auth import requiere_auth
-from app.services.common.response import render_response
-from app.services.common.swagger import registrar_openapi
+from app.services.common.response import (
+    ErrorApi,
+    entero,
+    error_response,
+    leer_cuerpo,
+    meta_paginacion,
+    paginacion,
+    render_response,
+    requerir_campos,
+    validar_uuid,
+)
+from app.services.common.servicio import crear_servicio, ejecutar
+from app.services.common.swagger import documentar
 
-app = Flask(__name__)
-app.config.from_object(Config)
-
-STREAM_AUDIT_GROUP = "audit_workers"
-
-
-@app.get("/health")
-def health():
-    pg_ok = False
-    try:
-        res = one("SELECT 1 AS ok")
-        pg_ok = bool(res and res["ok"] == 1)
-    except Exception:
-        pass
-
-    redis_ok = False
-    try:
-        r = cache_service.get_redis_client()
-        redis_ok = bool(r and r.ping())
-    except Exception:
-        pass
-
-    estado = "HEALTHY" if (pg_ok and redis_ok) else "DEGRADED"
-    return render_response({
-        "service": "svc-audit",
-        "status": estado,
-        "dependencies": {"postgres": pg_ok, "redis": redis_ok},
-    }, status=200 if estado == "HEALTHY" else 503, root_tag="service_health")
+app = crear_servicio(
+    "svc-audit",
+    "Immutable Audit & Compliance Service (FreshTrack)",
+    "Bitácora inmutable, trazabilidad de lotes y monitoreo de eventos de dominio.",
+    dependencias=("postgres", "redis"),
+)
 
 
 @app.get("/api/v1/audit/events")
-@requiere_auth("admin", "auditor")
+@documentar(
+    "Bitácora de auditoría (filtros y paginación)",
+    consulta=[("tabla", "string", "Tabla afectada"), ("accion", "string", "INSERT/UPDATE/LOGIN_FALLIDO/..."),
+              ("usuario", "string", "Correo del actor (parcial)"), ("desde", "string", "YYYY-MM-DD"), ("hasta", "string", "YYYY-MM-DD"),
+              ("pagina", "integer", "Página"), ("por_pagina", "integer", "Tamaño (máx. 100)")],
+    raiz_respuesta="bitacora_auditoria",
+)
+@requiere_auth("auditor")
 def listar_eventos():
-    """Consulta de bitácora inmutable con soporte de exportación JSON y XML."""
-    tabla = request.args.get("tabla")
-    accion = request.args.get("accion")
-    limite = a_int(request.args.get("limite"), 50)
-
-    condiciones = []
-    params = {"lim": limite}
-    if tabla:
+    """Consulta de bitácora con exportación JSON o XML."""
+    pagina, por_pagina, offset = paginacion()
+    condiciones, params = [], {"lim": por_pagina, "off": offset}
+    if request.args.get("tabla"):
         condiciones.append("nombre_tabla = :tab")
-        params["tab"] = tabla
-    if accion:
+        params["tab"] = request.args["tabla"]
+    if request.args.get("accion"):
         condiciones.append("accion = :acc")
-        params["acc"] = accion
-
+        params["acc"] = request.args["accion"].upper()
+    if request.args.get("usuario"):
+        condiciones.append("usuario_email ILIKE :usr")
+        params["usr"] = f"%{request.args['usuario']}%"
+    for campo, op in (("desde", ">="), ("hasta", "<")):
+        valor = request.args.get(campo)
+        if valor:
+            try:
+                fecha = date.fromisoformat(valor)
+            except ValueError as exc:
+                raise ErrorApi(400, "parametro_invalido", f"'{campo}' debe tener formato YYYY-MM-DD.") from exc
+            params[campo] = fecha + timedelta(days=1) if campo == "hasta" else fecha
+            condiciones.append(f"fecha_evento {op} :{campo}")
     where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
-    sql = f"""
+    filas = query(
+        f"""
         SELECT id_evento::text AS id_evento, fecha_evento, accion, nombre_tabla,
-               id_registro, descripcion, usuario_email, ip
+               id_registro, descripcion, usuario_email, ip::text AS ip, COUNT(*) OVER () AS _total
         FROM auditoria.bitacora_eventos
         {where}
         ORDER BY fecha_evento DESC
-        LIMIT :lim
-    """
-    filas = query(sql, **params)
-    items = [dict(f) for f in filas]
-    return render_response({"total": len(items), "bitacora": items}, status=200, root_tag="bitacora_auditoria")
+        LIMIT :lim OFFSET :off
+        """,
+        **params,
+    )
+    total = filas[0]["_total"] if filas else 0
+    for f in filas:
+        f.pop("_total", None)
+    return render_response(
+        {"paginacion": meta_paginacion(pagina, por_pagina, total), "bitacora": filas},
+        status=200,
+        root_tag="bitacora_auditoria",
+    )
 
 
 @app.get("/api/v1/audit/traceability/<id_lote>")
-@requiere_auth("admin", "auditor", "warehouse")
+@documentar("Trazabilidad completa de un lote (kardex)", raiz_respuesta="trazabilidad_lote")
+@requiere_auth("auditor", "warehouse")
 def trazabilidad_lote(id_lote: str):
-    """Reconstrucción del ciclo de vida y trazabilidad completa de un lote en JSON / XML."""
+    """Datos del lote, proveedor y todos sus movimientos de inventario en orden cronológico."""
+    id_lote = validar_uuid(id_lote, "id_lote")
     lote = one(
         """
         SELECT l.id_lote::text AS id_lote, l.codigo_lote_prov, l.fecha_recepcion,
@@ -104,9 +116,8 @@ def trazabilidad_lote(id_lote: str):
         id=id_lote,
     )
     if not lote:
-        return render_response({"error": "not_found", "mensaje": f"Lote {id_lote} no encontrado."}, status=404, root_tag="trazabilidad")
-
-    movimientos = query(
+        return error_response(404, "no_encontrado", f"Lote {id_lote} no encontrado.")
+    movs = query(
         """
         SELECT id_movimiento, tipo, cantidad, cantidad_resultante, fecha, referencia_tipo
         FROM operacion.movimiento_inventario
@@ -115,57 +126,53 @@ def trazabilidad_lote(id_lote: str):
         """,
         id=id_lote,
     )
-    movs = [dict(m) for m in movimientos]
-
-    return render_response({
-        "lote": dict(lote),
-        "movimientos_kardex": movs,
-        "total_movimientos": len(movs),
-    }, status=200, root_tag="trazabilidad_lote")
+    for m in movs:
+        m["cantidad"] = a_float(m["cantidad"])
+        m["cantidad_resultante"] = a_float(m["cantidad_resultante"])
+    return render_response(
+        {"lote": lote, "movimientos_kardex": movs, "total_movimientos": len(movs)},
+        status=200,
+        root_tag="trazabilidad_lote",
+    )
 
 
 @app.post("/api/v1/audit/log")
+@documentar(
+    "Registro explícito de un evento de cumplimiento",
+    cuerpo={"accion": "REVISION_CUMPLIMIENTO", "tabla": "sistema", "descripcion": "Revisión mensual de mermas"},
+    raiz_xml="audit_log_request",
+    contrato_xsd="audit_log_request",
+    respuesta={"id_evento": "…", "status": "REGISTRADO"},
+    raiz_respuesta="log_creado",
+    errores=("400",),
+)
 @requiere_auth()
 def registrar_log_explicit():
-    """Registro explícito de acción de seguridad o cumplimiento en la bitácora."""
-    datos = request.get_json(silent=True) or request.form
-    accion = datos.get("accion", "AUDIT_CHECK")
-    descripcion = datos.get("descripcion", "Verificación de cumplimiento")
-    tabla = datos.get("tabla", "sistema")
-
-    evento_id = auditoria.registrar(
-        accion=accion,
-        tabla=tabla,
-        descripcion=descripcion,
-        id_usuario=request.headers.get("X-User-Id"),
-        usuario_email=request.headers.get("X-User-Email"),
-        ip=request.remote_addr,
+    """Inserta en la bitácora con el usuario del JWT (no se aceptan identidades enviadas por headers)."""
+    datos = leer_cuerpo("audit_log_request", requerido=True)
+    requerir_campos(datos, "accion", "descripcion")
+    accion = str(datos["accion"]).upper()[:40]
+    evento_id = auditoria.registrar_desde_request(
+        request,
+        accion,
+        tabla=str(datos.get("tabla") or "sistema")[:60],
+        descripcion=str(datos["descripcion"])[:500],
+        id_usuario=g.usuario_actual.get("sub"),
+        usuario_email=g.usuario_actual.get("email"),
     )
+    if not evento_id:
+        return error_response(500, "error_bitacora", "No se pudo registrar el evento en la bitácora.")
     return render_response({"id_evento": evento_id, "status": "REGISTRADO"}, status=201, root_tag="log_creado")
 
 
 @app.get("/api/v1/audit/stream/recent")
-@requiere_auth("admin", "auditor")
+@documentar("Últimos eventos de dominio en Redis Streams", consulta=[("n", "integer", "Cantidad (máx. 200)")], raiz_respuesta="redis_stream")
+@requiere_auth("auditor")
 def ver_stream_eventos():
-    """Consulta los eventos en tránsito en Redis Streams."""
-    eventos = leer_ultimos_eventos(cantidad=a_int(request.args.get("n"), 25))
+    """XREVRANGE sobre freshtrack:events: eventos emitidos por todos los microservicios."""
+    eventos = leer_ultimos_eventos(cantidad=min(entero(request.args, "n", minimo=1, defecto=25), 200))
     return render_response({"total": len(eventos), "stream_eventos": eventos}, status=200, root_tag="redis_stream")
 
 
-registrar_openapi(
-    app,
-    titulo="Immutable Audit & Compliance Service (FreshTrack)",
-    descripcion="Microservicio para bitácora inmutable de eventos, trazabilidad sanitaria de lotes y monitoreo de Redis Streams.",
-    version="1.0.0",
-    paths={
-        "/health": {"get": {"summary": "Healthcheck del microservicio", "responses": {"200": {"description": "Estado saludable"}}}},
-        "/api/v1/audit/events": {"get": {"summary": "Consulta de bitácora inmutable (JSON / XML)", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "Lista de eventos de auditoría"}}}},
-        "/api/v1/audit/traceability/{id_lote}": {"get": {"summary": "Trazabilidad de ciclo de vida del lote (JSON / XML)", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "Trazabilidad completa"}}}},
-        "/api/v1/audit/log": {"post": {"summary": "Registro explícito de evento", "security": [{"bearerAuth": []}], "responses": {"201": {"description": "Evento persistido"}}}},
-        "/api/v1/audit/stream/recent": {"get": {"summary": "Eventos recientes en Redis Streams", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "Stream de eventos"}}}},
-    },
-)
-
 if __name__ == "__main__":
-    port = int(os.getenv("AUDIT_SERVICE_PORT", "5008"))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    ejecutar(app, "AUDIT_SERVICE_PORT", 5008)

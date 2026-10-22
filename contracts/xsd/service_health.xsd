@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GET /health de cualquier microservicio con Accept: application/xml -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="service_health">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="service" type="xs:string"/>
+        <xs:element name="status">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="HEALTHY"/>
+              <xs:enumeration value="DEGRADED"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="version" type="xs:string"/>
+        <xs:element name="dependencies">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="postgres" type="xs:boolean" minOccurs="0"/>
+              <xs:element name="mongo" type="xs:boolean" minOccurs="0"/>
+              <xs:element name="redis" type="xs:boolean" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

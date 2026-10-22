@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-catalog POST/PUT/PATCH /api/v1/catalog/products.
+     En POST y PUT el servicio exige nombre, categoria, precio_venta y precio_costo;
+     en PATCH todos los campos son opcionales. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="producto_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="codigo_gtin" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:pattern value="[0-9A-Za-z\-]{1,14}"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="nombre" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:minLength value="1"/><xs:maxLength value="150"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="categoria" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:maxLength value="60"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="unidad_medida" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:maxLength value="20"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="vida_util_estandar" type="xs:positiveInteger" minOccurs="0"/>
+        <xs:element name="precio_costo" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:decimal"><xs:minInclusive value="0"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="precio_venta" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:decimal"><xs:minExclusive value="0"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="activo" type="xs:boolean" minOccurs="0"/>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

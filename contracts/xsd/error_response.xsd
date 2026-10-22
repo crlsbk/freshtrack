@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Respuesta de error común a los 8 microservicios (Accept: application/xml) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="error_response">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="error" type="xs:string"/>
+        <xs:element name="mensaje" type="xs:string"/>
+        <xs:element name="status" type="xs:int"/>
+        <xs:element name="correlation_id" type="xs:string"/>
+        <xs:element name="detalles" minOccurs="0">
+          <xs:complexType mixed="true">
+            <xs:sequence>
+              <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

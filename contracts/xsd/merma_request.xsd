@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-commercial POST /api/v1/commercial/shrinkage -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:simpleType name="uuidType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:element name="merma_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="id_lote" type="uuidType"/>
+        <xs:element name="id_locacion" type="xs:positiveInteger" minOccurs="0"/>
+        <xs:element name="cantidad">
+          <xs:simpleType><xs:restriction base="xs:decimal"><xs:minExclusive value="0"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="causa">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="CADUCIDAD"/>
+              <xs:enumeration value="DANO"/>
+              <xs:enumeration value="CALIDAD"/>
+              <xs:enumeration value="CADENA_DE_FRIO"/>
+              <xs:enumeration value="MANIPULACION"/>
+              <xs:enumeration value="DEVOLUCION"/>
+              <xs:enumeration value="OTRA"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="observacion" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:maxLength value="500"/></xs:restriction></xs:simpleType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

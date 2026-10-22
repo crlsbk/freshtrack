@@ -20,6 +20,7 @@ import contextlib
 from datetime import datetime, timezone
 import json
 import logging
+import time
 import uuid
 from typing import Any, Generator
 
@@ -30,13 +31,19 @@ logger = logging.getLogger("freshtrack.cache")
 
 _pool: redis.ConnectionPool | None = None
 _client: redis.Redis | None = None
+# Si Redis no responde, no se reintenta en cada llamada (cada intento cuesta el
+# timeout de conexión). Se espera este número de segundos antes de reintentar.
+SEGUNDOS_REINTENTO = 10
+_ultimo_fallo: float = 0.0
 
 
 def get_redis_client() -> redis.Redis | None:
     """Devuelve un cliente de Redis reutilizando el pool de conexiones."""
-    global _pool, _client
+    global _pool, _client, _ultimo_fallo
     if _client is not None:
         return _client
+    if _ultimo_fallo and time.monotonic() - _ultimo_fallo < SEGUNDOS_REINTENTO:
+        return None
 
     try:
         if Config.REDIS_PASSWORD:
@@ -56,10 +63,13 @@ def get_redis_client() -> redis.Redis | None:
                 socket_connect_timeout=2.0,
                 decode_responses=True,
             )
-        _client = redis.Redis(connection_pool=_pool)
-        _client.ping()
+        cliente = redis.Redis(connection_pool=_pool)
+        cliente.ping()
+        _client = cliente
+        _ultimo_fallo = 0.0
         return _client
     except Exception as exc:
+        _ultimo_fallo = time.monotonic()
         logger.warning("No se pudo conectar a Redis en %s:%s: %s", Config.REDIS_HOST, Config.REDIS_PORT, exc)
         return None
 
@@ -110,6 +120,21 @@ def obtener_sesion_redis(session_id: str, refrescar_ttl: bool = True, ttl_segund
         return json.loads(val)
     except Exception as exc:
         logger.warning("Error al leer sesión %s de Redis: %s", session_id, exc)
+        return None
+
+
+def sesion_activa(session_id: str) -> bool | None:
+    """
+    True si la sesión existe en Redis, False si no existe, None si Redis no está
+    disponible (el llamador decide entonces con PostgreSQL como respaldo).
+    """
+    r = get_redis_client()
+    if r is None or not session_id:
+        return None
+    try:
+        return bool(r.exists(f"session:{session_id}"))
+    except Exception as exc:
+        logger.warning("Error al verificar sesión %s en Redis: %s", session_id, exc)
         return None
 
 
@@ -172,6 +197,10 @@ def cerrar_sesiones_usuario(id_usuario: str) -> int:
             return 0
         pipeline = r.pipeline()
         for sid in sesiones:
+            # El id de sesión es el jti del token: además de borrar la sesión se
+            # manda a la denylist, para que el JWT deje de servir aunque siga vigente.
+            ttl = r.ttl(f"session:{sid}")
+            pipeline.setex(f"jwt:denylist:{sid}", max(60, int(ttl) if ttl and ttl > 0 else 28800), "1")
             pipeline.delete(f"session:{sid}")
         pipeline.delete(f"user:sessions:{id_usuario}")
         pipeline.execute()

@@ -188,7 +188,7 @@ def verificar_seguridad() -> bool:
     token_alterado = token_admin[:-4] + "ABCD"
     r_corrupt = c_inv.get("/api/v1/inventory/stock", headers={"Authorization": f"Bearer {token_alterado}"})
     assert r_corrupt.status_code == 401
-    assert r_corrupt.get_json()["error"] == "invalid_token"
+    assert r_corrupt.get_json()["error"] == "token_invalido"
     print(f"  [OK] Token con firma criptográfica alterada rechazado: 401 ({r_corrupt.get_json()['error']})")
 
     # Token con expiración vencida (exp en el pasado)
@@ -204,7 +204,7 @@ def verificar_seguridad() -> bool:
     token_expirado = jwt.encode(payload_expirado, Config.JWT_SECRET_KEY, algorithm=Config.JWT_ALGORITHM)
     r_expired = c_inv.get("/api/v1/inventory/stock", headers={"Authorization": f"Bearer {token_expirado}"})
     assert r_expired.status_code == 401
-    assert r_expired.get_json()["error"] == "invalid_token"
+    assert r_expired.get_json()["error"] == "token_invalido"
     print(f"  [OK] Token con expiración en el pasado rechazado: 401 ({r_expired.get_json()['error']})")
 
     # =========================================================================
@@ -270,7 +270,7 @@ def verificar_seguridad() -> bool:
     # 4. Reintentar petición protegida con el token revocado -> Debe rebotar con 401
     r_test_post = c_inv.get("/api/v1/inventory/stock", headers={"Authorization": f"Bearer {token_temporal}"})
     assert r_test_post.status_code == 401
-    assert r_test_post.get_json()["error"] == "revoked_token"
+    assert r_test_post.get_json()["error"] == "token_revocado"
     print(f"  [OK] Reintento con token revocado bloqueado de inmediato: 401 ({r_test_post.get_json()['error']})")
 
     # =========================================================================
@@ -280,7 +280,7 @@ def verificar_seguridad() -> bool:
     # Payload vacío en login
     r_err_login = c_auth.post("/api/v1/auth/login", json={})
     assert r_err_login.status_code == 400
-    assert r_err_login.get_json()["error"] == "bad_request"
+    assert r_err_login.get_json()["error"] in ("campos_requeridos", "parametro_invalido", "cuerpo_vacio")
     print(f"  [OK] Login con payload vacío controlado: 400 Bad Request ({r_err_login.get_json()['mensaje']})")
 
     # Reserva FEFO con datos vacíos
@@ -290,7 +290,7 @@ def verificar_seguridad() -> bool:
         json={"id_locacion": 0, "lineas": []},
     )
     assert r_err_res.status_code == 400
-    assert r_err_res.get_json()["error"] == "bad_request"
+    assert r_err_res.get_json()["error"] in ("campos_requeridos", "parametro_invalido", "cuerpo_vacio")
     print(f"  [OK] Reserva FEFO sin líneas controlada: 400 Bad Request ({r_err_res.get_json()['mensaje']})")
 
     # ASN XML malformado

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-asn POST /api/v1/asn — Aviso Anticipado de Embarque (inspirado en GS1 Despatch Advice).
+     Las partidas pueden llamarse <item> o <item_carga>. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:complexType name="itemCargaType">
+    <xs:all>
+      <xs:element name="id_sku" type="xs:positiveInteger"/>
+      <xs:element name="cantidad_declarada">
+        <xs:simpleType><xs:restriction base="xs:decimal"><xs:minExclusive value="0"/></xs:restriction></xs:simpleType>
+      </xs:element>
+      <xs:element name="lote_proveedor" type="xs:string" minOccurs="0"/>
+      <xs:element name="fecha_caducidad" type="xs:date"/>
+      <xs:element name="rango_temperatura_controlada" type="xs:string" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+  <xs:element name="asn_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="folio_asn">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:pattern value="[A-Za-z0-9_\-]{3,40}"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="id_proveedor" type="xs:positiveInteger"/>
+        <xs:element name="estado" minOccurs="0">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="ANUNCIADO"/>
+              <xs:enumeration value="EN_TRANSITO"/>
+              <xs:enumeration value="RECIBIDO"/>
+              <xs:enumeration value="REVISION_CALIDAD"/>
+              <xs:enumeration value="CANCELADO"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="detalle_carga">
+          <xs:complexType>
+            <xs:choice>
+              <xs:element name="item" type="itemCargaType" maxOccurs="500"/>
+              <xs:element name="item_carga" type="itemCargaType" maxOccurs="500"/>
+            </xs:choice>
+          </xs:complexType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -22,6 +22,7 @@ almacena proyecciones documentales y series históricas detalladas.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,23 +36,31 @@ logger = logging.getLogger("freshtrack.mongo")
 
 _client: pymongo.MongoClient | None = None
 _db: Database | None = None
+_ultimo_fallo: float = 0.0
+SEGUNDOS_REINTENTO = 10
 ESQUEMA_VERSION = 1
 DIAS_RETENCION_ALERTAS = 180
 
 
 def get_mongo_db() -> Database | None:
     """Devuelve la base de datos de MongoDB reutilizando el cliente y asegurando índices."""
-    global _client, _db
+    global _client, _db, _ultimo_fallo
     if _db is not None:
         return _db
+    # Igual que con Redis: si Mongo no respondió hace poco, no se vuelve a pagar
+    # el timeout de selección de servidor en cada petición.
+    if _ultimo_fallo and time.monotonic() - _ultimo_fallo < SEGUNDOS_REINTENTO:
+        return None
 
     try:
         _client = pymongo.MongoClient(Config.MONGO_URI, serverSelectionTimeoutMS=2500)
         _client.admin.command("ping")
         _db = _client[Config.MONGO_DB]
         asegurar_indices(_db)
+        _ultimo_fallo = 0.0
         return _db
     except Exception as exc:
+        _ultimo_fallo = time.monotonic()
         logger.warning("No se pudo conectar a MongoDB en %s:%s: %s", Config.MONGO_HOST, Config.MONGO_PORT, exc)
         return None
 

@@ -7,7 +7,7 @@
 {{ ui.encabezado(
   'Operación',
   'Lotes y recepción',
-  'Cada entrega se registra como un lote con su proveedor, fechas, cantidad y costo. El sistema calcula la vida útil restante y clasifica el riesgo al momento.'
+  'Registra cada entrega como un lote con proveedor, fechas, cantidad y costo. Su vida útil restante y riesgo se calculan al momento.'
 ) }}
 
 <div class="filtros">
@@ -113,7 +113,7 @@
       <input class="input" name="observaciones" placeholder="Ej. llegó con 2 cajas dañadas"/>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" type="submit">Guardar en PostgreSQL</button>
+      <button class="btn btn-primary" type="submit">Guardar</button>
       <button class="btn btn-ghost" type="button"
               onclick="toggleForm('form-recepcion')">Cancelar</button>
     </div>

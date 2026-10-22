@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Microservicios{% endblock %}
+{% block breadcrumb %}Administración › Microservicios{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Administración',
+  'Microservicios',
+  'Estado en vivo de los 8 servicios y de sus bases de datos. Desde aquí puedes abrir la documentación Swagger de cada uno para probar sus endpoints.'
+) }}
+
+<div class="stat-grid-3">
+  {{ ui.kpi('Servicios en línea', sanos ~ ' / ' ~ servicios | length,
+            'Responden /health con todas sus dependencias',
+            '#4ade80' if sanos == servicios | length else '#fbbf24') }}
+  {{ ui.kpi('Tu sesión en svc-auth',
+            'Válida' if verificacion else ('Sin respuesta' if estado_verificacion == 0 else 'Rechazada'),
+            ('Rol ' ~ verificacion.usuario.rol ~ ' · expira en ' ~ ((verificacion.sesion_ttl_segundos or 0) // 60) ~ ' min') if verificacion else 'El token de la web se valida en el servicio de seguridad',
+            '#4ade80' if verificacion else '#f87171') }}
+  {{ ui.kpi('Contadores en Redis', contadores | length, 'Operaciones registradas hoy por los servicios') }}
+</div>
+
+<div class="table-wrap" style="margin-bottom:20px;">
+  <div class="table-header">
+    <div class="table-header-title">Servicios</div>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Servicio</th><th>Responsabilidad</th><th>Estado</th><th>PostgreSQL</th><th>MongoDB</th><th>Redis</th><th>Latencia</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in servicios %}
+        <tr>
+          <td><strong>{{ s.nombre }}</strong><div class="mono text-muted" style="font-size:10.5px;">{{ s.url }}</div></td>
+          <td class="text-muted" style="font-size:12px;">{{ s.descripcion }}</td>
+          <td>
+            {% if s.estado == 'HEALTHY' %}<span class="badge badge-success">En línea</span>
+            {% elif s.estado == 'DEGRADED' %}<span class="badge badge-warning">Degradado</span>
+            {% else %}<span class="badge badge-danger">Sin respuesta</span>{% endif %}
+          </td>
+          {% for dep in ['postgres', 'mongo', 'redis'] %}
+            <td>
+              {% if dep in s.dependencias %}
+                {% if s.dependencias[dep] %}<span class="badge badge-success">OK</span>{% else %}<span class="badge badge-danger">Falla</span>{% endif %}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+          {% endfor %}
+          <td class="mono" style="font-size:11.5px;">{{ (s.latencia_ms ~ ' ms') if s.latencia_ms is not none else '—' }}</td>
+          <td><a class="btn btn-ghost btn-sm" href="{{ s.swagger }}" target="_blank" rel="noopener">Swagger</a></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if contadores %}
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Contadores de operación (Redis)</div>
+  </div>
+  <table>
+    <thead><tr><th>Métrica</th><th style="text-align:right;">Valor</th></tr></thead>
+    <tbody>
+      {% for clave, valor in contadores %}
+        <tr><td class="mono" style="font-size:11.5px;">{{ clave }}</td><td class="mono" style="text-align:right;">{{ valor }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

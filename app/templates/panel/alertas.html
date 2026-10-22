@@ -7,7 +7,7 @@
 {{ ui.encabezado(
   'Principal',
   'Alertas del sistema',
-  'Las alertas no se capturan a mano: se derivan de reglas aplicadas sobre el inventario, el pronóstico y las órdenes pendientes. Al recalcular, las que ya no aplican se cierran solas.'
+  'Avisos generados automáticamente sobre lotes por vencer, inventario bajo y órdenes pendientes. Al recalcular, las que ya no aplican se cierran solas.'
 ) }}
 
 <div class="stat-grid-4">
@@ -45,7 +45,7 @@
 {# ── Controles ── #}
 <div class="filtros">
   <form method="post" action="{{ url_for('panel.alertas_regenerar') }}">
-    <button class="btn btn-primary" type="submit">Recalcular alertas desde PostgreSQL</button>
+    <button class="btn btn-primary" type="submit">Recalcular alertas</button>
   </form>
   <form method="get" action="{{ url_for('panel.alertas') }}"
         style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">

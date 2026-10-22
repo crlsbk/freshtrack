@@ -7,7 +7,7 @@
 {{ ui.encabezado(
   'Administración',
   'Usuarios y roles',
-  'Cada usuario está registrado en PostgreSQL con su rol y estado. La contraseña nunca se guarda en claro: se almacena cifrada con bcrypt y la comparación ocurre dentro de la base de datos.'
+  'Usuarios del sistema, su rol, su tienda y si están activos.'
 ) }}
 
 <div class="filtros">
@@ -66,10 +66,7 @@
       <button class="btn btn-ghost" type="button"
               onclick="toggleForm('form-nuevo-usuario')">Cancelar</button>
     </div>
-    <div class="form-note">
-      La contraseña se cifra con <span class="mono">crypt(..., gen_salt('bf'))</span>
-      directamente en PostgreSQL. El texto en claro nunca se almacena ni se compara en Python.
-    </div>
+    <div class="form-note">La contraseña se guarda cifrada; nadie puede verla después.</div>
   </form>
 </div>
 

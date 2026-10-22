@@ -414,7 +414,17 @@ def mongo_explorer():
             "pipeline_pronosticos": doc_store.analitica_kpis_pronosticos(),
         }
     else:
-        estado = {"conectado": False}
+        # Sin Mongo la pantalla se muestra vacía en lugar de fallar con 500.
+        from app.config import Config
+
+        estado = {
+            "conectado": False,
+            "db_name": Config.MONGO_DB,
+            "host": Config.MONGO_HOST,
+            "port": Config.MONGO_PORT,
+            "colecciones": {},
+            "indices": {},
+        }
 
     return render_template(
         "panel/mongo_dashboard.html",
@@ -422,3 +432,27 @@ def mongo_explorer():
         estado=estado,
     )
 
+
+
+@bp.route("/microservicios")
+@login_required
+@requiere_vista("services")
+def microservicios():
+    """Estado en vivo de los 8 microservicios y validación del JWT de la sesión web en svc-auth."""
+    from flask import session
+
+    from app.services import clientes
+
+    servicios = clientes.estado_servicios()
+    token = session.get("token")
+    st_verif, verificacion = clientes.llamar("auth", "POST", "/api/v1/auth/verify", token=token)
+    st_cont, contadores = clientes.llamar("auth", "GET", "/api/v1/auth/counters", token=token)
+    return render_template(
+        "panel/microservicios.html",
+        active="services",
+        servicios=servicios,
+        sanos=sum(1 for s in servicios if s["estado"] == "HEALTHY"),
+        verificacion=verificacion if st_verif == 200 else None,
+        estado_verificacion=st_verif,
+        contadores=sorted(((contadores or {}).get("contadores") or {}).items()) if st_cont == 200 else [],
+    )

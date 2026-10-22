@@ -32,6 +32,7 @@ ICONOS: dict[str, str] = {
     "audit": '<path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>',
     "traceability": '<path fill-rule="evenodd" d="M4 3a1 1 0 011-1h10a1 1 0 011 1v1h1a1 1 0 011 1v3a1 1 0 01-.293.707L16 10.414V17a1 1 0 01-1 1H5a1 1 0 01-1-1v-6.586l-1.707-1.707A1 1 0 012 8V5a1 1 0 011-1h1V3zm2 1v12h8V4H6z" clip-rule="evenodd"/>',
     "settings": '<path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>',
+    "services": '<path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 9a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zm3-7.5a1 1 0 100 2 1 1 0 000-2zm0 9a1 1 0 100 2 1 1 0 000-2z"/>',
     "mongo_explorer": '<path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 6a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2a2 2 0 012-2h12zm0 6a2 2 0 012 2v1a2 2 0 01-2 2H4a2 2 0 01-2-2v-1a2 2 0 012-2h12z" clip-rule="evenodd"/>',
 }
 
@@ -88,6 +89,7 @@ SECCIONES = [
             {"id": "users", "label": "Usuarios y Roles", "endpoint": "panel.usuarios"},
             {"id": "audit", "label": "Bitácora", "endpoint": "panel.auditoria_bitacora"},
             {"id": "settings", "label": "Configuración", "endpoint": "panel.configuracion"},
+            {"id": "services", "label": "Microservicios", "endpoint": "panel.microservicios"},
         ],
     },
 ]
@@ -101,6 +103,7 @@ VISTAS_POR_ROL: dict[str, list[str]] = {
         "inventory", "sales", "fefo", "traceability", "forecast",
         "replenishment", "transfers", "discounts", "shrinkage", "savings",
         "sustainability", "users", "audit", "settings", "mongo_explorer",
+        "services",
     ],
     "buyer": [
         "dashboard", "alerts", "products", "suppliers", "batches", "inventory",

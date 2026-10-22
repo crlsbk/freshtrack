@@ -7,7 +7,7 @@
 {{ ui.encabezado(
   'Catálogo',
   'Productos',
-  'Alta, consulta, edición y activación de productos. Cada cambio se escribe en PostgreSQL y queda en la bitácora.'
+  'Alta, edición y activación de productos. Cada cambio queda registrado en la bitácora.'
 ) }}
 
 {# ── Filtros ── #}
@@ -99,7 +99,7 @@
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" type="submit">Guardar en PostgreSQL</button>
+      <button class="btn btn-primary" type="submit">Guardar</button>
       <button class="btn btn-ghost" type="button"
               onclick="toggleForm('form-nuevo-producto')">Cancelar</button>
     </div>

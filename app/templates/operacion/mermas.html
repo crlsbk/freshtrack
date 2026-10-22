@@ -7,7 +7,7 @@
 {{ ui.encabezado(
   'Desperdicio',
   'Registro de mermas',
-  'Flujo real: tienda → producto → lote → cantidad → causa. El sistema valida que la existencia alcance, descuenta el inventario, escribe el kardex y deja el evento en la bitácora. Si la validación falla, no se guarda nada.'
+  'Registra producto perdido indicando tienda, lote, cantidad y causa. El inventario se descuenta en el mismo paso.'
 ) }}
 
 <div class="stat-grid-4">
@@ -64,7 +64,7 @@
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" type="submit">Registrar merma en PostgreSQL</button>
+      <button class="btn btn-primary" type="submit">Registrar merma</button>
     </div>
     <div class="form-note">
       Causas disponibles: caducidad, daño, calidad, cadena de frío, manipulación,

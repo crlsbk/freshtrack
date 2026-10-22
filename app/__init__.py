@@ -53,6 +53,17 @@ def create_app() -> Flask:
     app.register_blueprint(bp_panel)
     app.register_blueprint(bp_api)
 
+    @app.get("/health")
+    def health():
+        """Healthcheck del sistema web (lo usan Docker y el pipeline de despliegue)."""
+        from app.db import escalar
+
+        try:
+            ok = escalar("SELECT 1") == 1
+        except Exception:
+            ok = False
+        return {"service": "web", "status": "HEALTHY" if ok else "DEGRADED", "dependencies": {"postgres": ok}}, (200 if ok else 503)
+
     # --- Contexto de plantillas -------------------------------------------
     @app.context_processor
     def inyectar_navegacion():

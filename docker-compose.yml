@@ -1,22 +1,45 @@
-# FreshTrack — persistencia políglota.
+# =============================================================================
+# FreshTrack — arquitectura distribuida (Segundo parcial)
 #
-# El brief pide contenedores de PostgreSQL, MongoDB y Redis. Los tres se levantan
-# aquí. Ojo con la distinción, que importa para no confundir "desplegado" con
-# "funcional":
+#   docker compose up -d --build        # levanta todo
+#   docker compose ps                   # estado (todos deben quedar "healthy")
+#   docker compose logs -f svc_auth     # registro de actividad de un servicio
+#   docker compose down                 # detiene (conserva datos)
+#   docker compose down -v              # detiene y borra los volúmenes
 #
-#   * PostgreSQL es la ÚNICA fuente de verdad del flujo funcional de este avance.
-#     Todo lo que el sistema presenta como operativo (catálogos, lotes, inventario,
-#     FEFO, ventas, mermas, pronóstico, reabastecimiento, transferencias, alertas,
-#     auditoría) se lee y se escribe ahí.
+# Componentes:
+#   postgres  :5432  fuente de verdad transaccional (operacion, analitica, auditoria)
+#   mongo     :27017 documentos: pronósticos, avisos ASN, alertas operativas (TTL)
+#   redis     :6379  sesiones, denylist JWT, caché, contadores, rate limit, locks, streams
+#   app       :5000  sistema web (Flask) — sigue funcionando de forma independiente
+#   svc_*     :5001-5008  ocho microservicios, cada uno en su contenedor
 #
-#   * MongoDB y Redis están desplegados y con su estructura inicial creada, pero
-#     todavía NO son fuente de datos de ningún flujo. Corresponden a la arquitectura
-#     diseñada en docs/Documento_Analitico_FreshTrack.pdf (pronósticos y alertas en
-#     documentos; sesiones, denylist de JWT, caché y bloqueos en memoria) y se
-#     activan en las siguientes parciales.
-#
-# Los esquemas de PostgreSQL (operacion, analitica, auditoria) se crean al inicializar
-# el volumen con los scripts de ./sql montados en docker-entrypoint-initdb.d.
+# Dentro de la red "freshtrack" los servicios se llaman por nombre (postgres,
+# mongo, redis, svc_auth...). Los puertos publicados en el host se pueden
+# cambiar en .env sin afectar la comunicación interna.
+# =============================================================================
+
+x-entorno-servicio: &entorno-servicio
+  DATABASE_URL: postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  MONGO_HOST: mongo
+  MONGO_PORT: "27017"
+  LOG_LEVEL: INFO
+
+x-microservicio: &microservicio
+  restart: unless-stopped
+  env_file:
+    - .env
+  networks:
+    - freshtrack
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    mongo:
+      condition: service_healthy
 
 services:
   postgres:
@@ -33,15 +56,17 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Se ejecutan en orden alfabético la primera vez que se crea el volumen.
+      # Roles, esquemas, DDL, funciones, vistas y datos base: se ejecutan en
+      # orden alfabético la primera vez que se crea el volumen.
       - ./sql:/docker-entrypoint-initdb.d:ro,z
+    networks:
+      - freshtrack
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # --- MongoDB: pronósticos, avisos ASN y alertas operativas -------------------
   mongo:
     image: mongo:7
     container_name: freshtrack_mongo
@@ -56,8 +81,10 @@ services:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
-      # Crea las colecciones, sus validadores y sus índices en la primera arranque.
+      # Colecciones con validador JSON Schema e índices (únicos, compuestos y TTL).
       - ./mongo:/docker-entrypoint-initdb.d:ro,z
+    networks:
+      - freshtrack
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -69,247 +96,172 @@ services:
           --eval "quit(db.adminCommand('ping').ok ? 0 : 1)"
       interval: 10s
       timeout: 10s
-      retries: 5
+      retries: 10
       start_period: 20s
 
-  # --- Redis: sesiones, denylist de JWT, caché y bloqueos distribuidos ---------
   redis:
     image: redis:7-alpine
     container_name: freshtrack_redis
     restart: unless-stopped
     env_file:
       - .env
-    # appendonly yes: la denylist de tokens revocados debe sobrevivir a un reinicio,
-    # si no un logout se perdería al reiniciar el contenedor.
-    command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --requirepass
-      - ${REDIS_PASSWORD}
+    # appendonly: la denylist de tokens revocados sobrevive a un reinicio.
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - freshtrack
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
+  # --- Sistema web --------------------------------------------------------------
   app:
+    <<: *microservicio
     build:
       context: .
       dockerfile: Dockerfile
+    image: ${IMAGE_PREFIX:-freshtrack}/web:${IMAGE_TAG:-latest}
     container_name: freshtrack_app
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
+    environment:
+      <<: *entorno-servicio
+      APP_HOST: 0.0.0.0
+      APP_PORT: "5000"
+      SVC_PUBLIC_HOST: ${SVC_PUBLIC_HOST:-localhost}
+      SVC_AUTH_URL: http://svc_auth:5001
+      SVC_CATALOG_URL: http://svc_catalog:5002
+      SVC_INVENTORY_URL: http://svc_inventory:5003
+      SVC_COMMERCIAL_URL: http://svc_commercial:5004
+      SVC_ASN_URL: http://svc_asn:5005
+      SVC_PLANNING_URL: http://svc_planning:5006
+      SVC_ALERTS_URL: http://svc_alerts:5007
+      SVC_AUDIT_URL: http://svc_audit:5008
     ports:
       - "${APP_PORT:-5000}:5000"
-    volumes:
-      - .:/app:z
     command: ["python", "run.py"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  # --- Microservicio 1: Autenticación, Identidad y Sesiones (svc-auth) -------
+  # --- Microservicio 1: Autenticación, identidad y sesiones ---------------------
   svc_auth:
-    build:
-      context: .
-      dockerfile: app/services/auth_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/auth_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-auth:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_auth
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - AUTH_SERVICE_PORT=5001
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "5001:5001"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      AUTH_SERVICE_PORT: "5001"
+      SERVICE_PORT: "5001"
+    ports: ["5001:5001"]
+    healthcheck: &salud
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$${SERVICE_PORT:-5001}/health > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
-  # --- Microservicio 2: Catálogos Maestros y Locaciones (svc-catalog) --------
+  # --- Microservicio 2: Catálogo maestro y locaciones ---------------------------
   svc_catalog:
-    build:
-      context: .
-      dockerfile: app/services/catalog_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/catalog_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-catalog:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_catalog
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - CATALOG_SERVICE_PORT=5002
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "5002:5002"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      CATALOG_SERVICE_PORT: "5002"
+      SERVICE_PORT: "5002"
+    ports: ["5002:5002"]
+    healthcheck: *salud
 
-  # --- Microservicio 3: Inventario y Motor FEFO (svc-inventory) --------------
+  # --- Microservicio 3: Inventario y motor FEFO ---------------------------------
   svc_inventory:
-    build:
-      context: .
-      dockerfile: app/services/inventory_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/inventory_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-inventory:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_inventory
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - INVENTORY_SERVICE_PORT=5003
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "5003:5003"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      INVENTORY_SERVICE_PORT: "5003"
+      SERVICE_PORT: "5003"
+    ports: ["5003:5003"]
+    healthcheck: *salud
 
-  # --- Microservicio 4: Comercial, POS y Mermas (svc-commercial) -------------
+  # --- Microservicio 4: Comercial (POS / Saga), carritos y mermas ----------------
   svc_commercial:
-    build:
-      context: .
-      dockerfile: app/services/commercial_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/commercial_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-commercial:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_commercial
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - COMMERCIAL_SERVICE_PORT=5004
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "5004:5004"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      COMMERCIAL_SERVICE_PORT: "5004"
+      SERVICE_PORT: "5004"
+    ports: ["5004:5004"]
+    healthcheck: *salud
 
-  # --- Microservicio 5: Logística Inbound y Manifiestos ASN (svc-asn) --------
+  # --- Microservicio 5: Logística inbound y avisos ASN (MongoDB) -----------------
   svc_asn:
-    build:
-      context: .
-      dockerfile: app/services/asn_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/asn_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-asn:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_asn
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - MONGO_HOST=mongo
-      - ASN_SERVICE_PORT=5005
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-    ports:
-      - "5005:5005"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      ASN_SERVICE_PORT: "5005"
+      SERVICE_PORT: "5005"
+    ports: ["5005:5005"]
+    healthcheck: *salud
 
-  # --- Microservicio 6: Planeación y Pronósticos de Demanda (svc-planning) ----
+  # --- Microservicio 6: Planeación de demanda y reabastecimiento -----------------
   svc_planning:
-    build:
-      context: .
-      dockerfile: app/services/planning_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/planning_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-planning:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_planning
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - MONGO_HOST=mongo
-      - PLANNING_SERVICE_PORT=5006
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-    ports:
-      - "5006:5006"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      PLANNING_SERVICE_PORT: "5006"
+      SERVICE_PORT: "5006"
+    ports: ["5006:5006"]
+    healthcheck: *salud
 
-  # --- Microservicio 7: Alertas Pre-Merma y Sostenibilidad ESG (svc-alerts) ---
+  # --- Microservicio 7: Alertas pre-merma y sostenibilidad -----------------------
   svc_alerts:
-    build:
-      context: .
-      dockerfile: app/services/alerts_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/alerts_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-alerts:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_alerts
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - MONGO_HOST=mongo
-      - ALERTS_SERVICE_PORT=5007
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-    ports:
-      - "5007:5007"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      ALERTS_SERVICE_PORT: "5007"
+      SERVICE_PORT: "5007"
+    ports: ["5007:5007"]
+    healthcheck: *salud
 
-  # --- Microservicio 8: Auditoría Inmutable y Cumplimiento (svc-audit) --------
+  # --- Microservicio 8: Auditoría y cumplimiento ---------------------------------
   svc_audit:
-    build:
-      context: .
-      dockerfile: app/services/audit_service/Dockerfile
+    <<: *microservicio
+    build: { context: ., dockerfile: app/services/audit_service/Dockerfile }
+    image: ${IMAGE_PREFIX:-freshtrack}/svc-audit:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_audit
-    restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - AUDIT_SERVICE_PORT=5008
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "5008:5008"
-    volumes:
-      - .:/app:z
+      <<: *entorno-servicio
+      AUDIT_SERVICE_PORT: "5008"
+      SERVICE_PORT: "5008"
+    ports: ["5008:5008"]
+    healthcheck: *salud
+
+networks:
+  freshtrack:
+    name: freshtrack
 
 volumes:
   postgres_data:

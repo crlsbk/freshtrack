@@ -22,7 +22,7 @@ endif
 # Accion para `make db` (start | stop | status | restart). Por defecto, arrancar.
 ACCION ?= start
 
-.PHONY: help setup venv db bootstrap etl app demo verify smoke test up infra down clean verify-polyglot verify-mongo verify-redis verify-microservices verify-security
+.PHONY: help setup venv db bootstrap etl app demo verify smoke test test-unit test-integration smoke-http services up infra down clean verify-polyglot verify-mongo verify-redis verify-microservices verify-security
 
 help:
 	@echo "FreshTrack — objetivos disponibles:"
@@ -38,7 +38,11 @@ help:
 	@echo "  make verify-mongo Comprueba las 7 operaciones documentales en MongoDB"
 	@echo "  make verify-microservices Comprueba los 8 microservicios contenerizados (JSON/XML/Saga)"
 	@echo "  make smoke      Recorre todas las pantallas con los 7 roles"
-	@echo "  make test       smoke + verify-polyglot + verify-mongo + verify-microservices + demo + verify"
+	@echo "  make test       Pruebas unitarias + de integración (pytest)"
+	@echo "  make test-unit  Solo pruebas unitarias (no requieren bases de datos)"
+	@echo "  make smoke-http Prueba HTTP contra los contenedores levantados"
+	@echo "  make services   Levanta los 8 microservicios fuera de Docker (puertos 5001-5008)"
+	@echo "  make verify-all smoke + verify-* + demo + verify (scripts de demostración)"
 	@echo "  make infra      Levanta solo PostgreSQL, MongoDB y Redis"
 	@echo "  make up/down/clean  Docker Compose (los 3 motores + la app)"
 	@echo ""
@@ -51,7 +55,7 @@ setup:
 venv:
 	$(PYTHON) -m venv $(VENV)
 	$(PYBIN) -m pip install --upgrade pip
-	$(PYBIN) -m pip install -r requirements.txt
+	$(PYBIN) -m pip install -r requirements-dev.txt
 	@echo "Entorno virtual listo en $(VENV)."
 
 # Arranca/para el PostgreSQL portable. Por defecto arranca. El puerto se lee de
@@ -92,10 +96,24 @@ verify-microservices:
 verify-security:
 	$(PYBIN) scripts/verify_security.py
 
-test: smoke verify-polyglot verify-mongo verify-redis verify-microservices verify-security demo verify
+test: test-unit test-integration
+
+test-unit:
+	$(PYBIN) -m pytest tests/unit -v
+
+test-integration:
+	$(PYBIN) -m pytest tests/integration -v
+
+smoke-http:
+	$(PYBIN) scripts/smoke_http.py
+
+services:
+	@for s in auth catalog inventory commercial asn planning alerts audit; do 		$(PYBIN) app/services/$${s}_service/app.py & 	done; wait
+
+verify-all: smoke verify-polyglot verify-mongo verify-redis verify-microservices verify-security demo verify
 
 up: setup
-	docker compose up -d
+	docker compose up -d --build --wait
 
 # Levanta unicamente los motores de datos (sin la aplicacion). Util para correr
 # Flask fuera de Docker contra los contenedores.

@@ -156,8 +156,8 @@
             </div>
           </td>
           <td style="font-size:12px;">{{ l.proveedor }}</td>
-          <td class="mono" style="font-size:11.5px;">{{ l.fecha_recepcion }}</td>
-          <td class="mono" style="font-size:11.5px;">{{ l.fecha_caducidad }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ l.fecha_recepcion | fecha_hora }}</td>
+          <td class="mono" style="font-size:11.5px;">{{ l.fecha_caducidad | fecha_hora }}</td>
           <td class="mono">
             <span class="{% if l.dias_restantes < 0 %}text-danger{% elif l.dias_restantes <= 2 %}text-danger{% elif l.dias_restantes <= 5 %}text-warning{% endif %}">
               {{ l.dias_restantes }}
@@ -172,8 +172,8 @@
               <span class="medidor-valor">{{ "%.0f" | format(l.vida_util_pct | float) }}%</span>
             </div>
           </td>
-          <td class="mono">{{ "%.2f" | format(l.cantidad_recibida | float) }}</td>
-          <td class="mono">{{ "%.2f" | format(l.existencia_total | float) }}</td>
+          <td class="mono">{{ (l.cantidad_recibida) | cantidad(2) }}</td>
+          <td class="mono">{{ (l.existencia_total) | cantidad(2) }}</td>
           <td>{{ ui.riesgo(l.clasificacion) }}</td>
           <td>
             <a class="btn btn-ghost btn-sm"

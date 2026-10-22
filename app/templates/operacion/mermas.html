@@ -11,11 +11,11 @@
 ) }}
 
 <div class="stat-grid-4">
-  {{ ui.kpi('Unidades mermadas (180 d)', "%.2f" | format(resumen.totales.unidades | float)) }}
+  {{ ui.kpi('Unidades mermadas (180 d)', (resumen.totales.unidades) | cantidad(2)) }}
   {{ ui.kpi('Valor de la merma', ui.moneda(resumen.totales.valor), None, '#f87171') }}
   {{ ui.kpi('Eventos registrados', resumen.totales.eventos) }}
   {{ ui.kpi('Merma por caducidad',
-            "%.2f" | format(resumen.por_caducidad.unidades_caducidad | float),
+            (resumen.por_caducidad.unidades_caducidad) | cantidad(2),
             ui.moneda(resumen.por_caducidad.valor_caducidad)) }}
 </div>
 
@@ -39,8 +39,8 @@
           <option value="">Selecciona…</option>
           {% for l in lotes %}
             <option value="{{ l.id_lote }}">
-              {{ l.codigo_lote_prov }} — {{ l.producto }} — vence {{ l.fecha_caducidad }}
-              — {{ "%.2f" | format(l.cantidad_disponible | float) }} {{ l.unidad_medida }}
+              {{ l.codigo_lote_prov }} — {{ l.producto }} — vence {{ l.fecha_caducidad | fecha_hora }}
+              — {{ (l.cantidad_disponible) | cantidad(2) }} {{ l.unidad_medida }}
               ({{ l.locacion }})
             </option>
           {% endfor %}
@@ -86,7 +86,7 @@
         {% for c in resumen.por_causa %}
           <tr>
             <td style="font-weight:600;">{{ c.etiqueta }}</td>
-            <td class="mono">{{ "%.2f" | format(c.unidades | float) }}</td>
+            <td class="mono">{{ (c.unidades) | cantidad(2) }}</td>
             <td class="mono">{{ ui.moneda(c.valor) }}</td>
             <td style="min-width:110px;">
               <div class="medidor">
@@ -114,7 +114,7 @@
         {% for t in resumen.por_tienda %}
           <tr>
             <td style="font-weight:600;">{{ t.locacion }}</td>
-            <td class="mono">{{ "%.2f" | format(t.unidades | float) }}</td>
+            <td class="mono">{{ (t.unidades) | cantidad(2) }}</td>
             <td class="mono">{{ ui.moneda(t.valor) }}</td>
           </tr>
         {% else %}
@@ -136,7 +136,7 @@
         <tr>
           <td style="font-weight:600;">{{ s.producto }}</td>
           <td><span class="badge badge-neutral">{{ s.categoria }}</span></td>
-          <td class="mono">{{ "%.2f" | format(s.unidades | float) }}</td>
+          <td class="mono">{{ (s.unidades) | cantidad(2) }}</td>
           <td class="mono">{{ ui.moneda(s.valor) }}</td>
         </tr>
       {% else %}
@@ -196,11 +196,11 @@
     <tbody>
       {% for m in mermas %}
         <tr>
-          <td class="mono" style="font-size:11px;">{{ m.fecha_registro }}</td>
+          <td class="mono" style="font-size:11px;">{{ m.fecha_registro | fecha_hora }}</td>
           <td>{{ m.locacion }}</td>
           <td style="font-weight:600;">{{ m.producto }}</td>
           <td class="mono" style="font-size:11px;">{{ m.codigo_lote_prov }}</td>
-          <td class="mono">{{ "%.2f" | format(m.cantidad | float) }} {{ m.unidad_medida }}</td>
+          <td class="mono">{{ (m.cantidad) | cantidad(2) }} {{ m.unidad_medida }}</td>
           <td><span class="badge badge-warning">{{ m.causa_merma }}</span></td>
           <td class="mono">{{ ui.moneda(m.valor_merma) }}</td>
           <td class="mono">

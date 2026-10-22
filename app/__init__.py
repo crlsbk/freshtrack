@@ -31,10 +31,42 @@ class ProveedorJSON(DefaultJSONProvider):
         return super().default(obj)
 
 
+_MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _registrar_filtros(app: Flask) -> None:
+    """Filtros de presentación: miles con coma, decimales solo si hacen falta, fechas legibles."""
+    from datetime import date, datetime
+
+    @app.template_filter("cantidad")
+    def cantidad(valor, decimales: int = 2) -> str:
+        try:
+            n = float(valor or 0)
+        except (TypeError, ValueError):
+            return str(valor)
+        if decimales and abs(n - round(n)) < 0.005:
+            decimales = 0
+        return f"{n:,.{decimales}f}"
+
+    @app.template_filter("fecha_hora")
+    def fecha_hora(valor) -> str:
+        if isinstance(valor, str):
+            try:
+                valor = datetime.fromisoformat(valor)
+            except ValueError:
+                return valor
+        if isinstance(valor, datetime):
+            return f"{valor.day} {_MESES[valor.month - 1]} {valor.year}, {valor:%H:%M}"
+        if isinstance(valor, date):
+            return f"{valor.day} {_MESES[valor.month - 1]} {valor.year}"
+        return "—" if valor is None else str(valor)
+
+
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config.from_object(Config)
     app.json = ProveedorJSON(app)
+    _registrar_filtros(app)
 
     # --- Blueprints --------------------------------------------------------
     from app.blueprints.analitica import bp as bp_analitica

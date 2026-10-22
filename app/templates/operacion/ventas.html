@@ -11,7 +11,7 @@
 ) }}
 
 <div class="stat-grid-4">
-  {{ ui.kpi('Unidades vendidas', "%.2f" | format(resumen.unidades | float)) }}
+  {{ ui.kpi('Unidades vendidas', (resumen.unidades) | cantidad(2)) }}
   {{ ui.kpi('Ingreso acumulado', ui.moneda(resumen.ingreso)) }}
   {{ ui.kpi('Tickets', resumen.tickets) }}
   {{ ui.kpi('Ticket promedio', ui.moneda(resumen.ticket_promedio)) }}
@@ -105,11 +105,11 @@
       {% for v in ventas %}
         <tr>
           <td class="mono" style="font-size:11px;">{{ v.folio }}</td>
-          <td class="mono" style="font-size:11px;">{{ v.fecha_venta }}</td>
+          <td class="mono" style="font-size:11px;">{{ v.fecha_venta | fecha_hora }}</td>
           <td>{{ v.locacion }}</td>
           <td style="font-weight:600;">{{ v.producto }}</td>
           <td class="mono" style="font-size:11px;">{{ v.lote or '—' }}</td>
-          <td class="mono">{{ "%.2f" | format(v.cantidad | float) }}</td>
+          <td class="mono">{{ (v.cantidad) | cantidad(2) }}</td>
           <td class="mono">{{ ui.moneda(v.precio_unitario) }}</td>
           <td class="mono">{{ ui.moneda(v.subtotal) }}</td>
           <td class="mono">

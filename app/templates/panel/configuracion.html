@@ -28,7 +28,7 @@
             </td>
             <td><span class="badge badge-neutral">{{ p.tipo }}</span></td>
             <td class="text-muted" style="font-size:12px;">{{ p.descripcion or '—' }}</td>
-            <td class="mono" style="font-size:10.5px;">{{ p.actualizado }}</td>
+            <td class="mono" style="font-size:10.5px;">{{ p.actualizado | fecha_hora }}</td>
           </tr>
         {% else %}
           {{ ui.vacio('No hay parámetros configurados.', 5) }}

@@ -55,14 +55,14 @@
   <div class="card" style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
       <div>
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;">
+        <div style="font-size:16px;font-weight:600;letter-spacing:-.2px;">
           {{ o.producto }}
           <span class="text-muted" style="font-size:13px;">→ {{ o.locacion }}</span>
         </div>
         <div class="text-muted" style="font-size:11.5px;margin-top:3px;">
           SKU {{ o.id_sku }} · {{ o.proveedor or 'sin proveedor asignado' }} ·
           lead time {{ o.lead_time_dias }} días · MOQ {{ "%.0f" | format(o.moq | float) }} ·
-          creada el {{ o.fecha_creacion }}
+          creada el {{ o.fecha_creacion | fecha_hora }}
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -74,34 +74,34 @@
     </div>
 
     <div class="stat-grid-4" style="margin:16px 0 0;">
-      {{ ui.kpi('Cantidad sugerida', "%.2f" | format(o.cantidad_sugerida | float),
+      {{ ui.kpi('Cantidad sugerida', (o.cantidad_sugerida) | cantidad(2),
                 o.unidad_medida, '#4ade80') }}
-      {{ ui.kpi('Necesidad neta', "%.2f" | format(o.necesidad_neta | float), o.unidad_medida) }}
-      {{ ui.kpi('Inventario útil', "%.2f" | format(o.inventario_util | float),
+      {{ ui.kpi('Necesidad neta', (o.necesidad_neta) | cantidad(2), o.unidad_medida) }}
+      {{ ui.kpi('Inventario útil', (o.inventario_util) | cantidad(2),
                 'Descontado lo que está por vencer') }}
-      {{ ui.kpi('Inventario en riesgo', "%.2f" | format(o.inventario_riesgo | float),
+      {{ ui.kpi('Inventario en riesgo', (o.inventario_riesgo) | cantidad(2),
                 'No cubre demanda futura', '#f87171') }}
     </div>
 
-    <details class="acordeon" {% if loop.first and o.estado == 'PENDIENTE' %}open{% endif %}>
-      <summary>Ver el cálculo completo y la explicación</summary>
+    <details class="acordeon">
+      <summary>Ver el cálculo completo</summary>
       <div class="acordeon-cuerpo">
         <div class="detalle-grid" style="margin-bottom:14px;">
           <div class="detalle-item">
             <div class="detalle-etiqueta">Demanda pronosticada</div>
-            <div class="detalle-valor">{{ "%.2f" | format(o.demanda_pronosticada | float) }}</div>
+            <div class="detalle-valor">{{ (o.demanda_pronosticada) | cantidad(2) }}</div>
           </div>
           <div class="detalle-item">
             <div class="detalle-etiqueta">Inventario físico</div>
-            <div class="detalle-valor">{{ "%.2f" | format(o.inventario_fisico | float) }}</div>
+            <div class="detalle-valor">{{ (o.inventario_fisico) | cantidad(2) }}</div>
           </div>
           <div class="detalle-item">
             <div class="detalle-etiqueta">Entradas confirmadas</div>
-            <div class="detalle-valor">{{ "%.2f" | format(o.entradas_confirmadas | float) }}</div>
+            <div class="detalle-valor">{{ (o.entradas_confirmadas) | cantidad(2) }}</div>
           </div>
           <div class="detalle-item">
             <div class="detalle-etiqueta">Stock de seguridad</div>
-            <div class="detalle-valor">{{ "%.2f" | format(o.stock_seguridad | float) }}</div>
+            <div class="detalle-valor">{{ (o.stock_seguridad) | cantidad(2) }}</div>
           </div>
           <div class="detalle-item">
             <div class="detalle-etiqueta">Lead time</div>
@@ -114,7 +114,7 @@
           {% if o.cantidad_aprobada is not none %}
             <div class="detalle-item">
               <div class="detalle-etiqueta">Cantidad aprobada</div>
-              <div class="detalle-valor">{{ "%.2f" | format(o.cantidad_aprobada | float) }}</div>
+              <div class="detalle-valor">{{ (o.cantidad_aprobada) | cantidad(2) }}</div>
             </div>
           {% endif %}
         </div>
@@ -129,11 +129,6 @@
             </ul>
           </div>
         {% endif %}
-
-        <div style="margin-top:14px;">
-          <div class="detalle-etiqueta" style="margin-bottom:6px;">Explicación guardada</div>
-          <pre class="explicacion">{{ o.explicacion }}</pre>
-        </div>
 
         {% if o.solicita or o.aprueba %}
           <div class="text-muted" style="font-size:11.5px;margin-top:12px;">
@@ -207,8 +202,8 @@
         <tr>
           <td style="font-weight:600;">{{ s.producto }}</td>
           <td>{{ s.locacion }}</td>
-          <td class="mono">{{ "%.2f" | format(s.util | float) }} {{ s.unidad_medida }}</td>
-          <td class="mono">{{ "%.2f" | format(s.demanda_diaria | float) }}</td>
+          <td class="mono">{{ (s.util) | cantidad(2) }} {{ s.unidad_medida }}</td>
+          <td class="mono">{{ (s.demanda_diaria) | cantidad(2) }}</td>
           <td class="mono" style="color:var(--warning);">{{ s.dias_cobertura }} d</td>
           <td class="mono">{{ s.vida_util_estandar }} d</td>
           <td style="font-size:12px;">

@@ -11,21 +11,21 @@
 ) }}
 
 <div class="stat-grid-4">
-  {{ ui.kpi('Unidades recuperadas', "%.2f" | format(indicadores.unidades_recuperadas | float),
+  {{ ui.kpi('Unidades recuperadas', (indicadores.unidades_recuperadas) | cantidad(2),
             'Vendidas antes de caducar gracias a una intervención', '#4ade80') }}
-  {{ ui.kpi('Unidades mermadas', "%.2f" | format(indicadores.unidades_mermadas | float),
+  {{ ui.kpi('Unidades mermadas', (indicadores.unidades_mermadas) | cantidad(2),
             'Pérdida inevitable registrada', '#f87171') }}
   {{ ui.kpi('Tasa de aprovechamiento',
-            ("%.1f" | format(indicadores.tasa_aprovechamiento | float)) ~ '%',
+            ((indicadores.tasa_aprovechamiento) | cantidad(1)) ~ '%',
             'Recuperado sobre recuperado + mermado', '#fbbf24') }}
-  {{ ui.kpi('CO₂e evitado', ("%.1f" | format(indicadores.co2e_evitado_kg | float)) ~ ' kg',
+  {{ ui.kpi('CO₂e evitado', ((indicadores.co2e_evitado_kg) | cantidad(1)) ~ ' kg',
             'Equivalencia declarada abajo') }}
 </div>
 
 <div class="grid-2" style="margin-bottom:20px;">
   <div class="card">
     <div class="card-title">Valor económico rescatado</div>
-    <div class="mono" style="font-size:32px;font-weight:700;color:var(--success);margin-bottom:8px;">
+    <div class="cifra" style="font-size:32px;font-weight:700;color:var(--success);margin-bottom:8px;">
       {{ ui.moneda(indicadores.valor_recuperado) }}
     </div>
     <div class="text-muted" style="font-size:12.5px;line-height:1.6;">
@@ -36,15 +36,15 @@
 
   <div class="card">
     <div class="card-title">Tasa de merma sobre lo recibido (180 días)</div>
-    <div class="mono" style="font-size:32px;font-weight:700;color:var(--danger);margin-bottom:8px;">
-      {{ "%.2f" | format(tasa.tasa_pct | float) }}%
+    <div class="cifra" style="font-size:32px;font-weight:700;color:var(--danger);margin-bottom:8px;">
+      {{ (tasa.tasa_pct) | cantidad(2) }}%
     </div>
     <div class="progress-bar" style="height:8px;">
       <div class="progress-fill" style="width: {{ [tasa.tasa_pct | float, 100] | min }}%; background: var(--danger);"></div>
     </div>
     <div class="text-muted" style="font-size:11.5px;margin-top:10px;">
-      {{ "%.2f" | format(tasa.mermado | float) }} unidades mermadas de
-      {{ "%.2f" | format(tasa.recibido | float) }} recibidas.
+      {{ (tasa.mermado) | cantidad(2) }} unidades mermadas de
+      {{ (tasa.recibido) | cantidad(2) }} recibidas.
     </div>
   </div>
 </div>
@@ -76,7 +76,7 @@
       {% for c in por_categoria %}
         <tr>
           <td style="font-weight:600;">{{ c.name }}</td>
-          <td class="mono">{{ "%.2f" | format(c.unidades | float) }}</td>
+          <td class="mono">{{ (c.unidades) | cantidad(2) }}</td>
           <td class="mono">{{ ui.moneda(c.valor) }}</td>
         </tr>
       {% else %}
@@ -107,10 +107,10 @@ if (canvas) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#93b09a', font: { size: 11 } } } },
+      plugins: { legend: { labels: { color: '#c5d6c8', font: { size: 11 } } } },
       scales: {
-        x: { ticks: { color: '#536b57', font: { size: 10 } }, grid: { color: '#1a2a1d' } },
-        y: { ticks: { color: '#536b57', font: { size: 10 } }, grid: { color: '#1a2a1d' } }
+        x: { ticks: { color: '#8a9e8e', font: { size: 10 } }, grid: { color: 'rgba(138,158,142,.10)' } },
+        y: { ticks: { color: '#8a9e8e', font: { size: 10 } }, grid: { color: 'rgba(138,158,142,.10)' } }
       }
     }
   });

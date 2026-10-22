@@ -14,7 +14,7 @@
   {{ ui.kpi('Sugeridas', resumen.sugeridas, 'Esperan decisión', '#38bdf8') }}
   {{ ui.kpi('Aprobadas', resumen.aprobadas, 'Listas para ejecutar', '#fbbf24') }}
   {{ ui.kpi('Ejecutadas', resumen.ejecutadas, 'Inventario ya movido', '#4ade80') }}
-  {{ ui.kpi('Unidades movidas', "%.2f" | format(resumen.unidades_movidas | float)) }}
+  {{ ui.kpi('Unidades movidas', (resumen.unidades_movidas) | cantidad(2)) }}
 </div>
 
 <div class="filtros">
@@ -46,29 +46,29 @@
   <div class="card" style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
       <div>
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;">
+        <div style="font-size:16px;font-weight:600;letter-spacing:-.2px;">
           {{ t.origen }} <span style="color:var(--role-accent);">→</span> {{ t.destino }}
         </div>
         <div class="text-muted" style="font-size:11.5px;margin-top:3px;">
           {{ t.producto }} · SKU {{ t.id_sku }} · lote {{ t.codigo_lote_prov or '—' }} ·
-          vence {{ t.fecha_caducidad }} ({{ t.dias_para_vencer }} días) ·
-          creada el {{ t.fecha_creacion }}
+          vence {{ t.fecha_caducidad | fecha_hora }} ({{ t.dias_para_vencer }} días) ·
+          creada el {{ t.fecha_creacion | fecha_hora }}
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <span class="badge badge-info">{{ "%.2f" | format(t.cantidad | float) }} {{ t.unidad_medida }}</span>
+        <span class="badge badge-info">{{ (t.cantidad) | cantidad(2) }} {{ t.unidad_medida }}</span>
         {{ ui.estado(t.estado) }}
       </div>
     </div>
 
     <div class="stat-grid-4" style="margin:16px 0 0;">
-      {{ ui.kpi('Exceso en el origen', "%.2f" | format(t.exceso_origen | float),
+      {{ ui.kpi('Exceso en el origen', (t.exceso_origen) | cantidad(2),
                 'Inventario que sobra en ' ~ t.origen) }}
-      {{ ui.kpi('Faltante en el destino', "%.2f" | format(t.faltante_destino | float),
+      {{ ui.kpi('Faltante en el destino', (t.faltante_destino) | cantidad(2),
                 'Lo que necesita ' ~ t.destino) }}
       {{ ui.kpi('Días para vencer', t.dias_para_vencer,
                 'Al momento de sugerir', '#fbbf24') }}
-      {{ ui.kpi('Unidades a mover', "%.2f" | format(t.cantidad | float),
+      {{ ui.kpi('Unidades a mover', (t.cantidad) | cantidad(2),
                 'Cantidad propuesta', '#4ade80') }}
     </div>
 
@@ -109,8 +109,8 @@
     {% if t.solicita or t.aprueba %}
       <div class="text-muted" style="font-size:11.5px;margin-top:10px;">
         {% if t.solicita %}Sugerida por el sistema en la corrida solicitada por {{ t.solicita }}.{% endif %}
-        {% if t.aprueba %}Decidió: {{ t.aprueba }}{% if t.fecha_decision %} el {{ t.fecha_decision }}{% endif %}.{% endif %}
-        {% if t.fecha_ejecucion %}Ejecutada el {{ t.fecha_ejecucion }}.{% endif %}
+        {% if t.aprueba %}Decidió: {{ t.aprueba }}{% if t.fecha_decision %} el {{ t.fecha_decision | fecha_hora }}{% endif %}.{% endif %}
+        {% if t.fecha_ejecucion %}Ejecutada el {{ t.fecha_ejecucion | fecha_hora }}.{% endif %}
       </div>
     {% endif %}
 

@@ -85,7 +85,7 @@
           <td class="text-muted" style="font-size:12px;">{{ l.direccion or '—' }}</td>
           <td class="mono">{{ l.skus }}</td>
           <td class="mono">{{ l.lotes }}</td>
-          <td class="mono">{{ "%.2f" | format(l.unidades | float) }}</td>
+          <td class="mono">{{ (l.unidades) | cantidad(2) }}</td>
           <td class="mono">{{ l.usuarios }}</td>
           <td>
             {% if l.activo %}

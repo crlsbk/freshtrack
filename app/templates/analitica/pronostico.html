@@ -76,7 +76,7 @@
           Última corrida — {{ metodos.get(corrida.metodo, {}).get('etiqueta', corrida.metodo) }}
         </div>
         <div class="text-muted" style="font-size:12px;">
-          Ejecutada el {{ corrida.fecha_ejecucion }}
+          Ejecutada el {{ corrida.fecha_ejecucion | fecha_hora }}
           {% if corrida.ejecutado_por %}por {{ corrida.ejecutado_por }}{% endif %} ·
           {{ corrida.n_series }} series · horizonte {{ corrida.horizonte_dias }} días
         </div>
@@ -85,11 +85,11 @@
     </div>
 
     <div class="stat-grid-4">
-      {{ ui.kpi('MAE (error absoluto medio)', "%.2f" | format(corrida.mae | float),
+      {{ ui.kpi('MAE (error absoluto medio)', (corrida.mae) | cantidad(2),
                 'Unidades por producto y día') }}
-      {{ ui.kpi('RMSE', "%.2f" | format(corrida.rmse | float),
+      {{ ui.kpi('RMSE', (corrida.rmse) | cantidad(2),
                 'Penaliza más los errores grandes') }}
-      {{ ui.kpi('WMAPE', ("%.1f" | format(corrida.wmape | float)) ~ '%',
+      {{ ui.kpi('WMAPE', ((corrida.wmape) | cantidad(1)) ~ '%',
                 'Error sobre la demanda total', '#fbbf24') }}
       {{ ui.kpi('Duración', (corrida.duracion_ms | string) ~ ' ms', 'Tiempo de cómputo') }}
     </div>
@@ -127,12 +127,12 @@
           <tr>
             <td style="font-weight:600;">{{ s.producto }}</td>
             <td>{{ s.locacion }}</td>
-            <td class="mono">{{ "%.2f" | format(s.proximo_dia | float) }}</td>
+            <td class="mono">{{ (s.proximo_dia) | cantidad(2) }}</td>
             <td class="mono" style="font-weight:600;color:var(--role-accent);">
-              {{ "%.2f" | format(s.total_horizonte | float) }}
+              {{ (s.total_horizonte) | cantidad(2) }}
             </td>
             <td class="mono text-muted">
-              {{ "%.2f" | format((s.total_horizonte | float) / (corrida.horizonte_dias or 1)) }}
+              {{ ((s.total_horizonte | float) / (corrida.horizonte_dias or 1)) | cantidad(2) }}
             </td>
             <td class="text-muted" style="font-size:12px;">{{ s.unidad_medida }}</td>
             <td class="mono" style="font-size:11px;">{{ s.desde }} → {{ s.hasta }}</td>
@@ -178,13 +178,13 @@
       <tbody>
         {% for c in corridas %}
           <tr>
-            <td class="mono" style="font-size:11px;">{{ c.fecha_ejecucion }}</td>
+            <td class="mono" style="font-size:11px;">{{ c.fecha_ejecucion | fecha_hora }}</td>
             <td>{{ metodos.get(c.metodo, {}).get('etiqueta', c.metodo) }}</td>
             <td class="mono">{{ c.horizonte_dias }} d</td>
             <td class="mono">{{ c.n_series }}</td>
-            <td class="mono">{{ "%.2f" | format(c.mae | float) if c.mae is not none else '—' }}</td>
-            <td class="mono">{{ "%.2f" | format(c.rmse | float) if c.rmse is not none else '—' }}</td>
-            <td class="mono">{{ ("%.1f" | format(c.wmape | float)) ~ '%' if c.wmape is not none else '—' }}</td>
+            <td class="mono">{{ (c.mae) | cantidad(2) if c.mae is not none else '—' }}</td>
+            <td class="mono">{{ (c.rmse) | cantidad(2) if c.rmse is not none else '—' }}</td>
+            <td class="mono">{{ ((c.wmape) | cantidad(1)) ~ '%' if c.wmape is not none else '—' }}</td>
             <td style="font-size:12px;">{{ c.ejecutado_por or '—' }}</td>
             <td>{{ ui.estado(c.estado) }}</td>
           </tr>

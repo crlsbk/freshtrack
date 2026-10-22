@@ -114,7 +114,7 @@
         {% endif %}
 
         <div class="alerta-pie">
-          Generada el {{ a.fecha_generacion }} · estado {{ a.estado }}
+          Generada el {{ a.fecha_generacion | fecha_hora }} · estado {{ a.estado }}
           {% if a.referencia_tipo %} · referencia: {{ a.referencia_tipo }}{% endif %}
         </div>
       </div>

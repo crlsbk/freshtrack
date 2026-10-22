@@ -13,7 +13,7 @@
 <div class="stat-grid-4">
   {{ ui.kpi('Sugeridos', resumen.sugeridos, 'Esperan aprobación', '#38bdf8') }}
   {{ ui.kpi('Aprobados', resumen.aprobados) }}
-  {{ ui.kpi('Unidades en promoción', "%.2f" | format(resumen.unidades | float)) }}
+  {{ ui.kpi('Unidades en promoción', (resumen.unidades) | cantidad(2)) }}
   {{ ui.kpi('Ingreso potencial', ui.moneda(resumen.ingreso_potencial),
             'Si se vende todo lo descontado', '#4ade80') }}
 </div>
@@ -63,13 +63,13 @@
           <td style="font-weight:600;">{{ d.producto }}</td>
           <td>{{ d.locacion }}</td>
           <td class="mono" style="font-size:11px;">{{ d.codigo_lote_prov }}</td>
-          <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad }}</td>
+          <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad | fecha_hora }}</td>
           <td class="mono">
             <span class="{% if d.dias_restantes <= 2 %}text-danger{% elif d.dias_restantes <= 5 %}text-warning{% endif %}">
               {{ d.dias_restantes }}
             </span>
           </td>
-          <td class="mono">{{ "%.2f" | format(d.cantidad | float) }} {{ d.unidad_medida }}</td>
+          <td class="mono">{{ (d.cantidad) | cantidad(2) }} {{ d.unidad_medida }}</td>
           <td class="mono">{{ ui.moneda(d.precio_normal) }}</td>
           <td><span class="badge badge-warning">{{ d.descuento_pct }}%</span></td>
           <td class="mono" style="font-weight:600;">{{ ui.moneda(d.precio_nuevo) }}</td>

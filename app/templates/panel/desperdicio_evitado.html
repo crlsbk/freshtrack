@@ -15,18 +15,18 @@
 {# ── Cifra principal ── #}
 <div class="savings-hero">
   <div class="savings-hero-label">Unidades rescatadas por intervenciones</div>
-  <div class="savings-hero-total">{{ "%.2f" | format(t.recuperado | float) }}</div>
+  <div class="savings-hero-total">{{ (t.recuperado) | cantidad(2) }}</div>
   <div class="savings-hero-sub">
     Producto que iba a perderse y se vendió antes de caducar · valor
     {{ ui.moneda(t.valor) }}
   </div>
   <div class="savings-hero-grid">
     <div>
-      <div class="savings-hero-kpi-val">{{ "%.2f" | format(t.en_riesgo | float) }}</div>
+      <div class="savings-hero-kpi-val">{{ (t.en_riesgo) | cantidad(2) }}</div>
       <div class="savings-hero-kpi-lbl">Riesgo estimado inicial</div>
     </div>
     <div>
-      <div class="savings-hero-kpi-val">{{ "%.2f" | format(t.intervenido | float) }}</div>
+      <div class="savings-hero-kpi-val">{{ (t.intervenido) | cantidad(2) }}</div>
       <div class="savings-hero-kpi-lbl">Unidades intervenidas</div>
     </div>
     <div>
@@ -38,10 +38,10 @@
 
 <div class="stat-grid-4">
   {{ ui.kpi('Intervenciones registradas', t.intervenciones, 'Transferencias y descuentos') }}
-  {{ ui.kpi('Unidades mermadas igualmente', "%.2f" | format(t.mermado | float),
+  {{ ui.kpi('Unidades mermadas igualmente', (t.mermado) | cantidad(2),
             'Merma residual del mismo lote y periodo', '#f87171') }}
   {{ ui.kpi('Valor recuperado', ui.moneda(t.valor), None, '#4ade80') }}
-  {{ ui.kpi('CO₂e evitado', ("%.1f" | format(sostenibilidad.co2e_evitado_kg | float)) ~ ' kg',
+  {{ ui.kpi('CO₂e evitado', ((sostenibilidad.co2e_evitado_kg) | cantidad(1)) ~ ' kg',
             '2.5 kg CO₂e por kg de alimento (FAO)') }}
 </div>
 
@@ -118,7 +118,7 @@
     <tbody>
       {% for d in resumen.detalle %}
         <tr>
-          <td class="mono" style="font-size:11px;">{{ d.fecha_registro }}</td>
+          <td class="mono" style="font-size:11px;">{{ d.fecha_registro | fecha_hora }}</td>
           <td>
             <span class="badge badge-{{ 'info' if d.tipo_intervencion == 'TRANSFERENCIA' else 'warning' }}">
               {{ d.tipo_intervencion }}
@@ -129,13 +129,13 @@
           <td style="font-size:12px;">
             {% if d.origen %}{{ d.origen }} → {{ d.destino }}{% else %}—{% endif %}
           </td>
-          <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad }}</td>
-          <td class="mono">{{ "%.2f" | format(d.cantidad_en_riesgo | float) }}</td>
-          <td class="mono">{{ "%.2f" | format(d.cantidad_intervenida | float) }}</td>
+          <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad | fecha_hora }}</td>
+          <td class="mono">{{ (d.cantidad_en_riesgo) | cantidad(2) }}</td>
+          <td class="mono">{{ (d.cantidad_intervenida) | cantidad(2) }}</td>
           <td class="mono text-success" style="font-weight:600;">
-            {{ "%.2f" | format(d.cantidad_recuperada | float) }}
+            {{ (d.cantidad_recuperada) | cantidad(2) }}
           </td>
-          <td class="mono text-danger">{{ "%.2f" | format(d.cantidad_mermada | float) }}</td>
+          <td class="mono text-danger">{{ (d.cantidad_mermada) | cantidad(2) }}</td>
           <td class="mono">{{ ui.moneda(d.valor_recuperado) }}</td>
         </tr>
       {% else %}

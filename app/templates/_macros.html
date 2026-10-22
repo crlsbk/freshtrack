@@ -95,7 +95,7 @@
 {% endmacro %}
 
 {# --- Formato ------------------------------------------------------------- #}
-{% macro num(valor, decimales=2) %}{{ "%.{0}f".format(decimales) | format(valor | float) }}{% endmacro %}
+{% macro num(valor, decimales=2) %}{{ valor | cantidad(decimales) }}{% endmacro %}
 
 {% macro moneda(valor) %}${{ "{:,.2f}".format(valor | float) }}{% endmacro %}
 

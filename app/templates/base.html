@@ -40,7 +40,7 @@
         <div class="sidebar-section-label">{{ seccion.label }}</div>
         {% for item in seccion['items'] %}
           <a href="{{ url_for(item.endpoint) }}"
-             class="sidebar-link {% if active == item.id %}active{% endif %}">
+             class="sidebar-link {% if active == item.id %}active{% endif %}" title="{{ item.label }}">
             <svg viewBox="0 0 20 20">{{ nav_icons[item.id] | safe }}</svg>
             <span>{{ item.label }}</span>
           </a>
@@ -61,7 +61,7 @@
       {% if 'alerts' in allowed_views %}
         <a href="{{ url_for('panel.alertas') }}" class="topbar-bell" title="Alertas abiertas">
           <svg viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z"/></svg>
-          {% if notifications %}<span class="topbar-badge">{{ notifications }}</span>{% endif %}
+          {% if notifications %}<span class="topbar-badge">{{ '99+' if notifications > 99 else notifications }}</span>{% endif %}
         </a>
       {% endif %}
 

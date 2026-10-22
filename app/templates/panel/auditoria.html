@@ -80,7 +80,7 @@
     <tbody>
       {% for e in eventos %}
         <tr>
-          <td class="mono" style="font-size:11px;white-space:nowrap;">{{ e.fecha_evento }}</td>
+          <td class="mono" style="font-size:11px;white-space:nowrap;">{{ e.fecha_evento | fecha_hora }}</td>
           <td>
             <span class="badge badge-{{ 'danger' if e.accion.startswith('DELETE') or e.accion.startswith('DEACTIVATE')
                                             else ('success' if e.accion.startswith('CREATE') or e.accion.startswith('APPROVE')

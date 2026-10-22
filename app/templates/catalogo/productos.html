@@ -153,7 +153,7 @@
           <td class="mono">{{ p.vida_util_estandar }} d</td>
           <td class="mono">{{ ui.moneda(p.precio_costo) }}</td>
           <td class="mono">{{ ui.moneda(p.precio_venta) }}</td>
-          <td class="mono">{{ "%.2f" | format(p.existencia_total | float) }}</td>
+          <td class="mono">{{ (p.existencia_total) | cantidad(2) }}</td>
           <td class="mono">{{ p.n_lotes }}</td>
           <td>
             {% if p.activo %}

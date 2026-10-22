@@ -22,7 +22,7 @@ endif
 # Accion para `make db` (start | stop | status | restart). Por defecto, arrancar.
 ACCION ?= start
 
-.PHONY: help setup venv db bootstrap etl app demo verify smoke test up infra down clean verify-polyglot verify-mongo verify-redis verify-microservices
+.PHONY: help setup venv db bootstrap etl app demo verify smoke test up infra down clean verify-polyglot verify-mongo verify-redis verify-microservices verify-security
 
 help:
 	@echo "FreshTrack — objetivos disponibles:"
@@ -89,7 +89,10 @@ verify-redis:
 verify-microservices:
 	$(PYBIN) scripts/verify_all_microservices.py
 
-test: smoke verify-polyglot verify-mongo verify-redis verify-microservices demo verify
+verify-security:
+	$(PYBIN) scripts/verify_security.py
+
+test: smoke verify-polyglot verify-mongo verify-redis verify-microservices verify-security demo verify
 
 up: setup
 	docker compose up -d

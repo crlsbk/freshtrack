@@ -13,6 +13,7 @@ import functools
 import uuid
 from typing import Any, Callable
 
+import jwt
 from flask import g, request
 
 from app.security import decodificar_token
@@ -58,21 +59,25 @@ def requiere_auth(*roles_permitidos: str) -> Callable:
                     root_tag="error_response",
                 )
 
+            # Inspección ultra-rápida de JTI en la denylist de Redis (<0.2ms)
+            try:
+                unverified = jwt.decode(token, options={"verify_signature": False, "verify_exp": False})
+                jti = unverified.get("jti")
+                if jti and esta_jwt_revocado(jti):
+                    incrementar_contador("auth", "access_denied_revoked")
+                    return render_response(
+                        {"error": "revoked_token", "mensaje": "La sesión fue revocada (logout)."},
+                        status=401,
+                        root_tag="error_response",
+                    )
+            except Exception:
+                pass
+
             payload = decodificar_token(token)
             if not payload:
                 incrementar_contador("auth", "access_denied_invalid")
                 return render_response(
-                    {"error": "invalid_token", "mensaje": "Token inválido, expirado o revocado en Redis."},
-                    status=401,
-                    root_tag="error_response",
-                )
-
-            # Verificar denylist en Redis de forma directa por JTI (<0.8ms)
-            jti = payload.get("jti")
-            if jti and esta_jwt_revocado(jti):
-                incrementar_contador("auth", "access_denied_revoked")
-                return render_response(
-                    {"error": "revoked_token", "mensaje": "La sesión fue revocada (logout)."},
+                    {"error": "invalid_token", "mensaje": "Token inválido, expirado o manipulado."},
                     status=401,
                     root_tag="error_response",
                 )

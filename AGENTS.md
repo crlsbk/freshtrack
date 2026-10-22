@@ -127,6 +127,16 @@ make test             # smoke + verify-polyglot + demo + verify
   - Mecanismo unificado de autenticación y autorización en microservicios vía `app/services/common/auth.py`.
   - Suite automatizada `scripts/verify_redis.py` integrada en `make verify-redis` y `make test`.
   - Documentación técnica maestra generada en `docs/DISENO_PERSISTENCIA_REDIS.md`.
+- [x] Phase 5: Seguridad e Integración entre Componentes (Requerimiento 9):
+  - Mecanismo uniforme de autenticación JWT y PostgreSQL `public.crypt()` (bcrypt).
+  - Delimitación estricta y documentada de endpoints públicos (`/health`, `/api/v1/docs`, `/api/v1/auth/login`, catálogo abierto) vs protegidos (`Authorization: Bearer <token>`).
+  - Control de acceso por roles (RBAC con 7 perfiles y bloqueo 403 Forbidden).
+  - Manejo de tokens inválidos, expirados, corruptos y sin Bearer con rechazo 401.
+  - Revocación en tiempo real en Redis Denylist (`jwt:denylist:{jti}`) en < 0.2 ms con respuesta `revoked_token`.
+  - Validación de entradas y manejo controlado de errores (*zero information leak* sin trazas de Python).
+  - Trazabilidad con `X-Correlation-Id`, `X-Location-Id`, `X-User-Id` y bitácora de auditoría inmutable en PostgreSQL.
+  - Suite automatizada `scripts/verify_security.py` integrada en `make verify-security` y `make test`.
+  - Documentación técnica maestra generada en `docs/DISENO_SEGURIDAD_INTEGRACION.md`.
 
 ### Next Steps
 - [ ] Implementar Gateway perimetral dedicado / Reverse Proxy Nginx o Kong si se requiere enrutamiento unificado de puertos externos.

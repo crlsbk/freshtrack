@@ -25,6 +25,7 @@ from app.db import one, query, transaccion
 from app.security import autenticar, crear_token, decodificar_token, revocar_token
 from app.services import cache_service
 from app.services.common.auth import requiere_auth
+from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import render_response
 from app.services.common.swagger import registrar_openapi
 
@@ -57,6 +58,7 @@ def health():
 
 
 @app.post("/api/v1/auth/login")
+@limite_tasa(limite=10, ventana_segundos=60)
 def login():
     """Inicio de sesión con validación bcrypt en PostgreSQL y emisión de JWT."""
     datos = request.get_json(silent=True) or request.form
@@ -161,7 +163,55 @@ def cambiar_estado_usuario(id_usuario: str):
             text("UPDATE operacion.usuario SET estado_activo = :act WHERE id_usuario = CAST(:uid AS uuid)"),
             {"act": activo, "uid": id_usuario},
         )
+    # Si se desactiva al usuario, se cierran todas sus sesiones en Redis de inmediato
+    if not activo:
+        cache_service.cerrar_sesiones_usuario(id_usuario)
+
     return render_response({"id_usuario": id_usuario, "estado_activo": activo}, status=200, root_tag="user_status")
+
+
+@app.get("/api/v1/auth/sessions/<id_usuario>")
+@requiere_auth("admin")
+def consultar_sesiones_usuario(id_usuario: str):
+    """Consulta las sesiones activas en Redis de un usuario específico."""
+    sesiones_ids = cache_service.listar_sesiones_usuario(id_usuario)
+    detalles = []
+    for sid in sesiones_ids:
+        s_data = cache_service.obtener_sesion_redis(sid, refrescar_ttl=False)
+        ttl = cache_service.obtener_ttl(f"session:{sid}")
+        if s_data:
+            s_data["ttl_restante_segundos"] = ttl
+            detalles.append(s_data)
+
+    return render_response(
+        {"id_usuario": id_usuario, "total_activas": len(detalles), "sesiones": detalles},
+        status=200,
+        root_tag="user_sessions",
+    )
+
+
+@app.delete("/api/v1/auth/sessions/<id_usuario>")
+@requiere_auth("admin")
+def revocar_todas_sesiones_usuario(id_usuario: str):
+    """Cierra y revoca forzosamente todas las sesiones activas en Redis de un usuario."""
+    cerradas = cache_service.cerrar_sesiones_usuario(id_usuario)
+    return render_response(
+        {"id_usuario": id_usuario, "sesiones_cerradas": cerradas, "mensaje": "Sesiones activas revocadas en Redis"},
+        status=200,
+        root_tag="sessions_revoked",
+    )
+
+
+@app.get("/api/v1/auth/counters")
+@requiere_auth("admin")
+def ver_contadores_operacion():
+    """Consulta los contadores operacionales en tiempo real registrados en Redis."""
+    contadores = cache_service.obtener_contadores()
+    return render_response(
+        {"total_metricas": len(contadores), "contadores": contadores},
+        status=200,
+        root_tag="operational_counters",
+    )
 
 
 # Registro de Documentación OpenAPI / Swagger

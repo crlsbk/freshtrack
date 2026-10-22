@@ -27,7 +27,13 @@ from app import auditoria
 from app.config import Config
 from app.db import escalar, one, transaccion
 from app.navegacion import puede_ver, ruta_inicial
-from app.services.cache_service import esta_jwt_revocado, revocar_jwt
+from app.services.cache_service import (
+    crear_sesion_redis,
+    eliminar_sesion_redis,
+    esta_jwt_revocado,
+    obtener_sesion_redis,
+    revocar_jwt,
+)
 
 MAX_INTENTOS_DEFECTO = 5
 MINUTOS_BLOQUEO = 15
@@ -214,6 +220,27 @@ def crear_token(usuario: dict, ip: str | None = None, user_agent: str | None = N
                 "ua": (user_agent or "")[:300] or None,
             },
         )
+
+    # Registrar sesión activa en Redis con sliding TTL
+    try:
+        crear_sesion_redis(
+            jti,
+            {
+                "id_usuario": usuario["id_usuario"],
+                "email": usuario["email"],
+                "nombre": usuario["nombre_completo"],
+                "rol": usuario["rol_clave"],
+                "id_locacion": usuario["id_locacion"],
+                "jti": jti,
+                "ip": ip,
+                "user_agent": user_agent,
+                "login_en": emitido.isoformat(),
+            },
+            ttl_segundos=int(horas * 3600),
+        )
+    except Exception:
+        pass
+
     return token, jti
 
 
@@ -255,9 +282,10 @@ def revocar_token(jti: str) -> None:
             ),
             {"jti": jti},
         )
-    # Refleja la revocación en la denylist de Redis de inmediato
+    # Refleja la revocación en la denylist de Redis de inmediato y elimina la sesión
     horas = _horas_vigencia()
     revocar_jwt(jti, ttl_segundos=int(horas * 3600))
+    eliminar_sesion_redis(jti)
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +349,15 @@ def login_required(f):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "no_autenticado"}), 401
             return redirect(url_for("auth.login", next=request.path))
+
+        # Verificar revocación en Redis en caso de logout o bloqueo desde otra sesión
+        jti = session.get("jti")
+        if jti and esta_jwt_revocado(jti):
+            session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "sesion_revocada"}), 401
+            return redirect(url_for("auth.login", next=request.path))
+
         return f(*args, **kwargs)
 
     return wrapper

@@ -25,6 +25,7 @@ from app.domain import saga_venta
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service
 from app.services.common.auth import requiere_auth
+from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import render_response
 from app.services.common.swagger import registrar_openapi
 
@@ -58,6 +59,7 @@ def health():
 
 @app.post("/api/v1/commercial/checkout")
 @requiere_auth("admin", "store_manager", "warehouse")
+@limite_tasa(limite=60, ventana_segundos=60)
 def checkout_saga():
     """Ejecuta la venta transaccional POS mediante la Saga Orquestada con soporte JSON/XML."""
     datos = request.get_json(silent=True) or request.form
@@ -78,11 +80,48 @@ def checkout_saga():
             usuario=usuario,
             canal=datos.get("canal", "TIENDA"),
         )
+        cache_service.incrementar_contador("commercial", "checkout_success")
         return render_response(resultado, status=201, root_tag="comprobante_venta")
     except saga_venta.ErrorSagaVenta as err:
+        cache_service.incrementar_contador("commercial", "checkout_failed")
         return render_response({"error": "venta_rechazada", "mensaje": str(err)}, status=400, root_tag="error_venta")
     except Exception as exc:
+        cache_service.incrementar_contador("commercial", "checkout_error")
         return render_response({"error": "internal_error", "detalle": str(exc)}, status=500, root_tag="error_venta")
+
+
+@app.post("/api/v1/commercial/cart/<cart_id>")
+@requiere_auth()
+def guardar_carrito_temporal(cart_id: str):
+    """Guarda un borrador de carrito POS temporalmente en Redis (TTL 15 min)."""
+    datos = request.get_json(silent=True) or {}
+    guardado = cache_service.guardar_temporal("pos_cart", cart_id, datos, ttl_segundos=900)
+    if not guardado:
+        return render_response({"error": "redis_error", "mensaje": "No se pudo almacenar el carrito temporal"}, status=500, root_tag="cart_response")
+    cache_service.incrementar_contador("commercial", "cart_saved")
+    return render_response({"cart_id": cart_id, "status": "GUARDADO", "ttl_segundos": 900}, status=201, root_tag="cart_response")
+
+
+@app.get("/api/v1/commercial/cart/<cart_id>")
+@requiere_auth()
+def obtener_carrito_temporal(cart_id: str):
+    """Recupera un carrito POS temporal desde Redis."""
+    datos = cache_service.obtener_temporal("pos_cart", cart_id)
+    if datos is None:
+        return render_response({"error": "not_found", "mensaje": "Carrito expirado o inexistente"}, status=404, root_tag="cart_response")
+    ttl = cache_service.obtener_ttl(f"temp:pos_cart:{cart_id}")
+    return render_response({"cart_id": cart_id, "ttl_restante": ttl, "datos": datos}, status=200, root_tag="cart_response")
+
+
+@app.delete("/api/v1/commercial/cart/<cart_id>")
+@requiere_auth()
+def consumir_carrito_temporal(cart_id: str):
+    """Consume y elimina atómicamente el carrito temporal de Redis para finalizar cobro."""
+    datos = cache_service.consumir_temporal("pos_cart", cart_id)
+    if datos is None:
+        return render_response({"error": "not_found", "mensaje": "Carrito no encontrado o ya consumido"}, status=404, root_tag="cart_response")
+    cache_service.incrementar_contador("commercial", "cart_consumed")
+    return render_response({"cart_id": cart_id, "status": "CONSUMIDO", "datos": datos}, status=200, root_tag="cart_response")
 
 
 @app.post("/api/v1/commercial/shrinkage")

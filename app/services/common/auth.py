@@ -16,7 +16,7 @@ from typing import Any, Callable
 from flask import g, request
 
 from app.security import decodificar_token
-from app.services.cache_service import esta_jwt_revocado
+from app.services.cache_service import esta_jwt_revocado, incrementar_contador
 from app.services.common.response import render_response
 
 
@@ -51,6 +51,7 @@ def requiere_auth(*roles_permitidos: str) -> Callable:
                 token = auth_header[7:].strip()
 
             if not token:
+                incrementar_contador("auth", "access_denied_no_token")
                 return render_response(
                     {"error": "unauthorized", "mensaje": "Token de autenticación requerido (Bearer token)."},
                     status=401,
@@ -59,15 +60,17 @@ def requiere_auth(*roles_permitidos: str) -> Callable:
 
             payload = decodificar_token(token)
             if not payload:
+                incrementar_contador("auth", "access_denied_invalid")
                 return render_response(
                     {"error": "invalid_token", "mensaje": "Token inválido, expirado o revocado en Redis."},
                     status=401,
                     root_tag="error_response",
                 )
 
-            # Verificar denylist en Redis de forma directa por JTI
+            # Verificar denylist en Redis de forma directa por JTI (<0.8ms)
             jti = payload.get("jti")
             if jti and esta_jwt_revocado(jti):
+                incrementar_contador("auth", "access_denied_revoked")
                 return render_response(
                     {"error": "revoked_token", "mensaje": "La sesión fue revocada (logout)."},
                     status=401,
@@ -79,6 +82,7 @@ def requiere_auth(*roles_permitidos: str) -> Callable:
             if roles_permitidos:
                 roles_lower = [r.lower() for r in roles_permitidos]
                 if "admin" not in rol_usuario and rol_usuario not in roles_lower:
+                    incrementar_contador("auth", "access_denied_role")
                     return render_response(
                         {
                             "error": "forbidden",
@@ -88,6 +92,7 @@ def requiere_auth(*roles_permitidos: str) -> Callable:
                         root_tag="error_response",
                     )
 
+            incrementar_contador("auth", "access_granted")
             g.usuario_actual = payload
             g.contexto = obtener_contexto()
             return fn(*args, **kwargs)

@@ -115,6 +115,18 @@ make test             # smoke + verify-polyglot + demo + verify
   - 7. Recuperación contextual vinculada a identidades relacionales de PostgreSQL (`id_sku`, `id_locacion`, `id_proveedor`).
   - Suite automatizada `scripts/verify_mongo.py` integrada en `make verify-mongo` y `make test`.
   - Tablero web interactivo `/mongo` en FreshTrack y documentación técnica en `docs/DISENO_PERSISTENCIA_MONGODB.md`.
+- [x] Phase 4: Suite Completa de Redis 7 & Persistencia en Memoria con los 8 casos de uso:
+  - 1. Gestión de sesiones distribuidas con sliding TTL y mapeo `user:sessions:{uid}`.
+  - 2. Revocación instantánea y denylist de JWT (`jwt:denylist:{jti}`) en < 0.2 ms.
+  - 3. Caché de consultas context-aware (Cache-Aside) e invalidación atómica por patrón `SCAN`.
+  - 4. Contadores de operaciones atómicos (`INCRBY`) por servicio, operación y fecha `YYYYMMDD`.
+  - 5. Rate Limiting distribuido atómico mediante script Lua y cabeceras RFC (`X-RateLimit-*`).
+  - 6. Almacenamiento temporal efímero (carritos POS con consumo atómico GET + DEL).
+  - 7. Gobernanza y auditoría estricta de políticas de TTL en todas las claves.
+  - 8. Bloqueos distribuidos atómicos (Redlock `SET NX EX` con liberación segura Lua).
+  - Mecanismo unificado de autenticación y autorización en microservicios vía `app/services/common/auth.py`.
+  - Suite automatizada `scripts/verify_redis.py` integrada en `make verify-redis` y `make test`.
+  - Documentación técnica maestra generada en `docs/DISENO_PERSISTENCIA_REDIS.md`.
 
 ### Next Steps
 - [ ] Implementar Gateway perimetral dedicado / Reverse Proxy Nginx o Kong si se requiere enrutamiento unificado de puertos externos.

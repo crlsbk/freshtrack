@@ -26,6 +26,7 @@ from app.domain.ventas import _lotes_para_consumo, repartir_fefo
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service
 from app.services.common.auth import requiere_auth
+from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import render_response
 from app.services.common.swagger import registrar_openapi
 
@@ -121,6 +122,7 @@ def cola_fefo(id_sku: int, id_locacion: int):
 
 @app.post("/api/v1/inventory/reserve-fefo")
 @requiere_auth("admin", "store_manager", "warehouse")
+@limite_tasa(limite=60, ventana_segundos=60)
 def reservar_fefo():
     """
     PASO 1 DE SAGA: Reserva temporal de lotes en orden FEFO con bloqueo Redlock en Redis.
@@ -149,6 +151,7 @@ def reservar_fefo():
                 cubierto = sum(c["consumido"] for c in consumos)
 
                 if round(cubierto, 3) < round(cantidad, 3):
+                    cache_service.incrementar_contador("inventory", "reserve_failed")
                     return render_response({
                         "error": "insufficient_stock",
                         "id_sku": sku,
@@ -176,6 +179,11 @@ def reservar_fefo():
                         "codigo_lote": c.get("codigo_lote_prov"),
                     })
 
+        # Almacenar temporalmente el estado de la reserva en Redis (TTL 10 min)
+        if saga_id:
+            cache_service.guardar_temporal("reservation", saga_id, {"id_locacion": id_locacion, "reservas": reservas}, ttl_segundos=600)
+
+        cache_service.incrementar_contador("inventory", "reserve_success")
         return render_response({"status": "RESERVADO", "saga_id": saga_id, "reservas": reservas}, status=200, root_tag="reserva_response")
     except Exception as exc:
         return render_response({"error": "error_reserva", "detalle": str(exc)}, status=500, root_tag="reserva_response")

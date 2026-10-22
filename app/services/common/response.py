@@ -72,4 +72,8 @@ def render_response(
         return Response(contenido_xml, status=status, headers=resp_headers)
 
     # Respuesta JSON estándar
-    return jsonify(datos), status
+    resp = jsonify(datos)
+    resp.status_code = status
+    for k, v in resp_headers.items():
+        resp.headers[k] = str(v)
+    return resp

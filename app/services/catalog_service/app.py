@@ -24,6 +24,7 @@ from app.db import a_float, a_int, one, query, transaccion
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service
 from app.services.common.auth import requiere_auth
+from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import render_response
 from app.services.common.swagger import registrar_openapi
 
@@ -59,6 +60,7 @@ def health():
 
 
 @app.get("/api/v1/catalog/products")
+@limite_tasa(limite=120, ventana_segundos=60)
 def listar_productos():
     """Consulta de productos perecederos con estrategia Cache-Aside en Redis."""
     categoria = request.args.get("categoria")
@@ -67,7 +69,10 @@ def listar_productos():
     if not categoria:
         cached = cache_service.get_json(CACHE_KEY_PRODUCTS)
         if cached:
+            cache_service.incrementar_contador("catalog", "products_cache_hit")
             return render_response({"total": len(cached), "productos": cached, "fuente": "redis_cache"}, status=200, root_tag="catalogo_productos")
+
+    cache_service.incrementar_contador("catalog", "products_db_miss")
 
     filtro = "WHERE p.categoria = :cat" if categoria else ""
     params = {"cat": categoria} if categoria else {}
@@ -147,8 +152,9 @@ def crear_producto():
             },
         ).scalar()
 
-    # Invalidar caché en Redis y emitir evento
-    cache_service.borrar_clave(CACHE_KEY_PRODUCTS)
+    # Invalidar caché en Redis por patrón y emitir evento
+    cache_service.invalidar_patron("catalog:products:*")
+    cache_service.incrementar_contador("catalog", "product_created")
     publicar_evento("PRODUCTO_CREADO", {"id_sku": res, "nombre": nombre, "categoria": categoria})
 
     return render_response({"id_sku": res, "nombre": nombre, "status": "CREADO"}, status=201, root_tag="producto_creado")
@@ -163,7 +169,8 @@ def desactivar_producto(id_sku: int):
             text("UPDATE operacion.producto SET activo = false WHERE id_sku = :s"),
             {"s": id_sku},
         )
-    cache_service.borrar_clave(CACHE_KEY_PRODUCTS)
+    cache_service.invalidar_patron("catalog:products:*")
+    cache_service.incrementar_contador("catalog", "product_deactivated")
     publicar_evento("PRODUCTO_DESACTIVADO", {"id_sku": id_sku})
     return render_response({"id_sku": id_sku, "activo": False}, status=200, root_tag="producto_baja")
 

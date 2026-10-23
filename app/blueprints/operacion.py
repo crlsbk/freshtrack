@@ -325,9 +325,15 @@ def mermas():
 def trazabilidad():
     id_lote = request.args.get("lote")
     detalle = dom_inv.trazabilidad(id_lote) if id_lote else None
+    kardex_svc = None
+    if id_lote and clientes.activo():
+        # Consulta complementaria a svc-audit: el mismo kardex visto desde el servicio de auditoría.
+        status, r = clientes.como_usuario("audit", "GET", f"/api/v1/audit/traceability/{id_lote}", timeout=3)
+        kardex_svc = r if status == 200 else None
     return render_template(
         "operacion/trazabilidad.html",
         active="traceability",
+        kardex_svc=kardex_svc,
         detalle=detalle or {},
         id_lote=id_lote,
         lotes=dom_inv.listar_lotes(limite=200),

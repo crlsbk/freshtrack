@@ -42,6 +42,11 @@
           {{ lote.producto }} · SKU {{ lote.id_sku }} · {{ lote.categoria }} ·
           {{ lote.unidad_medida }}
         </div>
+        {% if kardex_svc %}
+          <div style="margin-top:8px;"><span class="badge badge-success">
+            Verificado por svc-audit · {{ kardex_svc.total_movimientos }} movimientos de kardex
+          </span></div>
+        {% endif %}
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
         {{ ui.riesgo(lote.clasificacion) }}

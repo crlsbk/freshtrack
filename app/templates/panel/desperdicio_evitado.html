@@ -12,6 +12,18 @@
   'Unidades que se vendieron gracias a una intervención (descuento o transferencia) antes de su fecha de caducidad.'
 ) }}
 
+{% if esg_api %}
+<div class="card" style="margin-bottom:20px;display:flex;gap:28px;flex-wrap:wrap;align-items:center;">
+  <div style="flex:1;min-width:220px;">
+    <div class="card-title" style="margin-bottom:4px;">Reporte ESG de svc-alerts</div>
+    <div class="text-muted" style="font-size:13px;">Calculado por el microservicio de alertas y sostenibilidad.</div>
+  </div>
+  <div><div class="kpi-label">Alimento recuperado</div><div class="cifra" style="font-size:20px;font-weight:700;">{{ esg_api.alimento_recuperado_kg | cantidad }} kg</div></div>
+  <div><div class="kpi-label">Ahorro</div><div class="cifra" style="font-size:20px;font-weight:700;">{{ ui.moneda(esg_api.ahorro_financiero_mxn) }}</div></div>
+  <div><div class="kpi-label">CO₂e evitado</div><div class="cifra" style="font-size:20px;font-weight:700;">{{ esg_api.co2e_evitado_kg | cantidad }} kg</div></div>
+</div>
+{% endif %}
+
 {# ── Cifra principal ── #}
 <div class="savings-hero">
   <div class="savings-hero-label">Unidades rescatadas por intervenciones</div>

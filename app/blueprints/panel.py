@@ -42,17 +42,28 @@ def _entero(nombre: str, default: int = 0) -> int:
 @login_required
 @requiere_vista("dashboard")
 def dashboard():
+    ventana_param = request.args.get("ventana", "30")
+    if ventana_param in ("todo", "all", "historico", "none") or not ventana_param.isdigit():
+        dias_ventana = None
+    else:
+        dias_ventana = int(ventana_param)
+
+    periodo = motor_kpis.metricas_periodo(dias_ventana)
+    dias_tasa = dias_ventana if dias_ventana is not None else 180
+
     return render_template(
         "panel/dashboard.html",
         active="dashboard",
         kpis=motor_kpis.panel_principal(),
-        tasa=motor_kpis.tasa_merma(180),
+        periodo=periodo,
+        ventana=dias_ventana,
+        tasa=periodo["tasa"],
         criticos=motor_kpis.lotes_criticos(8),
         serie=motor_kpis.serie_mensual(6),
-        por_categoria=motor_kpis.merma_por_categoria(180),
+        por_categoria=motor_kpis.merma_por_categoria(dias_tasa),
         por_locacion=motor_kpis.inventario_por_locacion(),
-        top_sku=motor_kpis.top_desperdicio_sku(6, 180),
-        top_tienda=motor_kpis.top_desperdicio_tienda(6, 180),
+        top_sku=motor_kpis.top_desperdicio_sku(6, dias_tasa),
+        top_tienda=motor_kpis.top_desperdicio_tienda(6, dias_tasa),
         alertas=motor_alertas.resumen_alertas(),
         precision=motor_pron.precision_global(),
     )

@@ -76,6 +76,21 @@ def api_kpis():
     )
 
 
+@bp.get("/kpis/ventana")
+def api_kpis_ventana():
+    """Calcula dinámicamente en tiempo real contra PostgreSQL las cifras del período solicitado."""
+    from app.security import usuario_actual
+    if not usuario_actual() and not request.headers.get("Authorization"):
+        return jsonify({"error": "no_autenticado"}), 401
+
+    ventana_str = request.args.get("dias", "30")
+    if ventana_str in ("todo", "all", "historico", "none") or not ventana_str.isdigit():
+        dias = None
+    else:
+        dias = int(ventana_str)
+    return jsonify(motor_kpis.metricas_periodo(dias))
+
+
 @bp.get("/inventario")
 @token_requerido
 def api_inventario():

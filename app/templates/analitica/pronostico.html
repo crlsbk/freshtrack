@@ -16,7 +16,9 @@
   <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}">
     <div class="form-grid-3">
       <div>
-        <label class="form-label">Método</label>
+        <label class="form-label">
+          Método {{ ui.ayuda('Algoritmo utilizado para proyectar la serie temporal: Promedio móvil simple, Suavización exponencial, o Descomposición estacional por día de semana.') }}
+        </label>
         <select class="input" name="metodo">
           {% for clave, m in metodos.items() %}
             <option value="{{ clave }}"
@@ -27,26 +29,36 @@
         </select>
       </div>
       <div>
-        <label class="form-label">Horizonte (días)</label>
+        <label class="form-label">
+          Horizonte (días) {{ ui.ayuda('Ventana temporal futura: cantidad de días hacia adelante que se pronosticarán para cada SKU en cada tienda.') }}
+        </label>
         <input class="input" name="horizonte" type="number" min="1" max="30"
                value="{{ horizonte_defecto }}"/>
       </div>
       <div>
-        <label class="form-label">Ventana de historia (días)</label>
+        <label class="form-label">
+          Ventana de historia (días) {{ ui.ayuda('Días de ventas históricas que el modelo analiza para entrenar los patrones de consumo (mínimo 14 días para capturar estacionalidad semanal).') }}
+        </label>
         <input class="input" name="dias_historia" type="number" min="14" max="365" value="120"/>
       </div>
       <div>
-        <label class="form-label">Ventana de la media móvil</label>
+        <label class="form-label">
+          Ventana de la media móvil {{ ui.ayuda('Número de días recientes considerados en el cálculo de la media móvil para suavizar picos aislados de demanda.') }}
+        </label>
         <input class="input" name="ventana" type="number" min="2" max="90"
                value="{{ ventana_defecto }}"/>
       </div>
       <div>
-        <label class="form-label">Alfa (suavización exponencial)</label>
+        <label class="form-label">
+          Alfa (suavización exponencial) {{ ui.ayuda('Factor de ponderación α entre 0.05 y 0.95. Un valor alto da mayor peso a los días más recientes; un valor bajo genera proyecciones más estables.') }}
+        </label>
         <input class="input" name="alpha" type="number" step="0.05" min="0.05" max="0.95"
                value="{{ alpha_defecto }}"/>
       </div>
       <div>
-        <label class="form-label">Limitar a una tienda</label>
+        <label class="form-label">
+          Limitar a una tienda {{ ui.ayuda('Permite ejecutar el modelo de demanda para una sola sucursal o para toda la red de tiendas de forma agregada.') }}
+        </label>
         <select class="input" name="id_locacion">
           <option value="">Todas</option>
           {% for l in locaciones %}
@@ -86,12 +98,16 @@
 
     <div class="stat-grid-4">
       {{ ui.kpi('MAE (error absoluto medio)', (corrida.mae) | cantidad(2),
-                'Unidades por producto y día') }}
+                'Unidades por producto y día', None, None,
+                'Mean Absolute Error: desviación promedio en unidades entre la predicción y las ventas reales en la validación retrospectiva.', 'diana') }}
       {{ ui.kpi('RMSE', (corrida.rmse) | cantidad(2),
-                'Penaliza más los errores grandes') }}
+                'Penaliza errores grandes', None, None,
+                'Root Mean Squared Error: penaliza cuadráticamente los errores grandes, alertando sobre quiebres imprevistos o picos no detectados.', 'alerta') }}
       {{ ui.kpi('WMAPE', ((corrida.wmape) | cantidad(1)) ~ '%',
-                'Error sobre la demanda total', '#d97706') }}
-      {{ ui.kpi('Duración', (corrida.duracion_ms | string) ~ ' ms', 'Tiempo de cómputo') }}
+                'Error sobre la demanda total', '#d97706', None,
+                'Weighted Mean Absolute Percentage Error: error porcentual ponderado por volumen. Es el estándar de oro en retail porque no se distorsiona con SKUs de baja rotación.', 'tendencia') }}
+      {{ ui.kpi('Duración', (corrida.duracion_ms | string) ~ ' ms', 'Tiempo de cómputo', None, None,
+                'Tiempo total transcurrido en procesar y proyectar todas las series temporales.', 'reloj') }}
     </div>
 
     <div class="aviso-info">

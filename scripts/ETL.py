@@ -195,9 +195,14 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
 
             # Lotes activos en esta tienda: cada uno es un dict mutable
             activos: list[dict] = []
+            es_discreto = prod.get("unidad_medida") in ("Bolsa", "Pieza", "Paquete")
+
+            def a_cant(val: float) -> float:
+                return float(max(1, int(round(val)))) if es_discreto else round(val, 2)
 
             def recibir(dia: date, cantidad: float) -> dict:
                 """Da de alta un lote nuevo en esta tienda."""
+                cantidad = a_cant(cantidad)
                 prod_prov = prod["razon_social"]
                 prefijo = PREFIJOS_PROVEEDOR.get(prod_prov, "PRV")
                 # El código de lote lo asigna el proveedor: es único por
@@ -248,7 +253,7 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
                 Reparte `cantidad` entre los lotes disponibles, empezando por el
                 que vence antes. Devuelve [(lote, cantidad_consumida)].
                 """
-                restante = round(cantidad, 2)
+                restante = a_cant(cantidad)
                 consumos = []
                 for lote in sorted(
                     (l for l in activos if round(l["restante"], 2) >= 0.01),
@@ -258,7 +263,7 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
                         break
                     if lote["f_cad"] < dia:
                         continue  # ya vencido: no se vende
-                    toma = round(min(round(lote["restante"], 2), restante), 2)
+                    toma = a_cant(min(round(lote["restante"], 2), restante))
                     if toma < 0.01:
                         continue
                     lote["restante"] = round(lote["restante"] - toma, 2)
@@ -273,7 +278,7 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
             objetivo = base * cobertura_dias
 
             # Arranque: inventario inicial acorde a la vida útil del producto
-            recibir(fecha_inicio, round(objetivo * rng.uniform(0.7, 1.0), 2))
+            recibir(fecha_inicio, a_cant(objetivo * rng.uniform(0.7, 1.0)))
 
             for i in range(dias + 1):
                 dia = fecha_inicio + timedelta(days=i)
@@ -301,7 +306,7 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
                 disponible = sum(l["restante"] for l in activos if l["f_cad"] >= dia)
                 if disponible < punto_reorden:
                     cantidad = max(prod["moq"] or 0, objetivo - disponible)
-                    cantidad = round(cantidad * rng.uniform(0.95, 1.1), 2)
+                    cantidad = a_cant(cantidad * rng.uniform(0.95, 1.1))
                     recibir(dia, cantidad)
 
                 # --- 3. Merma incidental (no por caducidad)
@@ -309,7 +314,7 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
                     candidatos = [l for l in activos if l["restante"] > 1 and l["f_cad"] >= dia]
                     if candidatos:
                         lote = rng.choice(candidatos)
-                        cant = round(min(lote["restante"], rng.uniform(1, 6)), 2)
+                        cant = a_cant(min(lote["restante"], rng.uniform(1, 6)))
                         causa = rng.choices(
                             [c for c, _ in CAUSAS_INCIDENTALES],
                             weights=[w for _, w in CAUSAS_INCIDENTALES],
@@ -334,7 +339,7 @@ def simular(productos, tiendas, usuarios, fecha_inicio, fecha_fin, rng):
                 if demanda < 1:
                     continue
 
-                consumos = consumir_fefo(round(demanda, 2))
+                consumos = consumir_fefo(a_cant(demanda))
                 if not consumos:
                     continue
 

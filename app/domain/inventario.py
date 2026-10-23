@@ -414,6 +414,7 @@ def trazabilidad(id_lote: str) -> dict:
                l.fecha_recepcion, l.fecha_caducidad, l.cantidad_recibida,
                l.costo_unitario, l.estado, l.observaciones,
                p.nombre AS producto, p.categoria, p.unidad_medida, p.id_sku,
+               p.precio_venta, p.precio_costo,
                pr.razon_social AS proveedor, pr.rfc, pr.lead_time_dias,
                loc.nombre AS locacion_recepcion,
                v.dias_restantes, v.vida_util_pct, v.clasificacion, v.existencia_total
@@ -476,6 +477,20 @@ def trazabilidad(id_lote: str) -> dict:
         JOIN operacion.locacion d ON d.id_locacion = t.id_locacion_destino
         WHERE t.id_lote = CAST(:id_lote AS uuid)
         ORDER BY t.fecha_creacion DESC
+        """,
+        id_lote=id_lote,
+    )
+    lotes_["descuentos"] = query(
+        """
+        SELECT d.id_descuento::text, d.estado, d.descuento_pct, d.precio_normal,
+               d.precio_nuevo, d.cantidad, d.fecha_creacion, d.fecha_decision,
+               loc.nombre AS locacion,
+               ua.nombre_completo AS aprueba
+        FROM analitica.descuento d
+        JOIN operacion.locacion loc ON loc.id_locacion = d.id_locacion
+        LEFT JOIN operacion.usuario ua ON ua.id_usuario = d.id_usuario_aprueba
+        WHERE d.id_lote = CAST(:id_lote AS uuid)
+        ORDER BY d.fecha_creacion DESC
         """,
         id_lote=id_lote,
     )

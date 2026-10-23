@@ -132,14 +132,19 @@
           </button>
         </form>
       {% elif t.estado == 'APROBADA' %}
-        <form class="inline-form" method="post"
-              action="{{ url_for('analitica.transferencias_ejecutar', id_transferencia=t.id_transferencia) }}">
-          <button class="btn btn-primary" type="submit">Ejecutar y mover inventario</button>
-        </form>
-        <span class="text-muted" style="font-size:11.5px;align-self:center;">
-          Al ejecutar se descuenta del origen, se suma en el destino, se escriben dos
-          movimientos de kardex y se registra el desperdicio evitado.
-        </span>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;width:100%;">
+          <form class="inline-form" method="post"
+                action="{{ url_for('analitica.transferencias_ejecutar', id_transferencia=t.id_transferencia) }}">
+            <button class="btn btn-primary" type="submit">Ejecutar y mover inventario</button>
+          </form>
+          <div class="aviso-info" style="margin-top:0;padding:8px 12px;font-size:12px;flex:1;">
+            <strong>Paso pendiente:</strong> La transferencia ya está aprobada en plan, pero el stock aún no se ha movido físicamente. Pulsa <strong>«Ejecutar y mover inventario»</strong> para descontar del origen, ingresar en destino y dar de alta la intervención en <strong>Desperdicio evitado</strong>.
+          </div>
+        </div>
+      {% elif t.estado == 'EJECUTADA' %}
+        <div class="text-muted" style="font-size:12px;">
+          ✓ Inventario trasladado físicamente. El impacto final en unidades y valor recuperado se audita en <a href="{{ url_for('panel.desperdicio_evitado') }}">Desperdicio evitado</a> conforme el destino vende el lote antes de caducar.
+        </div>
       {% endif %}
     </div>
   </div>

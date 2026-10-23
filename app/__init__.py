@@ -48,6 +48,48 @@ def _registrar_filtros(app: Flask) -> None:
             decimales = 0
         return f"{n:,.{decimales}f}"
 
+    UNIDADES_DISCRETAS = {
+        "bolsa", "bolsas", "pieza", "piezas", "pza", "pzas",
+        "paquete", "paquetes", "caja", "cajas", "frasco", "frascos", "botella", "botellas"
+    }
+
+    @app.template_filter("formato_unidad")
+    def formato_unidad(valor, unidad: str | None = None) -> str:
+        """Formatea cantidades declarando siempre la unidad de medida y evitando decimales incoherentes en productos discretos."""
+        try:
+            n = float(valor or 0)
+        except (TypeError, ValueError):
+            return f"{valor} {unidad or ''}".strip()
+
+        u_str = (unidad or "").strip()
+        u_lower = u_str.lower()
+        es_discreta = u_lower in UNIDADES_DISCRETAS
+
+        if es_discreta:
+            num_str = f"{int(round(n)):,}"
+        else:
+            if abs(n - round(n)) < 0.005:
+                num_str = f"{int(round(n)):,}"
+            else:
+                num_str = f"{n:,.2f}"
+
+        if not u_str:
+            return num_str
+
+        # Pluralización en español
+        n_abs = abs(n)
+        if es_discreta and round(n_abs) != 1:
+            if u_lower == "bolsa": u_display = "bolsas"
+            elif u_lower in ("pieza", "pza"): u_display = "piezas"
+            elif u_lower == "paquete": u_display = "paquetes"
+            elif u_lower == "caja": u_display = "cajas"
+            elif u_lower == "botella": u_display = "botellas"
+            else: u_display = u_str
+        else:
+            u_display = u_str.lower() if es_discreta else u_str
+
+        return f"{num_str} {u_display}"
+
     acentos = {
         "critico": "crítico", "critica": "crítica", "recepcion": "recepción", "dano": "daño",
         "frio": "frío", "devolucion": "devolución", "transito": "tránsito", "revision": "revisión",

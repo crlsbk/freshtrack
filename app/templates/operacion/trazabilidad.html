@@ -73,15 +73,22 @@
       </div>
       <div class="detalle-item">
         <div class="detalle-etiqueta">Cantidad recibida</div>
-        <div class="detalle-valor">{{ (lote.cantidad_recibida) | cantidad(2) }}</div>
+        <div class="detalle-valor">{{ lote.cantidad_recibida | formato_unidad(lote.unidad_medida) }}</div>
       </div>
       <div class="detalle-item">
         <div class="detalle-etiqueta">Costo unitario</div>
         <div class="detalle-valor">{{ ui.moneda(lote.costo_unitario) }}</div>
       </div>
       <div class="detalle-item">
+        <div class="detalle-etiqueta">Precio de venta regular</div>
+        <div class="detalle-valor">{{ ui.moneda(lote.precio_venta) }}</div>
+        <div class="text-muted" style="font-size:11px;">
+          Margen: {{ ui.moneda((lote.precio_venta | float) - (lote.costo_unitario | float)) }}
+        </div>
+      </div>
+      <div class="detalle-item">
         <div class="detalle-etiqueta">Existencia actual</div>
-        <div class="detalle-valor">{{ (r.existencia) | cantidad(2) }}</div>
+        <div class="detalle-valor">{{ r.existencia | formato_unidad(lote.unidad_medida) }}</div>
       </div>
     </div>
 
@@ -89,21 +96,21 @@
       <div>
         <div class="kpi-label">Vendido</div>
         <div class="cifra" style="font-size:20px;font-weight:600;color:var(--success);">
-          {{ (r.vendido) | cantidad(2) }}
+          {{ r.vendido | formato_unidad(lote.unidad_medida) }}
         </div>
         <div class="kpi-sub">{{ r.porcentaje_venta }}% de lo recibido</div>
       </div>
       <div>
         <div class="kpi-label">Mermado</div>
         <div class="cifra" style="font-size:20px;font-weight:600;color:var(--danger);">
-          {{ (r.mermado) | cantidad(2) }}
+          {{ r.mermado | formato_unidad(lote.unidad_medida) }}
         </div>
         <div class="kpi-sub">{{ r.porcentaje_merma }}% de lo recibido</div>
       </div>
       <div>
         <div class="kpi-label">Por salir</div>
         <div class="cifra" style="font-size:20px;font-weight:600;">
-          {{ (r.existencia) | cantidad(2) }}
+          {{ r.existencia | formato_unidad(lote.unidad_medida) }}
         </div>
         <div class="kpi-sub">en existencia hoy</div>
       </div>
@@ -122,8 +129,8 @@
           <tr>
             <td style="font-weight:600;">{{ e.locacion }}</td>
             <td><span class="badge badge-{{ 'info' if e.tipo_locacion == 'CEDIS' else 'success' }}">{{ e.tipo_locacion }}</span></td>
-            <td class="mono">{{ (e.cantidad_disponible) | cantidad(2) }}</td>
-            <td class="mono">{{ (e.cantidad_reservada) | cantidad(2) }}</td>
+            <td class="mono">{{ e.cantidad_disponible | formato_unidad(lote.unidad_medida) }}</td>
+            <td class="mono">{{ e.cantidad_reservada | formato_unidad(lote.unidad_medida) }}</td>
           </tr>
         {% else %}
           {{ ui.vacio('El lote ya no tiene existencia en ninguna ubicación.', 4) }}
@@ -138,7 +145,7 @@
       <div class="card-title">Ventas que consumieron este lote (FEFO)</div>
       <table>
         <thead>
-          <tr><th>Folio</th><th>Fecha</th><th>Tienda</th><th>Cantidad</th><th>Subtotal</th></tr>
+          <tr><th>Folio</th><th>Fecha</th><th>Tienda</th><th>Cantidad</th><th>Precio unit.</th><th>Subtotal</th></tr>
         </thead>
         <tbody>
           {% for v in detalle.ventas %}
@@ -146,11 +153,12 @@
               <td class="mono" style="font-size:11px;">{{ v.folio }}</td>
               <td class="mono" style="font-size:11px;">{{ v.fecha_transaccion | fecha_hora }}</td>
               <td>{{ v.locacion }}</td>
-              <td class="mono">{{ (v.cantidad) | cantidad(2) }}</td>
+              <td class="mono">{{ v.cantidad | formato_unidad(lote.unidad_medida) }}</td>
+              <td class="mono">{{ ui.moneda(v.precio_unitario) }}</td>
               <td class="mono">{{ ui.moneda(v.subtotal) }}</td>
             </tr>
           {% else %}
-            {{ ui.vacio('Este lote todavía no registra ventas.', 5) }}
+            {{ ui.vacio('Este lote todavía no registra ventas.', 6) }}
           {% endfor %}
         </tbody>
       </table>
@@ -167,7 +175,7 @@
             <tr>
               <td class="mono" style="font-size:11px;">{{ m.fecha_registro | fecha_hora }}</td>
               <td>{{ m.locacion }}</td>
-              <td class="mono">{{ (m.cantidad) | cantidad(2) }}</td>
+              <td class="mono">{{ m.cantidad | formato_unidad(lote.unidad_medida) }}</td>
               <td><span class="badge badge-warning">{{ m.causa_merma }}</span></td>
               <td class="mono">{{ ui.moneda(m.valor_merma) }}</td>
               <td style="font-size:11.5px;">{{ m.responsable }}</td>
@@ -193,11 +201,37 @@
             <tr>
               <td>{{ t.origen }}</td>
               <td>{{ t.destino }}</td>
-              <td class="mono">{{ (t.cantidad) | cantidad(2) }}</td>
+              <td class="mono">{{ t.cantidad | formato_unidad(lote.unidad_medida) }}</td>
               <td>{{ ui.estado(t.estado) }}</td>
               <td style="font-size:12px;">{{ t.motivo or '—' }}</td>
               <td class="mono" style="font-size:11px;">{{ t.fecha_creacion | fecha_hora }}</td>
               <td class="mono" style="font-size:11px;">{{ t.fecha_ejecucion or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {# ── Descuentos aplicados al lote ── #}
+  {% if detalle.descuentos %}
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Descuentos dinámicos aplicados a este lote</div>
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Tienda</th><th>Descuento</th><th>Precio regular</th><th>Precio nuevo</th><th>Cantidad afectada</th><th>Estado</th><th>Aprobado por</th></tr>
+        </thead>
+        <tbody>
+          {% for d in detalle.descuentos %}
+            <tr>
+              <td class="mono" style="font-size:11px;">{{ d.fecha_creacion | fecha_hora }}</td>
+              <td>{{ d.locacion }}</td>
+              <td><span class="badge badge-warning">-{{ "%.0f" | format(d.descuento_pct | float) }}%</span></td>
+              <td class="mono">{{ ui.moneda(d.precio_normal) }}</td>
+              <td class="mono text-success" style="font-weight:600;">{{ ui.moneda(d.precio_nuevo) }}</td>
+              <td class="mono">{{ d.cantidad | formato_unidad(lote.unidad_medida) }}</td>
+              <td>{{ ui.estado(d.estado) }}</td>
+              <td style="font-size:12px;">{{ d.aprueba or '—' }}</td>
             </tr>
           {% endfor %}
         </tbody>

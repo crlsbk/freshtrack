@@ -11,7 +11,7 @@
 
 <div class="view-head">
   <h1 class="view-title">Panel de control</h1>
-  <p class="view-desc">Cómo va la red de tiendas hoy y qué necesita atención.</p>
+  <p class="view-desc">Monitoreo en tiempo real de la red de tiendas y CEDIS con indicadores calculados directamente contra la base de datos operacional activa.</p>
 </div>
 
 {# ── 1. Qué atender hoy ── #}
@@ -37,16 +37,52 @@
 </div>
 
 {# ── 2. Resumen del negocio ── #}
-{{ ui.seccion('Resumen') }}
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+  <div class="seccion" style="margin-bottom:0;">
+    <h2 class="seccion-titulo">Resumen operacional</h2>
+    <p class="seccion-sub">Indicadores calculados dinámicamente en tiempo real contra la base de datos operacional.</p>
+  </div>
+  <div class="ventana-selector" role="group" aria-label="Ventana de tiempo">
+    <a href="?ventana=30" class="btn-ventana {% if ventana == 30 %}active{% endif %}" data-dias="30">Último mes (30 d)</a>
+    <a href="?ventana=90" class="btn-ventana {% if ventana == 90 %}active{% endif %}" data-dias="90">Últimos 3 meses (90 d)</a>
+    <a href="?ventana=180" class="btn-ventana {% if ventana == 180 %}active{% endif %}" data-dias="180">Últimos 6 meses (180 d)</a>
+    <a href="?ventana=todo" class="btn-ventana {% if not ventana %}active{% endif %}" data-dias="todo">Histórico completo</a>
+  </div>
+</div>
+
 <div class="stat-grid-4">
-  {{ ui.kpi('Valor del inventario', ui.moneda(inv.valor, 0), (inv.unidades | cantidad) ~ ' unidades en existencia', None, None,
+  {{ ui.kpi('Valor del inventario', ui.moneda(inv.valor, 0), (inv.unidades | cantidad) ~ ' unidades en existencia hoy', None, None,
             'Dinero invertido en el producto que hay hoy en tiendas y CEDIS, a costo de compra.', 'caja') }}
-  {{ ui.kpi('Ventas acumuladas', ui.moneda(ven.ingreso, 0), (ven.unidades | cantidad) ~ ' unidades vendidas', None, None,
-            'Ingreso total registrado en el sistema.', 'tendencia') }}
-  {{ ui.kpi('Merma acumulada', ui.moneda(mer.valor, 0), (mer.unidades | cantidad) ~ ' unidades perdidas', '#dc2626', None,
-            'Valor del producto que se perdió: caducado, dañado, fuera de cadena de frío, etc.', 'basura') }}
-  {{ ui.kpi('Tasa de merma', (tasa.tasa_pct | cantidad(2)) ~ '%', 'De lo recibido en los últimos 180 días', None, None,
-            'De cada 100 unidades que llegaron, cuántas terminaron en merma. Se vendió el ' ~ (tasa.tasa_venta_pct | cantidad(1)) ~ '% de lo recibido.', 'diana') }}
+
+  {# Ventas acumuladas en el período #}
+  <div class="card kpi-card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div class="kpi-label">Ventas del período</div>
+      <span class="kpi-icono"><svg viewBox="0 0 20 20"><path d="{{ ui.ICONOS['tendencia'] }}"/></svg></span>
+    </div>
+    <div class="kpi-value cifra" id="kpi-ventas-ingreso">{{ periodo.ventas.ingreso_formato }}</div>
+    <div class="kpi-sub" id="kpi-ventas-sub">{{ periodo.ventas.unidades_formato }} unidades vendidas</div>
+  </div>
+
+  {# Merma acumulada en el período #}
+  <div class="card kpi-card" style="border-top:3px solid #dc2626;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div class="kpi-label">Merma acumulada</div>
+      <span class="kpi-icono"><svg viewBox="0 0 20 20"><path d="{{ ui.ICONOS['basura'] }}" fill="#dc2626"/></svg></span>
+    </div>
+    <div class="kpi-value cifra" id="kpi-merma-valor" style="color:#dc2626;">{{ periodo.merma.valor_formato }}</div>
+    <div class="kpi-sub" id="kpi-merma-sub">{{ periodo.merma.unidades_formato }} unidades perdidas</div>
+  </div>
+
+  {# Tasa de merma #}
+  <div class="card kpi-card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div class="kpi-label">Tasa de merma</div>
+      <span class="kpi-icono"><svg viewBox="0 0 20 20"><path d="{{ ui.ICONOS['diana'] }}"/></svg></span>
+    </div>
+    <div class="kpi-value cifra" id="kpi-tasa-valor">{{ periodo.tasa.tasa_pct }}%</div>
+    <div class="kpi-sub" id="kpi-tasa-sub">De lo recibido en {{ periodo.etiqueta_periodo | lower }}</div>
+  </div>
 </div>
 
 <div class="card" style="margin-bottom:24px;">
@@ -119,9 +155,21 @@
   {# Ventas #}
   <div class="pestana-contenido" data-pestana-id="ventas" hidden>
     <div class="stat-grid-3">
-      {{ ui.kpi('Unidades vendidas', ven.unidades, 'Desde el inicio del registro') }}
-      {{ ui.kpi('Tickets', ven.tickets, 'Ventas registradas') }}
-      {{ ui.kpi('Últimos 30 días', ven.unidades_30d, 'Unidades vendidas') }}
+      <div class="card kpi-card">
+        <div class="kpi-label">Unidades vendidas en el período</div>
+        <div class="kpi-value cifra" id="tab-ventas-unidades">{{ periodo.ventas.unidades_formato }}</div>
+        <div class="kpi-sub" id="tab-ventas-sub">{{ periodo.etiqueta_periodo }}</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="kpi-label">Ingreso total del período</div>
+        <div class="kpi-value cifra" id="tab-ventas-ingreso">{{ periodo.ventas.ingreso_formato }}</div>
+        <div class="kpi-sub">{{ periodo.etiqueta_periodo }}</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="kpi-label">Tickets generados</div>
+        <div class="kpi-value cifra" id="tab-ventas-tickets">{{ periodo.ventas.tickets_formato }}</div>
+        <div class="kpi-sub">Transacciones registradas</div>
+      </div>
     </div>
     <p class="text-muted" style="font-size:14px;">
       El detalle de cada venta y el registro de nuevas ventas están en
@@ -132,10 +180,21 @@
   {# Merma #}
   <div class="pestana-contenido" data-pestana-id="merma" hidden>
     <div class="stat-grid-3">
-      {{ ui.kpi('Valor perdido', ui.moneda(mer.valor), (mer.eventos | cantidad) ~ ' registros de merma', '#dc2626') }}
-      {{ ui.kpi('Unidades perdidas', mer.unidades, 'Todas las causas') }}
-      {{ ui.kpi('Tasa de merma', (tasa.tasa_pct | cantidad(2)) ~ '%',
-                (tasa.mermado | cantidad) ~ ' de ' ~ (tasa.recibido | cantidad) ~ ' unidades recibidas (180 días)') }}
+      <div class="card kpi-card" style="border-top:3px solid #dc2626;">
+        <div class="kpi-label">Valor monetario perdido</div>
+        <div class="kpi-value cifra" id="tab-merma-valor" style="color:#dc2626;">{{ periodo.merma.valor_formato }}</div>
+        <div class="kpi-sub" id="tab-merma-eventos">{{ periodo.merma.eventos_formato }} registros de merma</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="kpi-label">Unidades perdidas acumuladas</div>
+        <div class="kpi-value cifra" id="tab-merma-unidades">{{ periodo.merma.unidades_formato }}</div>
+        <div class="kpi-sub">Caducidad, daño o cadena de frío</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="kpi-label">Tasa de merma</div>
+        <div class="kpi-value cifra" id="tab-merma-tasa">{{ periodo.tasa.tasa_pct }}%</div>
+        <div class="kpi-sub" id="tab-merma-tasa-sub">{{ periodo.tasa.mermado_formato }} de {{ periodo.tasa.recibido_formato }} unidades recibidas ({{ periodo.etiqueta_periodo | lower }})</div>
+      </div>
     </div>
     <div class="grid-2" style="margin-bottom:28px;">
       <div>

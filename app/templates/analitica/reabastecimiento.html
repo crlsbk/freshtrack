@@ -75,46 +75,85 @@
 
     <div class="stat-grid-4" style="margin:16px 0 0;">
       {{ ui.kpi('Cantidad sugerida', (o.cantidad_sugerida) | cantidad(2),
-                o.unidad_medida, '#16a34a') }}
-      {{ ui.kpi('Necesidad neta', (o.necesidad_neta) | cantidad(2), o.unidad_medida) }}
+                o.unidad_medida, '#16a34a', None,
+                'Cantidad a ordenar calculada a partir de la necesidad neta y ajustada hacia arriba para cumplir con el MOQ del proveedor.', 'carrito') }}
+      {{ ui.kpi('Necesidad neta', (o.necesidad_neta) | cantidad(2), o.unidad_medida, None, None,
+                'Fórmula de balance: (Demanda pronosticada + Stock de seguridad) − (Inventario útil + Entradas confirmadas).', 'diana') }}
       {{ ui.kpi('Inventario útil', (o.inventario_util) | cantidad(2),
-                'Descontado lo que está por vencer') }}
+                'Descontado lo que está por vencer', None, None,
+                'Existencia física que efectivamente alcanzará a venderse antes de su fecha de caducidad.', 'caja') }}
       {{ ui.kpi('Inventario en riesgo', (o.inventario_riesgo) | cantidad(2),
-                'No cubre demanda futura', '#dc2626') }}
+                'No cubre demanda futura', '#dc2626', None,
+                'Unidades cuya caducidad llegará antes de poder venderse. Se excluyen del inventario útil para no generar faltantes.', 'alerta') }}
     </div>
 
     <details class="acordeon">
-      <summary>Ver el cálculo completo</summary>
+      <summary>Ver el cálculo completo y desglose de variables</summary>
       <div class="acordeon-cuerpo">
         <div class="detalle-grid" style="margin-bottom:14px;">
           <div class="detalle-item">
-            <div class="detalle-etiqueta">Demanda pronosticada</div>
-            <div class="detalle-valor">{{ (o.demanda_pronosticada) | cantidad(2) }}</div>
+            <div class="detalle-etiqueta">
+              Demanda pronosticada (horizonte de {{ o.lead_time_dias or 7 }} d)
+              {{ ui.ayuda('Unidades proyectadas a vender durante la ventana de cobertura según el modelo de pronóstico vigente o la media móvil histórica.') }}
+            </div>
+            <div class="detalle-valor">{{ (o.demanda_pronosticada) | cantidad(2) }} {{ o.unidad_medida }}</div>
           </div>
           <div class="detalle-item">
-            <div class="detalle-etiqueta">Inventario físico</div>
-            <div class="detalle-valor">{{ (o.inventario_fisico) | cantidad(2) }}</div>
+            <div class="detalle-etiqueta">
+              Inventario físico
+              {{ ui.ayuda('Existencia física total registrada en esta tienda en todos los lotes del producto.') }}
+            </div>
+            <div class="detalle-valor">{{ (o.inventario_fisico) | cantidad(2) }} {{ o.unidad_medida }}</div>
           </div>
           <div class="detalle-item">
-            <div class="detalle-etiqueta">Entradas confirmadas</div>
-            <div class="detalle-valor">{{ (o.entradas_confirmadas) | cantidad(2) }}</div>
+            <div class="detalle-etiqueta">
+              Inventario en riesgo
+              {{ ui.ayuda('Unidades que caducarán antes de que la velocidad de venta estimada pueda consumirlas. Se descartan del inventario útil.') }}
+            </div>
+            <div class="detalle-valor text-danger">{{ (o.inventario_riesgo) | cantidad(2) }} {{ o.unidad_medida }}</div>
           </div>
           <div class="detalle-item">
-            <div class="detalle-etiqueta">Stock de seguridad</div>
-            <div class="detalle-valor">{{ (o.stock_seguridad) | cantidad(2) }}</div>
+            <div class="detalle-etiqueta">
+              Inventario útil
+              {{ ui.ayuda('Inventario físico disponible que sí alcanza a venderse antes de vencer (Físico − En riesgo).') }}
+            </div>
+            <div class="detalle-valor">{{ (o.inventario_util) | cantidad(2) }} {{ o.unidad_medida }}</div>
           </div>
           <div class="detalle-item">
-            <div class="detalle-etiqueta">Lead time</div>
+            <div class="detalle-etiqueta">
+              Entradas confirmadas
+              {{ ui.ayuda('Órdenes de compra ya autorizadas o manifiestos ASN en tránsito hacia la tienda que aún no han sido recibidos en el muelle.') }}
+            </div>
+            <div class="detalle-valor">{{ (o.entradas_confirmadas) | cantidad(2) }} {{ o.unidad_medida }}</div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">
+              Stock de seguridad
+              {{ ui.ayuda('Colchón de reserva mínimo necesario para absorber variaciones imprevistas en la demanda diaria o retrasos en la entrega del proveedor.') }}
+            </div>
+            <div class="detalle-valor">{{ (o.stock_seguridad) | cantidad(2) }} {{ o.unidad_medida }}</div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">
+              Lead time
+              {{ ui.ayuda('Tiempo de entrega del proveedor en días: lapso transcurrido desde que se aprueba la orden hasta que la mercancía física está disponible.') }}
+            </div>
             <div class="detalle-valor">{{ o.lead_time_dias }} días</div>
           </div>
           <div class="detalle-item">
-            <div class="detalle-etiqueta">MOQ</div>
-            <div class="detalle-valor">{{ "%.0f" | format(o.moq | float) }}</div>
+            <div class="detalle-etiqueta">
+              MOQ (Pedido mínimo)
+              {{ ui.ayuda('Minimum Order Quantity: cantidad mínima exigida contractualmente por el proveedor en cada orden de compra.') }}
+            </div>
+            <div class="detalle-valor">{{ "%.0f" | format(o.moq | float) }} {{ o.unidad_medida }}</div>
           </div>
           {% if o.cantidad_aprobada is not none %}
             <div class="detalle-item">
-              <div class="detalle-etiqueta">Cantidad aprobada</div>
-              <div class="detalle-valor">{{ (o.cantidad_aprobada) | cantidad(2) }}</div>
+              <div class="detalle-etiqueta">
+                Cantidad aprobada
+                {{ ui.ayuda('Cantidad final autorizada por el planeador o gerente de tienda tras su revisión.') }}
+              </div>
+              <div class="detalle-valor text-success" style="font-weight:600;">{{ (o.cantidad_aprobada) | cantidad(2) }} {{ o.unidad_medida }}</div>
             </div>
           {% endif %}
         </div>

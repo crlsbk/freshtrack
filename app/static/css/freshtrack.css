@@ -10,6 +10,8 @@
 }
 .flash-ok    { background: var(--success-bg); border-color: var(--success-border); color: #166534; }
 .flash-error { background: var(--danger-bg);  border-color: var(--danger-border);  color: #991b1b; }
+html[data-theme="dark"] .flash-ok    { color: #4ade80; }
+html[data-theme="dark"] .flash-error { color: #f87171; }
 .flash-icon  { font-weight: 700; flex-shrink: 0; }
 .flash-text  { flex: 1; line-height: 1.5; }
 .flash-dismiss { background: none; border: none; cursor: pointer; color: inherit; opacity: .6; font-size: 18px; line-height: 1; padding: 0 2px; }
@@ -45,7 +47,7 @@
 .kpi-icono {
   width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--kpi-color, #6b7280) 10%, white);
+  background: color-mix(in srgb, var(--kpi-color, #6b7280) 15%, var(--card));
 }
 .kpi-icono svg { width: 17px; height: 17px; fill: var(--kpi-color, #6b7280); }
 .kpi-ir { margin-top: 14px; font-size: 13px; font-weight: 600; color: var(--primary-hover); }
@@ -60,7 +62,7 @@
 
 /* ── Bloque preformateado ── */
 .explicacion {
-  background: #f9fafb; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
   line-height: 1.7; color: var(--foreground-2); white-space: pre-wrap; overflow-x: auto; margin: 0;
 }
@@ -69,7 +71,7 @@
 .inline-form { display: inline; }
 
 /* ── Acordeón ── */
-details.acordeon { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-top: 12px; background: #fff; }
+details.acordeon { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-top: 12px; background: var(--card); }
 details.acordeon > summary {
   cursor: pointer; padding: 10px 14px; font-size: 13.5px; font-weight: 500;
   color: var(--foreground-2); list-style: none; user-select: none;
@@ -86,7 +88,7 @@ details.acordeon > .acordeon-cuerpo { padding: 4px 16px 16px; }
 .timeline-item { position: relative; padding-bottom: 20px; }
 .timeline-item::before {
   content: ''; position: absolute; left: -25px; top: 5px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--primary); border: 3px solid #fff; box-shadow: 0 0 0 1px var(--border);
+  background: var(--primary); border: 3px solid var(--card); box-shadow: 0 0 0 1px var(--border);
 }
 .timeline-fecha { font-size: 12.5px; color: var(--muted-foreground); }
 .timeline-titulo { font-size: 14px; font-weight: 600; margin: 2px 0; }

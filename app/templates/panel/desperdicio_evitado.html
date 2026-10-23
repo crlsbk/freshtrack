@@ -79,9 +79,12 @@
     </div>
   </div>
   <div class="aviso-info" style="margin-top:16px;">
-    <strong>Regla de honestidad:</strong> el indicador se recalcula desde las ventas
-    reales, no se incrementa cuando se aprueba una intervención. Si la transferencia se
-    ejecuta pero el destino no vende, el número no sube.
+    <strong>Metodología de medición real y auditoría:</strong>
+    <ul style="margin:6px 0 0 18px; line-height:1.6;">
+      <li><strong>1. Ejecución física requerida:</strong> Una transferencia en estado <code>APROBADA</code> aún no mueve inventario. Debe pulsar <strong>«Ejecutar y mover inventario»</strong> en la pantalla de transferencias para que se descuente del origen, ingrese al destino y se registre la intervención aquí.</li>
+      <li><strong>2. Medición por venta real:</strong> Las <em>unidades recuperadas</em> y el <em>valor recuperado</em> se calculan contra los tickets de venta reales del lote en la tienda destino entre la fecha de ejecución y la fecha de caducidad. Si el destino aún no vende el producto, el valor recuperado permanece en cero hasta que se registre la venta.</li>
+      <li><strong>3. Merma residual:</strong> Cualquier unidad del lote intervenido que venza sin venderse se computa como merma residual para reflejar la eficiencia neta.</li>
+    </ul>
   </div>
 </div>
 

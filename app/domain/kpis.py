@@ -229,26 +229,124 @@ def inventario_por_locacion() -> list[dict]:
     )
 
 
-def tasa_merma(dias: int = 180) -> dict:
+def tasa_merma(dias: int | None = 180) -> dict:
     """Merma como porcentaje de lo recibido: el indicador honesto."""
-    fila = one(
-        """
-        SELECT
-            (SELECT COALESCE(SUM(cantidad_recibida), 0) FROM operacion.lote
-              WHERE fecha_recepcion >= CURRENT_DATE - :dias) AS recibido,
-            (SELECT COALESCE(SUM(cantidad), 0) FROM operacion.merma
-              WHERE fecha_registro >= CURRENT_DATE - :dias) AS mermado,
-            (SELECT COALESCE(SUM(cantidad), 0) FROM operacion.venta_detalle
-              WHERE fecha_transaccion >= CURRENT_DATE - :dias) AS vendido
-        """,
-        dias=dias,
-    ) or {}
+    if dias is not None:
+        fila = one(
+            """
+            SELECT
+                (SELECT COALESCE(SUM(cantidad_recibida), 0) FROM operacion.lote
+                  WHERE fecha_recepcion >= CURRENT_DATE - :dias) AS recibido,
+                (SELECT COALESCE(SUM(cantidad), 0) FROM operacion.merma
+                  WHERE fecha_registro >= CURRENT_DATE - :dias) AS mermado,
+                (SELECT COALESCE(SUM(cantidad), 0) FROM operacion.venta_detalle
+                  WHERE fecha_transaccion >= CURRENT_DATE - :dias) AS vendido
+            """,
+            dias=dias,
+        ) or {}
+    else:
+        fila = one(
+            """
+            SELECT
+                (SELECT COALESCE(SUM(cantidad_recibida), 0) FROM operacion.lote) AS recibido,
+                (SELECT COALESCE(SUM(cantidad), 0) FROM operacion.merma) AS mermado,
+                (SELECT COALESCE(SUM(cantidad), 0) FROM operacion.venta_detalle) AS vendido
+            """
+        ) or {}
     recibido = a_float(fila.get("recibido"))
     fila["tasa_pct"] = round(100 * a_float(fila.get("mermado")) / recibido, 2) if recibido else 0.0
     fila["tasa_venta_pct"] = (
         round(100 * a_float(fila.get("vendido")) / recibido, 2) if recibido else 0.0
     )
     return fila
+
+
+def metricas_periodo(dias: int | None = 30) -> dict:
+    """
+    Calcula dinámicamente en tiempo real contra PostgreSQL las métricas de ventas,
+    merma y tasa porcentual para cualquier ventana de días especificada (o histórico completo).
+    """
+    if dias is not None:
+        filtro_v = "WHERE fecha_transaccion >= CURRENT_DATE - :dias"
+        filtro_m = "WHERE fecha_registro >= CURRENT_DATE - :dias"
+        params = {"dias": dias}
+        if dias == 30:
+            etiqueta = "Último mes (30 días)"
+        elif dias == 90:
+            etiqueta = "Últimos 3 meses (90 días)"
+        elif dias == 180:
+            etiqueta = "Últimos 6 meses (180 días)"
+        else:
+            etiqueta = f"Últimos {dias} días"
+    else:
+        filtro_v = ""
+        filtro_m = ""
+        params = {}
+        etiqueta = "Histórico completo"
+
+    ventas = one(
+        f"""
+        SELECT COALESCE(SUM(cantidad), 0) AS unidades,
+               COALESCE(SUM(subtotal), 0) AS ingreso,
+               COUNT(DISTINCT id_venta)   AS tickets
+        FROM operacion.venta_detalle
+        {filtro_v}
+        """,
+        **params,
+    ) or {"unidades": 0, "ingreso": 0, "tickets": 0}
+
+    merma = one(
+        f"""
+        SELECT COALESCE(SUM(cantidad), 0)    AS unidades,
+               COALESCE(SUM(valor_merma), 0) AS valor,
+               COUNT(*)                      AS eventos
+        FROM operacion.merma
+        {filtro_m}
+        """,
+        **params,
+    ) or {"unidades": 0, "valor": 0, "eventos": 0}
+
+    tasa = tasa_merma(dias)
+
+    v_ingreso = a_float(ventas.get("ingreso"))
+    v_unidades = a_float(ventas.get("unidades"))
+    v_tickets = a_int(ventas.get("tickets"))
+
+    m_valor = a_float(merma.get("valor"))
+    m_unidades = a_float(merma.get("unidades"))
+    m_eventos = a_int(merma.get("eventos"))
+
+    d_v = 0 if (v_ingreso >= 100000 or v_ingreso <= -100000) else 2
+    d_m = 0 if (m_valor >= 100000 or m_valor <= -100000) else 2
+
+    return {
+        "dias": dias,
+        "etiqueta_periodo": etiqueta,
+        "ventas": {
+            "unidades": v_unidades,
+            "ingreso": v_ingreso,
+            "tickets": v_tickets,
+            "unidades_formato": f"{v_unidades:,.0f}" if abs(v_unidades - round(v_unidades)) < 0.005 else f"{v_unidades:,.2f}",
+            "ingreso_formato": f"${v_ingreso:,.{d_v}f}",
+            "tickets_formato": f"{v_tickets:,}",
+        },
+        "merma": {
+            "unidades": m_unidades,
+            "valor": m_valor,
+            "eventos": m_eventos,
+            "unidades_formato": f"{m_unidades:,.0f}" if abs(m_unidades - round(m_unidades)) < 0.005 else f"{m_unidades:,.2f}",
+            "valor_formato": f"${m_valor:,.{d_m}f}",
+            "eventos_formato": f"{m_eventos:,}",
+        },
+        "tasa": {
+            "tasa_pct": tasa.get("tasa_pct", 0.0),
+            "tasa_venta_pct": tasa.get("tasa_venta_pct", 0.0),
+            "mermado": a_float(tasa.get("mermado")),
+            "recibido": a_float(tasa.get("recibido")),
+            "mermado_formato": f"{a_float(tasa.get('mermado')):,.0f}",
+            "recibido_formato": f"{a_float(tasa.get('recibido')):,.0f}",
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,17 @@ logger = logging.getLogger("freshtrack.events")
 STREAM_EVENTOS_DEFAULT = "freshtrack:events"
 
 
+def _contexto_request() -> dict[str, Any]:
+    """Contexto que dejó requiere_auth en g; vacío fuera de un request de Flask."""
+    try:
+        from flask import g, has_request_context
+    except ImportError:
+        return {}
+    if not has_request_context():
+        return {}
+    return dict(getattr(g, "contexto", None) or {})
+
+
 def publicar_evento(
     tipo_evento: str,
     payload: dict[str, Any],
@@ -43,7 +54,9 @@ def publicar_evento(
         logger.warning("Redis no disponible para emitir evento '%s'. Omitiendo.", tipo_evento)
         return None
 
-    ctx = contexto or {}
+    # Dentro de un request autenticado, el contexto del JWT (g.contexto) es la base;
+    # lo que pase el llamador explícitamente tiene prioridad.
+    ctx = {**_contexto_request(), **{k: v for k, v in (contexto or {}).items() if v not in (None, "")}}
     correlation_id = ctx.get("correlation_id") or uuid.uuid4().hex
     ahora = datetime.now(timezone.utc).isoformat()
 

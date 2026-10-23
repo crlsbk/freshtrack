@@ -37,6 +37,21 @@ INSERT INTO operacion.locacion (tipo_locacion, nombre, ciudad) VALUES
     ('Tienda', 'Tienda Sur',         'Monterrey')
 ON CONFLICT (nombre) DO NOTHING;
 
+-- Coordenadas aproximadas de cada locación (zona de la ciudad, no dirección exacta).
+-- Solo se llenan si están vacías, para no pisar lo que se capture desde la web.
+UPDATE operacion.locacion l
+   SET latitud = c.latitud, longitud = c.longitud
+  FROM (VALUES
+    ('CEDIS Central',        20.6040, -100.4040),
+    ('CEDIS Norte',          25.7700, -100.2450),
+    ('Tienda San Pedro',     25.6575, -100.4020),
+    ('Tienda Cumbres',       25.7290, -100.3940),
+    ('Tienda Valle Oriente', 25.6500, -100.3360),
+    ('Tienda Centro',        25.4232, -101.0053),
+    ('Tienda Sur',           25.6200, -100.2750)
+  ) AS c(nombre, latitud, longitud)
+ WHERE l.nombre = c.nombre AND l.latitud IS NULL;
+
 -- -----------------------------------------------------------------------------
 -- Proveedores (lead time y MOQ son obligatorios para el motor de reabastecimiento)
 -- -----------------------------------------------------------------------------

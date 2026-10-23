@@ -48,6 +48,24 @@ CREATE TABLE IF NOT EXISTS operacion.locacion (
     CONSTRAINT chk_tipo_locacion CHECK (tipo_locacion IN ('Tienda', 'CEDIS'))
 );
 
+-- Coordenadas para el mapa de tiendas. Se agregan con ADD COLUMN IF NOT EXISTS
+-- para que el script también actualice bases creadas antes de este cambio.
+ALTER TABLE operacion.locacion ADD COLUMN IF NOT EXISTS latitud  numeric(9,6);
+ALTER TABLE operacion.locacion ADD COLUMN IF NOT EXISTS longitud numeric(9,6);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_locacion_coordenadas') THEN
+        ALTER TABLE operacion.locacion ADD CONSTRAINT chk_locacion_coordenadas CHECK (
+            (latitud IS NULL AND longitud IS NULL)
+            OR (latitud BETWEEN -90 AND 90 AND longitud BETWEEN -180 AND 180)
+        );
+    END IF;
+END $$;
+
+COMMENT ON COLUMN operacion.locacion.latitud IS 'Latitud WGS84 (grados decimales) para el mapa de tiendas.';
+COMMENT ON COLUMN operacion.locacion.longitud IS 'Longitud WGS84 (grados decimales) para el mapa de tiendas.';
+
 -- -----------------------------------------------------------------------------
 -- Proveedores
 -- -----------------------------------------------------------------------------

@@ -39,6 +39,21 @@ def _entero(nombre: str, default: int = 0) -> int:
 # ===========================================================================
 # TABLERO
 # ===========================================================================
+@bp.route("/mapa")
+@login_required
+@requiere_vista("map")
+def mapa():
+    """Mapa de tiendas y CEDIS: al pulsar un punto se ven sus indicadores."""
+    ventana_param = request.args.get("ventana", "30")
+    dias = int(ventana_param) if ventana_param in ("7", "30", "90", "180") else 30
+    return render_template(
+        "panel/mapa.html",
+        active="map",
+        ventana=dias,
+        locaciones=motor_kpis.metricas_por_locacion(dias),
+    )
+
+
 @bp.route("/panel")
 @login_required
 @requiere_vista("dashboard")

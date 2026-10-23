@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Mapa de tiendas{% endblock %}
+{% block breadcrumb %}Principal › Mapa de tiendas{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  .mapa-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
+  .mapa-contenedor { height: 620px; border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; background: var(--muted); }
+  #mapa { width: 100%; height: 100%; }
+  .mapa-panel { display: flex; flex-direction: column; gap: 14px; }
+  .mapa-leyenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted-foreground); margin: 10px 0 0; }
+  .mapa-leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* Marcadores: círculo = tienda, cuadrado = CEDIS; el color es el nivel de riesgo. */
+  .punto { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 6px rgba(0,0,0,.35); transition: transform .15s; }
+  .punto.cedis { border-radius: 5px; }
+  .punto.normal { background: #16a34a; }
+  .punto.vigilancia { background: #d97706; }
+  .punto.critico { background: #dc2626; }
+  .punto.sin-inventario { background: #6b7280; }
+  .punto.activo { transform: scale(1.35); box-shadow: 0 0 0 4px rgba(37,99,235,.45), 0 1px 6px rgba(0,0,0,.35); }
+  .leaflet-marker-icon:focus-visible .punto { outline: 2px solid #2563eb; outline-offset: 2px; }
+  .muestra { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .muestra.cedis { border-radius: 3px; background: transparent; border: 2px solid var(--muted-foreground); }
+
+  .detalle-tienda-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+  .detalle-tienda-nombre { font-size: 17px; font-weight: 700; color: var(--foreground); }
+  .detalle-tienda-sub { font-size: 12.5px; color: var(--muted-foreground); }
+  .metricas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .metrica { background: var(--muted); border-radius: 8px; padding: 10px 12px; }
+  .metrica-etiqueta { font-size: 11.5px; color: var(--muted-foreground); }
+  .metrica-valor { font-size: 17px; font-weight: 700; color: var(--foreground); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .metrica-sub { font-size: 11.5px; color: var(--muted-foreground); margin-top: 1px; }
+  .metrica-seccion { font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--muted-foreground); margin: 16px 0 0; }
+  .riesgo-lista { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .riesgo-lista li { font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; }
+  .riesgo-lista .producto { color: var(--foreground); font-weight: 500; }
+  .riesgo-lista .meta { color: var(--muted-foreground); font-size: 11.5px; }
+
+  .lista-locaciones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .lista-locaciones button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--foreground); font: inherit; font-size: 13px; cursor: pointer; }
+  .lista-locaciones button:hover { background: var(--muted); }
+  .lista-locaciones button[aria-pressed="true"] { background: var(--muted); border-color: var(--border); font-weight: 600; }
+  .lista-locaciones .ciudad { margin-left: auto; font-size: 11.5px; color: var(--muted-foreground); }
+  .lista-locaciones .punto { width: 12px; height: 12px; border-width: 2px; flex-shrink: 0; box-shadow: none; }
+
+  /* Controles de Leaflet con los colores del tema */
+  .leaflet-bar a, .leaflet-bar a:hover { background: var(--card); color: var(--foreground); border-bottom-color: var(--border); }
+  .leaflet-container .leaflet-control-attribution { background: var(--card); color: var(--muted-foreground); opacity: .85; }
+  .leaflet-container .leaflet-control-attribution a { color: var(--muted-foreground); }
+  .leaflet-tooltip { font-size: 12px; font-weight: 600; }
+  html[data-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
+
+  @media (max-width: 1100px) {
+    .mapa-layout { grid-template-columns: 1fr; }
+    .mapa-contenedor { height: 440px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;">
+  {{ ui.encabezado(
+    'Principal',
+    'Mapa de tiendas',
+    'Ubicación de cada tienda y CEDIS. Pulsa un punto para ver sus indicadores, calculados en vivo contra PostgreSQL.'
+  ) }}
+  <div class="ventana-selector" role="group" aria-label="Ventana de tiempo">
+    {% for d, etiqueta in [(7, 'Última semana (7 d)'), (30, 'Último mes (30 d)'), (90, 'Últimos 3 meses (90 d)'), (180, 'Últimos 6 meses (180 d)')] %}
+      <a href="?ventana={{ d }}" class="btn-ventana {% if ventana == d %}active{% endif %}">{{ etiqueta }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="mapa-layout">
+  <div>
+    <div class="mapa-contenedor"><div id="mapa" role="region" aria-label="Mapa de tiendas y CEDIS"></div></div>
+    <div class="mapa-leyenda">
+      <span><i class="muestra" style="background:#16a34a"></i> Riesgo bajo</span>
+      <span><i class="muestra" style="background:#d97706"></i> En vigilancia</span>
+      <span><i class="muestra" style="background:#dc2626"></i> Riesgo alto</span>
+      <span><i class="muestra" style="background:#6b7280"></i> Sin inventario</span>
+      <span><i class="muestra cedis"></i> CEDIS</span>
+      <span>{{ ui.ayuda('El color es el porcentaje del valor del inventario que está en lotes críticos o vencidos: 10% o más es riesgo alto, 3% o más es vigilancia.') }} Cómo se calcula</span>
+    </div>
+  </div>
+
+  <div class="mapa-panel">
+    <div class="card" id="detalle-tienda" aria-live="polite">
+      <div class="card-title" style="margin-bottom:6px;">Indicadores de la tienda</div>
+      <p class="text-muted" style="font-size:13px; margin:0;">Pulsa un punto del mapa o una ubicación de la lista.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:10px;">Ubicaciones</div>
+      <ul class="lista-locaciones" id="lista-locaciones"></ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  const LOCACIONES = {{ locaciones | tojson }};
+  const VENTANA = {{ ventana }};
+  const URL_INVENTARIO = {{ (url_for('operacion.inventario') if 'inventory' in allowed_views else '') | tojson }};
+  const URL_TIENDAS = {{ (url_for('catalogo.locaciones') if 'stores' in allowed_views else '') | tojson }};
+
+  const dinero = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
+  const numero = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 });
+  const numero2 = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 });
+
+  const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Nivel de riesgo: parte del valor del inventario que está en lotes críticos o vencidos.
+  function nivel(loc) {
+    const inv = loc.inventario;
+    if (!inv.valor) return 'sin-inventario';
+    const pct = 100 * inv.valor_en_riesgo / inv.valor;
+    if (pct >= 10) return 'critico';
+    if (pct >= 3) return 'vigilancia';
+    return 'normal';
+  }
+  const ETIQUETA_NIVEL = { 'normal': 'Riesgo bajo', 'vigilancia': 'En vigilancia', 'critico': 'Riesgo alto', 'sin-inventario': 'Sin inventario' };
+  const BADGE_NIVEL = { 'normal': 'badge-success', 'vigilancia': 'badge-warning', 'critico': 'badge-danger', 'sin-inventario': 'badge-neutral' };
+
+  function punto(loc, extra = '') {
+    return `<div class="punto ${nivel(loc)} ${loc.tipo_locacion === 'CEDIS' ? 'cedis' : ''} ${extra}"></div>`;
+  }
+
+  // ── Mapa ──
+  // La rueda del mouse desplaza la página; el zoom con rueda se activa al hacer
+  // clic en el mapa y se apaga al salir de él.
+  const mapa = L.map('mapa', { scrollWheelZoom: false, zoomControl: true });
+  mapa.on('click focus', () => mapa.scrollWheelZoom.enable());
+  mapa.on('mouseout blur', () => mapa.scrollWheelZoom.disable());
+  // Mosaicos estándar de OpenStreetMap (sin API key). En modo oscuro se
+  // oscurecen con un filtro CSS (ver .leaflet-tile-pane en el <style>).
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(mapa);
+
+  const marcadores = {};
+  const conCoordenadas = LOCACIONES.filter((l) => l.latitud != null && l.longitud != null);
+  conCoordenadas.forEach((loc) => {
+    const m = L.marker([loc.latitud, loc.longitud], {
+      icon: L.divIcon({ className: '', html: punto(loc), iconSize: [22, 22], iconAnchor: [11, 11] }),
+      title: loc.nombre,
+      alt: loc.nombre,
+      keyboard: true,
+    }).addTo(mapa);
+    m.bindTooltip(loc.nombre, { direction: 'top', offset: [0, -12] });
+    m.on('click', () => seleccionar(loc.id_locacion, true));
+    marcadores[loc.id_locacion] = m;
+  });
+
+  // Encuadre inicial: solo las tiendas, para que no queden encimadas por un CEDIS
+  // lejano. «Ver todas» incluye también los CEDIS.
+  const encuadrar = (locs) => {
+    if (locs.length) mapa.fitBounds(L.latLngBounds(locs.map((l) => [l.latitud, l.longitud])), { padding: [40, 40], maxZoom: 13 });
+    else mapa.setView([23.6, -102.5], 5);  // México completo si nadie tiene coordenadas
+  };
+  const tiendas = conCoordenadas.filter((l) => l.tipo_locacion === 'Tienda');
+  encuadrar(tiendas.length ? tiendas : conCoordenadas);
+
+  const VerTodas = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const b = L.DomUtil.create('button', 'btn btn-ghost btn-sm');
+      b.type = 'button';
+      b.textContent = 'Ver todas';
+      b.style.background = 'var(--card)';
+      L.DomEvent.disableClickPropagation(b);
+      b.addEventListener('click', () => encuadrar(conCoordenadas));
+      return b;
+    },
+  });
+  new VerTodas().addTo(mapa);
+
+  // ── Lista lateral (también sirve para elegir con teclado) ──
+  const lista = document.getElementById('lista-locaciones');
+  LOCACIONES.forEach((loc) => {
+    const li = document.createElement('li');
+    const sinCoords = loc.latitud == null;
+    li.innerHTML = `<button type="button" data-id="${loc.id_locacion}" aria-pressed="false">
+        ${punto(loc)}<span>${esc(loc.nombre)}</span>
+        <span class="ciudad">${sinCoords ? 'Sin coordenadas' : esc(loc.ciudad || '')}</span>
+      </button>`;
+    li.querySelector('button').addEventListener('click', () => seleccionar(loc.id_locacion, true));
+    lista.appendChild(li);
+  });
+
+  function metrica(etiqueta, valor, sub = '') {
+    return `<div class="metrica"><div class="metrica-etiqueta">${etiqueta}</div>
+      <div class="metrica-valor">${valor}</div>${sub ? `<div class="metrica-sub">${sub}</div>` : ''}</div>`;
+  }
+
+  function seleccionar(id, mover) {
+    const loc = LOCACIONES.find((l) => l.id_locacion === id);
+    if (!loc) return;
+    const niv = nivel(loc);
+    const inv = loc.inventario, ven = loc.ventas, mer = loc.merma;
+
+    Object.entries(marcadores).forEach(([k, m]) => {
+      const el = m.getElement() && m.getElement().querySelector('.punto');
+      if (el) el.classList.toggle('activo', Number(k) === id);
+    });
+    lista.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.id) === id)));
+    if (mover && marcadores[id]) mapa.flyTo(marcadores[id].getLatLng(), Math.max(mapa.getZoom(), 12), { duration: 0.6 });
+    // La URL apunta a la tienda elegida, para poder compartir el enlace.
+    history.replaceState(null, '', `#tienda-${id}`);
+    document.querySelectorAll('.btn-ventana').forEach((a) => { a.hash = `tienda-${id}`; });
+
+    const pctRiesgo = inv.valor ? (100 * inv.valor_en_riesgo / inv.valor) : 0;
+    const riesgo = loc.lotes_en_riesgo.length
+      ? `<ul class="riesgo-lista">${loc.lotes_en_riesgo.map((r) => `
+          <li><div><div class="producto">${esc(r.producto)}</div>
+            <div class="meta">${esc(r.lote)} · ${r.clasificacion === 'VENCIDO' ? 'Vencido' : (r.dias_restantes === 0 ? 'vence hoy' : r.dias_restantes === 1 ? 'vence en 1 día' : `vence en ${r.dias_restantes} días`)}</div></div>
+            <div style="text-align:right;"><div>${dinero.format(r.valor)}</div><div class="meta">${numero2.format(r.cantidad)} ${esc(r.unidad)}</div></div></li>`).join('')}</ul>`
+      : `<p class="text-muted" style="font-size:12.5px; margin:8px 0 0;">Sin lotes críticos ni vencidos.</p>`;
+
+    const enlaces = [];
+    if (URL_INVENTARIO) enlaces.push(`<a class="btn btn-ghost btn-sm" href="${URL_INVENTARIO}?locacion=${loc.id_locacion}">Ver inventario →</a>`);
+    if (loc.latitud == null && URL_TIENDAS) enlaces.push(`<a class="btn btn-ghost btn-sm" href="${URL_TIENDAS}">Agregar coordenadas →</a>`);
+
+    document.getElementById('detalle-tienda').innerHTML = `
+      <div class="detalle-tienda-cab">
+        <div>
+          <div class="detalle-tienda-nombre">${esc(loc.nombre)}</div>
+          <div class="detalle-tienda-sub">${loc.tipo_locacion === 'CEDIS' ? 'CEDIS' : 'Tienda'} · ${esc(loc.ciudad || 'Sin ciudad')}</div>
+        </div>
+        <span class="badge ${BADGE_NIVEL[niv]}">${ETIQUETA_NIVEL[niv]}</span>
+      </div>
+
+      <div class="metrica-seccion">Inventario hoy</div>
+      <div class="metricas">
+        ${metrica('Valor del inventario', dinero.format(inv.valor), `${numero.format(inv.unidades)} unidades`)}
+        ${metrica('Lotes con existencia', numero.format(inv.lotes), `${numero.format(inv.skus)} productos`)}
+        ${metrica('Valor en riesgo', dinero.format(inv.valor_en_riesgo), `${numero2.format(pctRiesgo)}% del inventario`)}
+        ${metrica('Lotes críticos o vencidos', numero.format(inv.lotes_criticos + inv.lotes_vencidos), `${numero.format(inv.lotes_vigilancia)} en vigilancia`)}
+      </div>
+
+      <div class="metrica-seccion">Últimos ${VENTANA} días</div>
+      <div class="metricas">
+        ${metrica('Ventas', dinero.format(ven.ingreso), `${numero.format(ven.tickets)} tickets`)}
+        ${metrica('Unidades vendidas', numero.format(ven.unidades))}
+        ${metrica('Valor de la merma', dinero.format(mer.valor), `${numero2.format(mer.unidades)} unidades`)}
+        ${metrica('Tasa de merma', mer.tasa_pct == null ? '—' : `${numero2.format(mer.tasa_pct)}%`, mer.tasa_pct == null ? 'Sin recepciones en el periodo' : 'Sobre lo recibido')}
+      </div>
+
+      <div class="metrica-seccion">Pendientes</div>
+      <div class="metricas">
+        ${metrica('Alertas abiertas', numero.format(loc.alertas.abiertas), `${numero.format(loc.alertas.urgentes)} urgentes`)}
+        ${metrica('Órdenes por aprobar', numero.format(loc.ordenes_pendientes))}
+      </div>
+
+      <div class="metrica-seccion">Lotes en riesgo de mayor valor</div>
+      ${riesgo}
+      ${enlaces.length ? `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">${enlaces.join('')}</div>` : ''}`;
+  }
+
+  // Abre la tienda de la URL (#tienda-5) o, si no, la de mayor riesgo.
+  const deUrl = Number((location.hash.match(/^#tienda-(\d+)$/) || [])[1]);
+  const peor = [...LOCACIONES].filter((l) => l.inventario.valor)
+    .sort((a, b) => b.inventario.valor_en_riesgo / b.inventario.valor - a.inventario.valor_en_riesgo / a.inventario.valor)[0];
+  const pedida = LOCACIONES.find((l) => l.id_locacion === deUrl);
+  const inicial = pedida || peor;
+  if (inicial) seleccionar(inicial.id_locacion, Boolean(pedida));
+  window.addEventListener('hashchange', () => {
+    const id = Number((location.hash.match(/^#tienda-(\d+)$/) || [])[1]);
+    if (id) seleccionar(id, true);
+  });
+})();
+</script>
+{% endblock %}

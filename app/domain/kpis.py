@@ -229,6 +229,154 @@ def inventario_por_locacion() -> list[dict]:
     )
 
 
+def metricas_por_locacion(dias: int = 30) -> list[dict]:
+    """
+    Indicadores de cada tienda y CEDIS activos para el mapa: ubicación,
+    inventario y riesgo actuales, ventas y merma de los últimos `dias`, alertas
+    abiertas, órdenes pendientes y los lotes en riesgo de mayor valor.
+    """
+    locaciones = query(
+        """
+        SELECT id_locacion, nombre, tipo_locacion, ciudad, direccion,
+               latitud::float AS latitud, longitud::float AS longitud
+        FROM operacion.locacion
+        WHERE activo
+        ORDER BY tipo_locacion, nombre
+        """
+    )
+
+    def por_id(filas: list[dict]) -> dict[int, dict]:
+        return {f["id_locacion"]: f for f in filas}
+
+    inventario = por_id(query(
+        """
+        SELECT id_locacion,
+               SUM(cantidad_disponible)  AS unidades,
+               SUM(valor_inventario)     AS valor,
+               COUNT(DISTINCT id_lote)   AS lotes,
+               COUNT(DISTINCT id_sku)    AS skus,
+               COUNT(*) FILTER (WHERE clasificacion = 'VIGILANCIA') AS lotes_vigilancia,
+               COUNT(*) FILTER (WHERE clasificacion = 'CRITICO')    AS lotes_criticos,
+               COUNT(*) FILTER (WHERE clasificacion = 'VENCIDO')    AS lotes_vencidos,
+               COALESCE(SUM(valor_inventario) FILTER (
+                   WHERE clasificacion IN ('CRITICO', 'VENCIDO')), 0) AS valor_en_riesgo
+        FROM operacion.v_inventario_lote
+        WHERE cantidad_disponible > 0
+        GROUP BY id_locacion
+        """
+    ))
+    ventas = por_id(query(
+        """
+        SELECT id_locacion,
+               SUM(subtotal)            AS ingreso,
+               SUM(cantidad)            AS unidades,
+               COUNT(DISTINCT id_venta) AS tickets
+        FROM operacion.venta_detalle
+        WHERE fecha_transaccion >= CURRENT_DATE - :dias
+        GROUP BY id_locacion
+        """,
+        dias=dias,
+    ))
+    merma = por_id(query(
+        """
+        SELECT id_locacion, SUM(cantidad) AS unidades, SUM(valor_merma) AS valor
+        FROM operacion.merma
+        WHERE fecha_registro >= CURRENT_DATE - :dias
+        GROUP BY id_locacion
+        """,
+        dias=dias,
+    ))
+    recibido = por_id(query(
+        """
+        SELECT id_locacion_recepcion AS id_locacion, SUM(cantidad_recibida) AS unidades
+        FROM operacion.lote
+        WHERE fecha_recepcion >= CURRENT_DATE - :dias
+        GROUP BY id_locacion_recepcion
+        """,
+        dias=dias,
+    ))
+    alertas = por_id(query(
+        """
+        SELECT id_locacion,
+               COUNT(*) AS abiertas,
+               COUNT(*) FILTER (WHERE severidad IN ('CRITICA', 'ALTA')) AS urgentes
+        FROM analitica.alerta
+        WHERE estado = 'ABIERTA' AND id_locacion IS NOT NULL
+        GROUP BY id_locacion
+        """
+    ))
+    ordenes = por_id(query(
+        """
+        SELECT id_locacion, COUNT(*) AS pendientes
+        FROM analitica.orden_reabastecimiento
+        WHERE estado = 'PENDIENTE'
+        GROUP BY id_locacion
+        """
+    ))
+    en_riesgo: dict[int, list[dict]] = {}
+    for f in query(
+        """
+        SELECT id_locacion, producto, codigo_lote_prov, clasificacion, dias_restantes,
+               cantidad_disponible, unidad_medida, valor_inventario
+        FROM (
+            SELECT v.*, ROW_NUMBER() OVER (
+                       PARTITION BY id_locacion ORDER BY valor_inventario DESC) AS n
+            FROM operacion.v_inventario_lote v
+            WHERE cantidad_disponible > 0 AND clasificacion IN ('CRITICO', 'VENCIDO')
+        ) t
+        WHERE n <= 3
+        ORDER BY id_locacion, n
+        """
+    ):
+        en_riesgo.setdefault(f["id_locacion"], []).append({
+            "producto": f["producto"],
+            "lote": f["codigo_lote_prov"],
+            "clasificacion": f["clasificacion"],
+            "dias_restantes": a_int(f["dias_restantes"]),
+            "cantidad": a_float(f["cantidad_disponible"]),
+            "unidad": f["unidad_medida"],
+            "valor": a_float(f["valor_inventario"]),
+        })
+
+    resultado = []
+    for loc in locaciones:
+        i = loc["id_locacion"]
+        inv, ven, mer = inventario.get(i, {}), ventas.get(i, {}), merma.get(i, {})
+        rec = a_float(recibido.get(i, {}).get("unidades"))
+        merma_unidades = a_float(mer.get("unidades"))
+        resultado.append({
+            **loc,
+            "inventario": {
+                "unidades": a_float(inv.get("unidades")),
+                "valor": a_float(inv.get("valor")),
+                "lotes": a_int(inv.get("lotes")),
+                "skus": a_int(inv.get("skus")),
+                "lotes_vigilancia": a_int(inv.get("lotes_vigilancia")),
+                "lotes_criticos": a_int(inv.get("lotes_criticos")),
+                "lotes_vencidos": a_int(inv.get("lotes_vencidos")),
+                "valor_en_riesgo": a_float(inv.get("valor_en_riesgo")),
+            },
+            "ventas": {
+                "ingreso": a_float(ven.get("ingreso")),
+                "unidades": a_float(ven.get("unidades")),
+                "tickets": a_int(ven.get("tickets")),
+            },
+            "merma": {
+                "unidades": merma_unidades,
+                "valor": a_float(mer.get("valor")),
+                "recibido": rec,
+                "tasa_pct": round(100 * merma_unidades / rec, 2) if rec else None,
+            },
+            "alertas": {
+                "abiertas": a_int(alertas.get(i, {}).get("abiertas")),
+                "urgentes": a_int(alertas.get(i, {}).get("urgentes")),
+            },
+            "ordenes_pendientes": a_int(ordenes.get(i, {}).get("pendientes")),
+            "lotes_en_riesgo": en_riesgo.get(i, []),
+        })
+    return resultado
+
+
 def tasa_merma(dias: int | None = 180) -> dict:
     """Merma como porcentaje de lo recibido: el indicador honesto."""
     if dias is not None:

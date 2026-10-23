@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/freshtrack.css') }}"/>
   <style>:root { --role-accent: {{ role_accent }}; }</style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  {% block head %}{% endblock %}
 </head>
 <body>
 <div class="app-shell">

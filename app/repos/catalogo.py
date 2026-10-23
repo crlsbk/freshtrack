@@ -436,7 +436,7 @@ def listar_locaciones(solo_activas: bool = False) -> list[dict]:
     return query(
         f"""
         SELECT l.id_locacion, l.tipo_locacion, l.nombre, l.ciudad, l.direccion,
-               l.activo, l.fecha_alta,
+               l.latitud, l.longitud, l.activo, l.fecha_alta,
                (SELECT COUNT(DISTINCT b.id_sku)
                   FROM operacion.existencia e
                   JOIN operacion.lote b ON b.id_lote = e.id_lote
@@ -460,6 +460,23 @@ def obtener_locacion(id_locacion: int) -> dict | None:
     return one("SELECT * FROM operacion.locacion WHERE id_locacion = :id", id=id_locacion)
 
 
+def _coordenadas(datos: dict) -> tuple[float | None, float | None]:
+    """Latitud y longitud del formulario: las dos o ninguna, en rango WGS84."""
+    texto_lat = (datos.get("latitud") or "").strip()
+    texto_lon = (datos.get("longitud") or "").strip()
+    if not texto_lat and not texto_lon:
+        return None, None
+    if not texto_lat or not texto_lon:
+        raise ValueError("Captura la latitud y la longitud juntas, o deja las dos vacías.")
+    try:
+        latitud, longitud = float(texto_lat), float(texto_lon)
+    except ValueError:
+        raise ValueError("La latitud y la longitud deben ser números (grados decimales).") from None
+    if not -90 <= latitud <= 90 or not -180 <= longitud <= 180:
+        raise ValueError("Coordenadas fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180.")
+    return latitud, longitud
+
+
 def crear_locacion(datos: dict, usuario: dict) -> dict:
     nombre = (datos.get("nombre") or "").strip()
     tipo = (datos.get("tipo_locacion") or "Tienda").strip()
@@ -467,6 +484,7 @@ def crear_locacion(datos: dict, usuario: dict) -> dict:
         raise ValueError("El nombre es obligatorio.")
     if tipo not in ("Tienda", "CEDIS"):
         raise ValueError("El tipo debe ser «Tienda» o «CEDIS».")
+    latitud, longitud = _coordenadas(datos)
 
     with transaccion(
         id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
@@ -475,8 +493,8 @@ def crear_locacion(datos: dict, usuario: dict) -> dict:
             text(
                 """
                 INSERT INTO operacion.locacion
-                    (tipo_locacion, nombre, ciudad, direccion, activo)
-                VALUES (:tipo, :nombre, :ciudad, :direccion, true)
+                    (tipo_locacion, nombre, ciudad, direccion, latitud, longitud, activo)
+                VALUES (:tipo, :nombre, :ciudad, :direccion, :latitud, :longitud, true)
                 RETURNING id_locacion
                 """
             ),
@@ -485,6 +503,8 @@ def crear_locacion(datos: dict, usuario: dict) -> dict:
                 "nombre": nombre,
                 "ciudad": (datos.get("ciudad") or "").strip() or None,
                 "direccion": (datos.get("direccion") or "").strip() or None,
+                "latitud": latitud,
+                "longitud": longitud,
             },
         ).scalar()
 
@@ -510,6 +530,7 @@ def actualizar_locacion(id_locacion: int, datos: dict, usuario: dict) -> None:
         raise ValueError("El nombre es obligatorio.")
     if tipo not in ("Tienda", "CEDIS"):
         raise ValueError("El tipo debe ser «Tienda» o «CEDIS».")
+    latitud, longitud = _coordenadas(datos)
 
     with transaccion(
         id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
@@ -519,7 +540,7 @@ def actualizar_locacion(id_locacion: int, datos: dict, usuario: dict) -> None:
                 """
                 UPDATE operacion.locacion
                    SET nombre = :nombre, tipo_locacion = :tipo, ciudad = :ciudad,
-                       direccion = :direccion
+                       direccion = :direccion, latitud = :latitud, longitud = :longitud
                  WHERE id_locacion = :id
                 """
             ),
@@ -528,6 +549,8 @@ def actualizar_locacion(id_locacion: int, datos: dict, usuario: dict) -> None:
                 "tipo": tipo,
                 "ciudad": (datos.get("ciudad") or "").strip() or None,
                 "direccion": (datos.get("direccion") or "").strip() or None,
+                "latitud": latitud,
+                "longitud": longitud,
                 "id": id_locacion,
             },
         )

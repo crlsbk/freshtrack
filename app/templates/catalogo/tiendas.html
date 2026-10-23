@@ -42,6 +42,14 @@
         <label class="form-label">Dirección</label>
         <input class="input" name="direccion" placeholder="Av. Constitución 1200"/>
       </div>
+      <div>
+        <label class="form-label">Latitud {{ ui.ayuda('Grados decimales, por ejemplo 25.6575. Con latitud y longitud la ubicación aparece en el mapa de tiendas.') }}</label>
+        <input class="input" name="latitud" inputmode="decimal" placeholder="25.6575"/>
+      </div>
+      <div>
+        <label class="form-label">Longitud</label>
+        <input class="input" name="longitud" inputmode="decimal" placeholder="-100.4020"/>
+      </div>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" type="submit">Guardar</button>
@@ -82,7 +90,10 @@
             </span>
           </td>
           <td>{{ l.ciudad or '—' }}</td>
-          <td class="text-muted" style="font-size:12px;">{{ l.direccion or '—' }}</td>
+          <td class="text-muted" style="font-size:12px;">
+            {{ l.direccion or '—' }}
+            {% if l.latitud is none %}<div style="font-size:11px;">Sin coordenadas: no aparece en el mapa</div>{% endif %}
+          </td>
           <td class="mono">{{ l.skus }}</td>
           <td class="mono">{{ l.lotes }}</td>
           <td class="mono">{{ (l.unidades) | cantidad(2) }}</td>
@@ -132,6 +143,14 @@
                 <div>
                   <label class="form-label">Dirección</label>
                   <input class="input" name="direccion" value="{{ l.direccion or '' }}"/>
+                </div>
+                <div>
+                  <label class="form-label">Latitud</label>
+                  <input class="input" name="latitud" inputmode="decimal" value="{{ l.latitud if l.latitud is not none else '' }}"/>
+                </div>
+                <div>
+                  <label class="form-label">Longitud</label>
+                  <input class="input" name="longitud" inputmode="decimal" value="{{ l.longitud if l.longitud is not none else '' }}"/>
                 </div>
               </div>
               <div class="form-actions">

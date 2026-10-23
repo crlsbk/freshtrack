@@ -13,6 +13,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 ICONOS: dict[str, str] = {
     "dashboard": '<path d="M3 4a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm8 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6zM3 12a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1v-4z"/>',
+    "map": '<path fill-rule="evenodd" d="M10 18s6-5.33 6-10a6 6 0 10-12 0c0 4.67 6 10 6 10zm0-7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" clip-rule="evenodd"/>',
     "alerts": '<path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z"/>',
     "products": '<path fill-rule="evenodd" d="M10 2.2l7 3.5v8.6l-7 3.5-7-3.5V5.7l7-3.5zm0 2.24L4.8 6.94 10 9.54l5.2-2.6L10 4.44zM4.5 8.35v6.15l5 2.5V10.8l-5-2.45zm6 8.65l5-2.5V8.35l-5 2.45v6.2z" clip-rule="evenodd"/>',
     "stores": '<path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2.5a2.5 2.5 0 01-4 2 2.5 2.5 0 01-4-2 2.5 2.5 0 01-4 2 2.5 2.5 0 01-2-2.5V4zm1 7.27V16a1 1 0 001 1h10a1 1 0 001-1v-4.73A4.47 4.47 0 0114.5 12a4.47 4.47 0 01-3.5-1.7 4.47 4.47 0 01-3.5 1.7A4.47 4.47 0 014 11.27zM8 15v-2h4v2H8z"/>',
@@ -45,6 +46,7 @@ SECCIONES = [
         "items": [
             {"id": "dashboard", "label": "Panel de control", "endpoint": "panel.dashboard"},
             {"id": "alerts", "label": "Alertas", "endpoint": "panel.alertas"},
+            {"id": "map", "label": "Mapa de tiendas", "endpoint": "panel.mapa"},
         ],
     },
     {
@@ -99,18 +101,18 @@ SECCIONES = [
 # ---------------------------------------------------------------------------
 VISTAS_POR_ROL: dict[str, list[str]] = {
     "admin": [
-        "dashboard", "alerts", "products", "stores", "suppliers", "batches",
+        "dashboard", "alerts", "map", "products", "stores", "suppliers", "batches",
         "inventory", "sales", "fefo", "traceability", "forecast",
         "replenishment", "transfers", "discounts", "shrinkage", "savings",
         "sustainability", "users", "audit", "settings", "mongo_explorer",
         "services",
     ],
     "buyer": [
-        "dashboard", "alerts", "products", "suppliers", "batches", "inventory",
+        "dashboard", "alerts", "map", "products", "suppliers", "batches", "inventory",
         "replenishment", "traceability", "forecast", "mongo_explorer",
     ],
     "planner": [
-        "dashboard", "alerts", "products", "inventory", "sales", "forecast",
+        "dashboard", "alerts", "map", "products", "inventory", "sales", "forecast",
         "replenishment", "transfers", "discounts", "savings", "sustainability",
         "traceability", "batches", "mongo_explorer",
     ],
@@ -118,17 +120,17 @@ VISTAS_POR_ROL: dict[str, list[str]] = {
         # El gerente de tienda es quien aprueba o rechaza lo que el sistema
         # recomienda (reabastecimiento, transferencias y descuentos), así que
         # necesita ver esas pantallas además de la operación de su tienda.
-        "dashboard", "alerts", "batches", "inventory", "sales", "fefo",
+        "dashboard", "alerts", "map", "batches", "inventory", "sales", "fefo",
         "shrinkage", "discounts", "transfers", "replenishment", "traceability",
         "mongo_explorer",
     ],
     "warehouse": [
-        "dashboard", "alerts", "batches", "inventory", "fefo", "shrinkage",
+        "dashboard", "alerts", "map", "batches", "inventory", "fefo", "shrinkage",
         "transfers", "traceability", "mongo_explorer",
     ],
     "supplier": ["dashboard", "products", "batches", "replenishment"],
     "auditor": [
-        "dashboard", "sales", "shrinkage", "sustainability", "audit",
+        "dashboard", "map", "sales", "shrinkage", "sustainability", "audit",
         "traceability", "savings", "mongo_explorer",
     ],
 }

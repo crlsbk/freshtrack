@@ -29,6 +29,7 @@ from app.domain import inventario as dom_inv
 from app.domain import mermas as dom_mermas
 from app.domain import ventas as dom_ventas
 from app.security import login_required, requiere_vista, usuario_actual
+from app.services_client import ServiceError, call_service
 
 bp = Blueprint("operacion", __name__)
 
@@ -129,21 +130,33 @@ def ventas():
             id_sku = int(request.form["id_sku"])
             cantidad = float(request.form["cantidad"])
 
-            resultado = dom_ventas.registrar_venta(
+            fallback = lambda: dom_ventas.registrar_venta(
                 id_locacion=id_locacion,
                 lineas=[{"id_sku": id_sku, "cantidad": cantidad}],
                 usuario=usuario,
             )
+            # Delegar a svc-commercial (5004) para ejecutar la Saga Orquestada
+            resultado = call_service(
+                "commercial",
+                "POST",
+                "/api/v1/commercial/checkout",
+                json_data={
+                    "id_locacion": id_locacion,
+                    "canal": "TIENDA",
+                    "lineas": [{"id_sku": id_sku, "cantidad": cantidad}],
+                },
+                fallback_fn=fallback,
+            )
             reparto = " · ".join(
-                f"{a['consumido']:g} del lote {a['codigo_lote_prov']}"
-                for a in resultado["asignaciones"]
+                f"{a.get('consumido', a.get('cantidad', 0)):g} del lote {a.get('codigo_lote_prov', a.get('id_lote', ''))}"
+                for a in resultado.get("asignaciones", [])
             )
             flash(
-                f"Venta {resultado['folio']} registrada por {resultado['total']:,.2f}. "
-                f"FEFO consumió: {reparto}.",
+                f"Venta {resultado.get('folio')} registrada vía svc-commercial por ${resultado.get('total', 0):,.2f}. "
+                + (f"FEFO consumió: {reparto}." if reparto else "Inventario descontado exitosamente."),
                 "ok",
             )
-        except (ValueError, KeyError) as e:
+        except (ValueError, KeyError, ServiceError) as e:
             flash(f"La venta no se registró: {e}", "error")
         except SQLAlchemyError as e:
             flash(sql_error(e), "error")
@@ -276,6 +289,12 @@ def mermas():
 def trazabilidad():
     id_lote = request.args.get("lote")
     detalle = dom_inv.trazabilidad(id_lote) if id_lote else None
+    if id_lote:
+        try:
+            # Traza de auditoría en svc-audit (5008)
+            call_service("audit", "GET", f"/api/v1/audit/traceability/{id_lote}", timeout=1.5)
+        except Exception:
+            pass
     return render_template(
         "operacion/trazabilidad.html",
         active="traceability",

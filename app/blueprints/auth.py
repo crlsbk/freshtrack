@@ -30,6 +30,7 @@ from app.security import (
     iniciar_sesion_web,
     token_requerido,
 )
+from app.services_client import ServiceError, call_service
 
 bp = Blueprint("auth", __name__)
 
@@ -50,35 +51,74 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
-        usuario, error = autenticar(
-            email, password, ip=_ip(), user_agent=request.headers.get("User-Agent")
-        )
 
-        if usuario:
-            token, jti = crear_token(
-                usuario, ip=_ip(), user_agent=request.headers.get("User-Agent")
+        try:
+            # Delegación HTTP directa a svc-auth (5001)
+            resp = call_service(
+                "auth",
+                "POST",
+                "/api/v1/auth/login",
+                json_data={"email": email, "password": password},
             )
+            token = resp.get("token")
+            jti = resp.get("jti")
+            u_data = resp.get("usuario") or {}
+            usuario = {
+                "id_usuario": u_data.get("id_usuario"),
+                "nombre_completo": u_data.get("nombre", ""),
+                "email": u_data.get("email", email),
+                "rol_clave": u_data.get("rol", ""),
+                "id_locacion": u_data.get("id_locacion"),
+                "nombre_rol": u_data.get("nombre_rol") or u_data.get("rol", "").capitalize(),
+            }
             iniciar_sesion_web(usuario, token, jti)
-            auditoria.registrar(
-                "LOGIN",
-                tabla="usuario",
-                id_registro=usuario["id_usuario"],
-                descripcion=f"Inicio de sesión correcto como {usuario['nombre_rol']}",
-                id_usuario=usuario["id_usuario"],
-                usuario_email=usuario["email"],
-                ip=_ip(),
-                user_agent=request.headers.get("User-Agent"),
-            )
+            session["jwt_token"] = token
+            session["jwt_jti"] = jti
+
             destino = request.args.get("next")
             if destino and destino.startswith("/"):
                 return redirect(destino)
             return redirect(url_for(ruta_inicial(usuario["rol_clave"])))
+        except ServiceError as serr:
+            error = serr.message
+        except Exception:
+            # Fallback transparente si svc-auth está caído
+            usuario, error = autenticar(
+                email, password, ip=_ip(), user_agent=request.headers.get("User-Agent")
+            )
+            if usuario:
+                token, jti = crear_token(
+                    usuario, ip=_ip(), user_agent=request.headers.get("User-Agent")
+                )
+                iniciar_sesion_web(usuario, token, jti)
+                session["jwt_token"] = token
+                session["jwt_jti"] = jti
+                auditoria.registrar(
+                    "LOGIN",
+                    tabla="usuario",
+                    id_registro=usuario["id_usuario"],
+                    descripcion=f"Inicio de sesión correcto como {usuario['nombre_rol']}",
+                    id_usuario=usuario["id_usuario"],
+                    usuario_email=usuario["email"],
+                    ip=_ip(),
+                    user_agent=request.headers.get("User-Agent"),
+                )
+                destino = request.args.get("next")
+                if destino and destino.startswith("/"):
+                    return redirect(destino)
+                return redirect(url_for(ruta_inicial(usuario["rol_clave"])))
 
     return render_template("login.html", error=error, email=email)
 
 
 @bp.route("/logout")
 def logout():
+    token = session.get("jwt_token")
+    if token:
+        try:
+            call_service("auth", "POST", "/api/v1/auth/logout", timeout=2.0)
+        except Exception:
+            pass
     cerrar_sesion_web()
     return redirect(url_for("publico.inicio"))
 

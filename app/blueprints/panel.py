@@ -26,6 +26,7 @@ from app.domain import kpis as motor_kpis
 from app.domain import pronostico as motor_pron
 from app.repos import catalogo as repo
 from app.services import doc_store
+from app.services_client import call_service
 from app.security import login_required, requiere_rol, requiere_vista, usuario_actual
 
 bp = Blueprint("panel", __name__)
@@ -130,11 +131,19 @@ def alertas_cerrar(id_alerta: str):
 @login_required
 @requiere_vista("savings")
 def desperdicio_evitado():
+    # Consulta complementaria al microservicio svc-alerts (5007)
+    esg_api = None
+    try:
+        esg_api = call_service("alerts", "GET", "/api/v1/alerts/esg/carbon-avoided", timeout=2.0)
+    except Exception:
+        pass
+
     return render_template(
         "panel/desperdicio_evitado.html",
         active="savings",
         resumen=motor_kpis.resumen_desperdicio_evitado(),
         sostenibilidad=motor_kpis.kpis_sostenibilidad(180),
+        esg_api=esg_api,
     )
 
 

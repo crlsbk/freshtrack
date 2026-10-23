@@ -20,6 +20,7 @@ from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as motor_reab
 from app.domain import transferencias as motor_tr
 from app.security import login_required, requiere_vista, usuario_actual
+from app.services_client import ServiceError, call_service
 
 bp = Blueprint("analitica", __name__)
 
@@ -58,16 +59,42 @@ def pronostico():
 @requiere_vista("forecast")
 def pronostico_ejecutar():
     try:
-        resultado = motor_pron.ejecutar_pronostico(
+        metodo = request.form.get("metodo", "SUAVIZACION_EXPONENCIAL")
+        horizonte = a_int(request.form.get("horizonte"), 7)
+        ventana = a_int(request.form.get("ventana"), 28)
+        alpha = float(request.form.get("alpha", 0.30) or 0.30)
+        dias_historia = a_int(request.form.get("dias_historia"), 120)
+        id_loc = int(request.form["id_locacion"]) if request.form.get("id_locacion") else None
+
+        payload = {
+            "metodo": metodo,
+            "horizonte": horizonte,
+            "ventana": ventana,
+            "alpha": alpha,
+            "dias_historia": dias_historia,
+        }
+        if id_loc:
+            payload["id_locacion"] = id_loc
+
+        fallback = lambda: motor_pron.ejecutar_pronostico(
             usuario=usuario_actual(),
-            metodo=request.form.get("metodo", "SUAVIZACION_EXPONENCIAL"),
-            horizonte=a_int(request.form.get("horizonte"), 7),
-            ventana=a_int(request.form.get("ventana"), 28),
-            alpha=float(request.form.get("alpha", 0.30) or 0.30),
-            dias_historia=a_int(request.form.get("dias_historia"), 120),
-            id_locacion=int(request.form["id_locacion"]) if request.form.get("id_locacion") else None,
+            metodo=metodo,
+            horizonte=horizonte,
+            ventana=ventana,
+            alpha=alpha,
+            dias_historia=dias_historia,
+            id_locacion=id_loc,
         )
-        if resultado["series"] == 0:
+
+        resultado = call_service(
+            "planning",
+            "POST",
+            "/api/v1/planning/forecast/run",
+            json_data=payload,
+            fallback_fn=fallback,
+        )
+
+        if resultado.get("series", 0) == 0:
             flash(
                 "No hay series con historia suficiente para pronosticar. "
                 "Carga datos con el ETL o registra ventas primero.",
@@ -75,14 +102,14 @@ def pronostico_ejecutar():
             )
         else:
             flash(
-                f"Pronóstico ejecutado ({resultado['metodo_etiqueta']}): "
-                f"{resultado['series']} series de producto + tienda, horizonte "
-                f"{resultado['horizonte']} días. Error medido — "
-                f"MAE {resultado['mae']}, RMSE {resultado['rmse']}, "
-                f"WMAPE {resultado['wmape']}%. Corrida guardada con su trazabilidad.",
+                f"Pronóstico ejecutado vía svc-planning ({resultado.get('metodo_etiqueta', metodo)}): "
+                f"{resultado.get('series')} series de producto + tienda, horizonte "
+                f"{resultado.get('horizonte')} días. Error medido — "
+                f"MAE {resultado.get('mae')}, RMSE {resultado.get('rmse')}, "
+                f"WMAPE {resultado.get('wmape')}%. Corrida guardada con su trazabilidad.",
                 "ok",
             )
-    except (ValueError, SQLAlchemyError) as e:
+    except (ValueError, SQLAlchemyError, ServiceError) as e:
         flash(
             sql_error(e) if isinstance(e, SQLAlchemyError) else str(e),
             "error",
@@ -126,27 +153,35 @@ def reabastecimiento():
 @login_required
 @requiere_vista("replenishment")
 def reabastecimiento_generar():
+    horizonte = a_int(request.form.get("horizonte"), 0) or 7
+    fallback = lambda: motor_reab.generar_recomendaciones(
+        usuario=usuario_actual(),
+        horizonte=horizonte,
+    )
     try:
-        resultado = motor_reab.generar_recomendaciones(
-            usuario=usuario_actual(),
-            horizonte=a_int(request.form.get("horizonte"), 0) or None,
+        resultado = call_service(
+            "planning",
+            "POST",
+            "/api/v1/planning/replenishment/generate",
+            json_data={"horizonte": horizonte},
+            fallback_fn=fallback,
         )
-        if resultado["total"] == 0:
+        if resultado.get("total", 0) == 0:
             flash(
-                f"Se revisaron {resultado['revisadas']} combinaciones de producto y tienda: "
+                f"Se revisaron {resultado.get('revisadas', 0)} combinaciones de producto y tienda: "
                 f"ninguna necesita reabastecimiento en este momento "
                 f"(o ya hay una orden pendiente para las que sí lo necesitan).",
                 "ok",
             )
         else:
             flash(
-                f"Se generaron {resultado['total']} recomendaciones de reabastecimiento "
-                f"a partir de {resultado['revisadas']} combinaciones evaluadas. "
+                f"Se generaron {resultado.get('total')} recomendaciones de reabastecimiento vía svc-planning "
+                f"a partir de {resultado.get('revisadas')} combinaciones evaluadas. "
                 f"Cada una incluye su explicación y queda pendiente de aprobación.",
                 "ok",
             )
         motor_alertas.generar_alertas(usuario_actual())
-    except (ValueError, SQLAlchemyError) as e:
+    except (ValueError, SQLAlchemyError, ServiceError) as e:
         flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
     return redirect(url_for("analitica.reabastecimiento"))
 
@@ -157,24 +192,32 @@ def reabastecimiento_generar():
 def reabastecimiento_decidir(id_orden: str):
     aprobar = request.form.get("decision") == "aprobar"
     cantidad = request.form.get("cantidad")
-    # El formulario viaja con el filtro activo: al decidir, el usuario vuelve a
-    # la misma lista desde la que actuó (si venía de «Pendiente» no pierde la
-    # cola) y el aviso le dice con qué filtro encontrar la orden ya decidida.
     filtro = _filtro_ordenes(request.form.get("filtro"))
+
+    endpoint = f"/api/v1/planning/replenishment/orders/{id_orden}/approve" if aprobar else f"/api/v1/planning/replenishment/orders/{id_orden}/reject"
+    payload = {"cantidad": float(cantidad)} if cantidad and aprobar else {}
+    fallback = lambda: motor_reab.decidir_orden(
+        id_orden,
+        aprobar=aprobar,
+        usuario=usuario_actual(),
+        cantidad=float(cantidad) if cantidad else None,
+    )
+
     try:
-        resultado = motor_reab.decidir_orden(
-            id_orden,
-            aprobar=aprobar,
-            usuario=usuario_actual(),
-            cantidad=float(cantidad) if cantidad else None,
+        resultado = call_service(
+            "planning",
+            "POST",
+            endpoint,
+            json_data=payload,
+            fallback_fn=fallback,
         )
         flash(
-            f"Orden {resultado['estado'].lower()}"
-            + (f" por {resultado['cantidad']:g} unidades." if aprobar else ".")
+            f"Orden {resultado['estado'].lower()} vía svc-planning"
+            + (f" por {resultado.get('cantidad', 0):g} unidades." if aprobar else ".")
             + f" La encuentras con el filtro «{resultado['estado']}».",
             "ok",
         )
-    except (ValueError, SQLAlchemyError) as e:
+    except (ValueError, SQLAlchemyError, ServiceError) as e:
         flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
     return redirect(url_for("analitica.reabastecimiento", estado=filtro))
 

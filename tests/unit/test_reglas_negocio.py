@@ -53,6 +53,8 @@ def test_metodo_desconocido_lanza_error():
 def test_metricas_de_error():
     m = p._metricas([10, 20], [12, 18])
     assert m["mae"] == 2 and m["n"] == 2 and m["wmape"] == pytest.approx(13.3333, rel=1e-3)
+    # suma_real permite agregar el WMAPE global con el mismo denominador que cada serie.
+    assert m["suma_real"] == 30
 
 
 def test_pronosticar_serie_horizonte_y_no_negativo():

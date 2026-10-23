@@ -145,7 +145,7 @@ def _pronosticar_fecha(
 
 def _metricas(reales: list[float], pronosticados: list[float]) -> dict:
     if not reales:
-        return {"mae": None, "rmse": None, "wmape": None, "n": 0}
+        return {"mae": None, "rmse": None, "wmape": None, "n": 0, "suma_real": 0.0}
     errores = [r - p for r, p in zip(reales, pronosticados)]
     mae = sum(abs(e) for e in errores) / len(errores)
     rmse = math.sqrt(sum(e * e for e in errores) / len(errores))
@@ -156,6 +156,7 @@ def _metricas(reales: list[float], pronosticados: list[float]) -> dict:
         "rmse": round(rmse, 4),
         "wmape": round(wmape, 4) if wmape is not None else None,
         "n": len(reales),
+        "suma_real": round(suma_real, 4),
     }
 
 
@@ -341,22 +342,14 @@ def ejecutar_pronostico(
             if metricas["n"]:
                 suma_abs += metricas["mae"] * metricas["n"]
                 suma_cuad += (metricas["rmse"] ** 2) * metricas["n"]
+                suma_real += metricas["suma_real"]
                 n_total += metricas["n"]
 
         mae_global = round(suma_abs / n_total, 4) if n_total else None
         rmse_global = round(math.sqrt(suma_cuad / n_total), 4) if n_total else None
-        wmape_global = None
-        if n_total:
-            suma_real_total = escalar(
-                """
-                SELECT COALESCE(SUM(cantidad), 0) FROM analitica.v_demanda_diaria
-                WHERE fecha >= CURRENT_DATE - :h
-                """,
-                h=horizonte,
-            )
-            suma_real_total = a_float(suma_real_total)
-            if suma_real_total > 0:
-                wmape_global = round(suma_abs / suma_real_total * 100, 4)
+        # Mismo universo en numerador y denominador: los días de backtest de las
+        # series evaluadas (no toda la demanda de todas las tiendas).
+        wmape_global = round(suma_abs / suma_real * 100, 4) if suma_real > 0 else None
 
         duracion = int((time.time() - inicio_reloj) * 1000)
         conn.execute(

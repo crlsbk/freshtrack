@@ -17,6 +17,21 @@ Esta guía técnica está diseñada para realizar una demostración en vivo, pas
 | **URL del Sitio Web (UI)** | `http://127.0.0.1:5000` |
 | **Swagger UI Microservicios** | • `svc-auth` (5001): `http://127.0.0.1:5001/api/v1/docs`<br>• `svc-catalog` (5002): `http://127.0.0.1:5002/api/v1/docs`<br>• `svc-inventory` (5003): `http://127.0.0.1:5003/api/v1/docs`<br>• `svc-commercial` (5004): `http://127.0.0.1:5004/api/v1/docs`<br>• `svc-asn` (5005): `http://127.0.0.1:5005/api/v1/docs`<br>• `svc-planning` (5006): `http://127.0.0.1:5006/api/v1/docs`<br>• `svc-alerts` (5007): `http://127.0.0.1:5007/api/v1/docs`<br>• `svc-audit` (5008): `http://127.0.0.1:5008/api/v1/docs` |
 
+### Antes de empezar
+
+Los comandos de Redis y MongoDB usan las contraseñas del `.env`. Cárgalas en la terminal una vez:
+
+```bash
+set -a; source .env; set +a
+```
+
+Para comprobar todo el flujo de esta guía de un jalón (JSON/XML, JWT, Redis, 401/403 y logout) sin `jq`:
+
+```bash
+make check-planeador                 # resumen de comprobaciones
+make check-planeador CHECK_ARGS=-v   # además imprime los cuerpos JSON y XML
+```
+
 ---
 
 ## Paso 1: Topología Docker y Salud de la Red de Microservicios
@@ -84,19 +99,20 @@ curl -s -X POST http://127.0.0.1:5001/api/v1/auth/login \
 
 #### Inspección de la Sesión en Redis:
 ```bash
-docker exec freshtrack_redis redis-cli -a 999 keys "session:*"
+docker exec freshtrack_redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning keys "session:*"
 ```
 > **Observar**: Se crea una clave `session:<jti>` con tiempo de vida (TTL) alineado a la vigencia del JWT.
 
 #### Demostración de RBAC (Separación de Funciones):
-El planeador intenta aprobar una orden de compra (facultad exclusiva del Comprador/Buyer):
+El planeador intenta listar los usuarios del sistema (facultad exclusiva del Administrador):
 ```bash
-curl -s -X POST http://127.0.0.1:5006/api/v1/planning/replenishment/orders/2f862828-627c-4fd4-a8db-0da60f181c6a/approve \
+curl -s -X GET http://127.0.0.1:5001/api/v1/auth/users \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
   -H "Accept: application/json" | jq .
 ```
-> **Observar**: Código HTTP **403 Forbidden** con mensaje `"rol_no_autorizado"` demostrando que la seguridad RBAC protege el principio de segregación de funciones.
+> **Observar**: Código HTTP **403 Forbidden** con error `"acceso_denegado"` y la lista `roles_permitidos: ["admin"]`, demostrando que RBAC protege la segregación de funciones. Con `-H "Accept: application/xml"` el mismo rechazo llega en XML.
+>
+> Nota: aprobar o rechazar órdenes de reabastecimiento **sí** está permitido al planeador (además de `buyer` y `store_manager`), así que no sirve para demostrar el 403.
 
 ---
 
@@ -146,22 +162,22 @@ curl -s -X POST http://127.0.0.1:5006/api/v1/planning/forecast/run \
 #### 1. PostgreSQL (Fuente Única de la Verdad — Serie Relacional):
 ```bash
 docker exec freshtrack_db psql -U app_backend -d retail_perecederos -c \
-  "SELECT id_run, metodo, horizonte, series, mae, rmse, wmape, duracion_ms, fecha_calculo FROM analitica.forecast_run ORDER BY fecha_calculo DESC LIMIT 1;"
+  "SELECT id_run, metodo, horizonte_dias, n_series, mae, rmse, wmape, duracion_ms, fecha_ejecucion FROM analitica.forecast_run ORDER BY fecha_ejecucion DESC LIMIT 1;"
 ```
 > **Explicación**: PostgreSQL mantiene el registro legal e inmutable de la corrida analítica con su usuario y parámetros.
 
 #### 2. MongoDB (Proyecciones de Alta Velocidad y Series Temporales No Estructuradas):
 ```bash
-docker exec freshtrack_mongo mongosh -u freshtrack_mongo -p 999 --authenticationDatabase admin retail_perecederos --eval \
+docker exec freshtrack_mongo mongosh -u "$MONGO_USER" -p "$MONGO_PASSWORD" --authenticationDatabase admin retail_perecederos --eval \
   'db.pronosticos_demanda.find().sort({fecha_ejecucion:-1}).limit(1)'
 ```
 > **Explicación**: MongoDB almacena el documento BSON enriquecido con la serie completa de predicción día a día, intervalos de confianza y percentiles **P10** (escenario pesimista), **P50** (demanda esperada) y **P90** (pico estacional), enlazado mediante `id_sku` e `id_locacion` relacionales.
 
 #### 3. Redis Streams (Event-Driven Broker):
 ```bash
-docker exec freshtrack_redis redis-cli -a 999 xrevrange freshtrack:events + - COUNT 1
+docker exec freshtrack_redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning xrevrange freshtrack:events + - COUNT 1
 ```
-> **Explicación**: Se observa el evento streaming `PRONOSTICO_CALCULADO` con su `correlation_id`, `user_id` (`Carlos Vega`), `user_role` (`planner`) y payload analítico emitido al bus distribuido.
+> **Explicación**: Se observa el evento streaming `PRONOSTICO_CALCULADO` con su `correlation_id`, `user_id` (UUID de Carlos Vega), `user_role` (`planner`) y payload analítico emitido al bus distribuido.
 
 ### 3.4 Qué mostrar en la Web UI
 1. Navegar a `http://127.0.0.1:5000/pronostico`.
@@ -169,7 +185,7 @@ docker exec freshtrack_redis redis-cli -a 999 xrevrange freshtrack:events + - CO
    - Pasar el cursor sobre los tooltips explicativos `?`:
      - **MAE**: Error absoluto medio (desviación promedio en unidades).
      - **RMSE**: Raíz del error cuadrático medio (penaliza desviaciones atípicas grandes).
-     - **WMAPE**: Error porcentual ponderado por el volumen de venta.
+     - **WMAPE**: Error porcentual ponderado por el volumen de venta (ya viene en %: `12.5` = 12.5 %).
      - **Alpha (α)**: Factor de amortiguación (0.30 pondera 70% historia y 30% tendencia reciente).
 2. Navegar a `http://127.0.0.1:5000/mongo`.
    - Mostrar la colección `pronosticos_demanda` en el explorador interactivo integrado, demostrando cómo la interfaz web consulta en vivo la base de datos documental.
@@ -231,7 +247,7 @@ curl -s -X GET http://127.0.0.1:5007/api/v1/alerts/esg/carbon-avoided \
 
 #### Verificación del Índice TTL en MongoDB:
 ```bash
-docker exec freshtrack_mongo mongosh -u freshtrack_mongo -p 999 --authenticationDatabase admin retail_perecederos --eval \
+docker exec freshtrack_mongo mongosh -u "$MONGO_USER" -p "$MONGO_PASSWORD" --authenticationDatabase admin retail_perecederos --eval \
   'db.alertas_operativas.getIndexes()'
 ```
 > **Explicación**: Señalar el índice `{ expireAfterSeconds: 15552000 }` (180 días). MongoDB purga automáticamente las alertas viejas sin necesidad de tareas cron de mantenimiento.
@@ -260,7 +276,7 @@ echo $LOGOUT_RESP | jq .
 
 #### 2. Comprobar la Denylist en Redis (< 0.2 ms):
 ```bash
-docker exec freshtrack_redis redis-cli -a 999 keys "jwt:denylist:*"
+docker exec freshtrack_redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning keys "jwt:denylist:*"
 ```
 > **Observar**: La clave `jwt:denylist:<jti>` fue creada atómicamente con un TTL exacto a los segundos restantes de vida del token.
 

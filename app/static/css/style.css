@@ -169,6 +169,10 @@ a { color: var(--primary); }
 .topbar-breadcrumb .parent  { font-size: 13px; color: var(--muted-foreground); }
 .topbar-breadcrumb .sep     { font-size: 13px; color: #d1d5db; }
 .topbar-breadcrumb .current { font-size: 14px; font-weight: 600; color: var(--foreground); }
+/* Con poco ancho la ruta se corta con «…» en vez de partirse y encimarse. */
+.topbar-breadcrumb { white-space: nowrap; overflow: hidden; }
+.topbar-breadcrumb .parent, .topbar-breadcrumb .sep { flex-shrink: 0; }
+.topbar-breadcrumb .current { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .topbar-bell {
   position: relative; background: none; border: none; cursor: pointer; padding: 8px;
   border-radius: 8px; display: flex; align-items: center;
@@ -227,6 +231,17 @@ html[data-theme="dark"] .topbar-theme-toggle .icon-sun { display: block; color: 
 html[data-theme="light"] .topbar-theme-toggle .icon-sun { display: none; }
 :root .topbar-theme-toggle .icon-moon,
 html[data-theme="light"] .topbar-theme-toggle .icon-moon { display: block; color: var(--foreground-2); }
+
+/* ── Botón de idioma ES / EN (lo controla js/i18n.js) ── */
+.lang-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px; height: 36px; padding: 0 8px; border-radius: var(--radius-sm);
+  background: var(--card); border: 1px solid var(--border); color: var(--foreground-2);
+  font: 600 12px/1 inherit; letter-spacing: .4px; cursor: pointer;
+  transition: background .15s, color .15s, transform .15s;
+}
+.lang-toggle:hover { background: var(--muted); color: var(--foreground); transform: translateY(-1px); }
+.lang-toggle--flotante { position: fixed; top: 16px; right: 16px; z-index: 50; }
 
 /* ── Selector dinámico de ventana de tiempo ── */
 .ventana-selector {

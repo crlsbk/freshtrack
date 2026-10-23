@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
 </head>
 <body>
+<button class="lang-toggle lang-toggle--flotante" type="button" data-lang-toggle>EN</button>
 <div class="login-page">
 
   {# ── Formulario ── #}
@@ -119,5 +120,6 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 </body>
 </html>

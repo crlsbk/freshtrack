@@ -181,6 +181,7 @@ details.plegable > .plegable-cuerpo > .card, details.plegable > .plegable-cuerpo
 .landing-nav-links { display: flex; gap: 24px; }
 .landing-nav-links a { font-size: 14px; color: var(--muted-foreground); text-decoration: none; font-weight: 500; }
 .landing-nav-links a:hover { color: var(--foreground); }
+.landing-nav-acciones { display: flex; align-items: center; gap: 10px; }
 .landing-hero { padding: 80px 40px 64px; max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 1.15fr .85fr; gap: 56px; align-items: center; }
 .landing-etiqueta { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--primary-hover); background: var(--success-bg); border: 1px solid var(--success-border); border-radius: 99px; padding: 5px 13px; margin-bottom: 20px; }
 .landing-h1 { font-size: 46px; font-weight: 700; line-height: 1.1; letter-spacing: -1.2px; margin-bottom: 18px; }

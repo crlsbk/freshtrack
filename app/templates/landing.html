@@ -28,7 +28,10 @@
       <a href="#beneficios">Beneficios</a>
       <a href="#funcionamiento">Cómo funciona</a>
     </div>
-    <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Acceder al sistema</a>
+    <div class="landing-nav-acciones">
+      <button class="lang-toggle" type="button" data-lang-toggle>EN</button>
+      <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Acceder al sistema</a>
+    </div>
   </nav>
 
   {# ── Presentación ── #}
@@ -291,5 +294,6 @@
   </footer>
 
 </div>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 </body>
 </html>

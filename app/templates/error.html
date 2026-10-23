@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/freshtrack.css') }}"/>
 </head>
 <body>
+<button class="lang-toggle lang-toggle--flotante" type="button" data-lang-toggle>EN</button>
 <div class="error-page">
   <div class="error-codigo">{{ codigo }}</div>
   <h1 class="view-title">
@@ -23,5 +24,6 @@
     {% endif %}
   </div>
 </div>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 </body>
 </html>

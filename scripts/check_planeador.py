@@ -98,9 +98,10 @@ def mostrar(cuerpo: str, es_xml: bool) -> None:
 
 
 def http(metodo: str, url: str, *, token: str | None = None, cuerpo: str | None = None,
-         content_type: str = "application/json", accept: str = "application/json") -> tuple[int, str, str]:
+         content_type: str = "application/json", accept: str = "application/json",
+         cid: str | None = None) -> tuple[int, str, str]:
     """Devuelve (status, content-type, cuerpo). Nunca lanza por códigos 4xx/5xx."""
-    headers = {"Accept": accept, "X-Correlation-Id": f"check-planeador-{int(time.time())}"}
+    headers = {"Accept": accept, "X-Correlation-Id": cid or f"check-planeador-{int(time.time())}"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     datos = None

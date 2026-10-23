@@ -379,8 +379,8 @@ Swagger UI: `http://localhost:5006/api/v1/docs`
 | `POST` | `/api/v1/planning/forecast/run` | Ejecuta una corrida de pronóstico | JWT · admin, buyer, planner | JSON/XML + XSD | 201, 400, 401, 403, 500 |
 | `POST` | `/api/v1/planning/replenishment/generate` | Genera órdenes de reabastecimiento sugeridas | JWT · admin, buyer, planner | JSON/XML | 201, 400, 401, 403, 500 |
 | `GET` | `/api/v1/planning/replenishment/orders` | Órdenes de reabastecimiento (filtros y paginación) | JWT · admin, buyer, planner, store_manager |  | 200, 400, 401, 403, 500 |
-| `POST` | `/api/v1/planning/replenishment/orders/{id_orden}/approve` | Aprueba una orden PENDIENTE (cantidad opcional) | JWT · admin, buyer | JSON/XML | 200, 400, 401, 403, 404, 409, 500 |
-| `POST` | `/api/v1/planning/replenishment/orders/{id_orden}/reject` | Rechaza una orden PENDIENTE | JWT · admin, buyer |  | 200, 401, 403, 404, 409, 500 |
+| `POST` | `/api/v1/planning/replenishment/orders/{id_orden}/approve` | Aprueba una orden PENDIENTE (cantidad opcional) | JWT · admin, buyer, planner, store_manager | JSON/XML | 200, 400, 401, 403, 404, 409, 500 |
+| `POST` | `/api/v1/planning/replenishment/orders/{id_orden}/reject` | Rechaza una orden PENDIENTE | JWT · admin, buyer, planner, store_manager |  | 200, 401, 403, 404, 409, 500 |
 | `GET` | `/api/v1/planning/sku/{sku_id}/full-context` | Contexto híbrido PostgreSQL + MongoDB de un SKU | JWT · cualquier usuario autenticado |  | 200, 400, 401, 404, 500 |
 | `GET` | `/health` | Estado del microservicio y de sus dependencias (PostgreSQL, MongoDB, Redis). | Pública |  | 200, 500 |
 

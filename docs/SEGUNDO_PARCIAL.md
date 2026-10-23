@@ -30,7 +30,7 @@ Este documento describe lo que **está implementado y probado** en el código. C
 | Bugs | `approve` de órdenes escribía una columna inexistente (500); `full-context` consultaba columnas inexistentes (500); la reserva FEFO continuaba aunque otro proceso tuviera el lock; `PATCH` permitía precio de venta < costo; el rate limit de login por IP bloqueaba a toda una oficina; el stream de eventos crecía sin límite | Corregidos y cubiertos por pruebas |
 | Resiliencia | Si Redis o Mongo no respondían, **cada** petición esperaba su timeout | Reintento cada 10 s; las operaciones degradan sin excepción |
 | Docker | La app web apuntaba a `localhost` dentro del contenedor; código montado como volumen; sin healthchecks en los servicios; sin `.dockerignore` | Red `freshtrack`, variables por nombre de servicio, healthcheck en los 12 contenedores, imágenes autocontenidas |
-| Web ↔ microservicios | La web no se comunicaba con los servicios | Pantalla **Administración → Microservicios**: consulta `/health` de los 8 servicios por HTTP, valida el JWT de la sesión web en `svc-auth` y muestra los contadores de Redis |
+| Web ↔ microservicios | La web llamaba directo a PostgreSQL y a funciones en Python; los servicios solo se usaban desde Swagger/Postman | La web es el **frontend de los microservicios**: login, ventas, mermas, productos, pronóstico y reabastecimiento se ejecutan en ellos por HTTP con el JWT del usuario; gateway `/svc/...` para el navegador y consola de pruebas (ver §2.3) |
 | Interfaz | Textos técnicos/defensivos ("no es un valor de ejemplo", "Guardar en PostgreSQL", nombres de tablas) | Descripciones orientadas a la tarea del usuario |
 | Pruebas | Scripts `verify_*` sin framework | **pytest**: 81 unitarias + 25 de integración entre servicios |
 | CI/CD | No existía | GitHub Actions: pruebas → arquitectura completa en compose → imágenes en GHCR → despliegue por SSH |
@@ -130,6 +130,34 @@ flowchart TB
   GH -->|SSH: pull + up -d| Host
   GHCR --> Host
 ```
+
+### 2.3 La web como frontend de los microservicios
+
+El sistema web ya no ejecuta las operaciones de negocio por su cuenta: las delega por HTTP al
+microservicio responsable, reenviando el JWT del usuario. Cada servicio aplica su propio RBAC,
+validación y reglas, y la web solo muestra el resultado (o el error controlado que devuelva).
+
+| Pantalla de la web | Acción | Microservicio y endpoint |
+|---|---|---|
+| Inicio de sesión | Validar credenciales y emitir JWT | `svc-auth` `POST /api/v1/auth/login` |
+| Salir | Revocar el token (PostgreSQL + denylist Redis) | `svc-auth` `POST /api/v1/auth/logout` |
+| Ventas | Registrar venta (Saga FEFO con compensación) | `svc-commercial` `POST /api/v1/commercial/checkout` |
+| Mermas | Registrar merma | `svc-commercial` `POST /api/v1/commercial/shrinkage` |
+| Productos | Alta, edición, activar/desactivar | `svc-catalog` `POST` / `PATCH /api/v1/catalog/products` |
+| Pronósticos | Ejecutar corrida | `svc-planning` `POST /api/v1/planning/forecast/run` |
+| Reabastecimiento | Generar, aprobar y rechazar órdenes | `svc-planning` `POST /api/v1/planning/replenishment/...` |
+| Administración → Microservicios | Estado de los servicios, sesión y consola de consultas | `/health` de los 8 + gateway `/svc/<servicio>/...` |
+
+- **Gateway del navegador:** `GET|POST|PUT|PATCH|DELETE /svc/<servicio>/<ruta>` reenvía la petición
+  al contenedor con el token de la sesión (el token nunca llega al JavaScript). Las peticiones se
+  ven en F12 → Red, y en `docker compose logs -f svc_<servicio>` con el mismo `X-Correlation-Id`.
+- **Mensajes:** cada operación confirma qué servicio la ejecutó, p. ej. «Venta VT-3-… registrada
+  por $24.90 a través de svc-commercial». Si el servicio rechaza (403, 409, 400) se muestra su
+  mensaje; si no responde, se avisa que no está disponible.
+- **Permisos alineados:** los formularios solo se muestran a los roles que el servicio autoriza
+  (p. ej. el auditor ya no ve «Registrar venta»).
+- **Modo autónomo:** `WEB_USA_MICROSERVICIOS=false` hace que la web vuelva a operar sola contra
+  PostgreSQL, solo para desarrollar la interfaz sin levantar los 8 servicios. En Docker es `true`.
 
 ---
 

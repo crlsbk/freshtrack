@@ -213,7 +213,7 @@ def listar_usuarios():
 
 
 def _revocar_sesiones_pg(id_usuario: str) -> int:
-    with transaccion() as conn:
+    with transaccion(id_usuario=g.usuario_actual.get("sub"), usuario_email=g.usuario_actual.get("email")) as conn:
         res = conn.execute(
             text(
                 "UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now() "
@@ -245,7 +245,7 @@ def cambiar_estado_usuario(id_usuario: str):
     if id_usuario == g.usuario_actual.get("sub") and not activo:
         return error_response(409, "regla_negocio", "Un administrador no puede desactivarse a sí mismo.")
 
-    with transaccion() as conn:
+    with transaccion(id_usuario=g.usuario_actual.get("sub"), usuario_email=g.usuario_actual.get("email")) as conn:
         res = conn.execute(
             text("UPDATE operacion.usuario SET estado_activo = :act WHERE id_usuario = CAST(:uid AS uuid)"),
             {"act": activo, "uid": id_usuario},

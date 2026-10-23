@@ -16,6 +16,20 @@ from app.db import sql_error
 from app.repos import catalogo as repo
 from app.security import login_required, requiere_vista
 from app.security import usuario_actual
+from app.services import clientes
+
+CAMPOS_PRODUCTO = (
+    "codigo_gtin", "nombre", "categoria", "unidad_medida", "vida_util_estandar", "precio_costo",
+    "precio_venta", "id_proveedor", "stock_seguridad", "punto_reorden",
+)
+
+
+def _producto_desde_formulario() -> dict:
+    """Solo los campos capturados en el formulario (los vacíos no se envían)."""
+    cuerpo = {c: request.form[c].strip() for c in CAMPOS_PRODUCTO if request.form.get(c, "").strip()}
+    if "perecedero" in request.form:
+        cuerpo["perecedero"] = request.form.get("perecedero") in ("1", "on", "true")
+    return cuerpo
 from sqlalchemy.exc import SQLAlchemyError
 
 bp = Blueprint("catalogo", __name__)
@@ -29,6 +43,14 @@ bp = Blueprint("catalogo", __name__)
 @requiere_vista("products")
 def productos():
     usuario = usuario_actual()
+
+    if request.method == "POST" and clientes.activo():
+        status, r = clientes.como_usuario("catalog", "POST", "/api/v1/catalog/products", _producto_desde_formulario())
+        if status == 201:
+            flash(f"Producto «{r['nombre']}» dado de alta por svc-catalog (SKU {r['id_sku']}).", "ok")
+        else:
+            flash(f"El producto no se registró: {clientes.mensaje_error('catalog', status, r)}", "error")
+        return redirect(url_for("catalogo.productos"))
 
     if request.method == "POST":
         try:
@@ -57,6 +79,13 @@ def productos():
 @login_required
 @requiere_vista("products")
 def editar_producto(id_sku: int):
+    if clientes.activo():
+        status, r = clientes.como_usuario("catalog", "PATCH", f"/api/v1/catalog/products/{id_sku}", _producto_desde_formulario())
+        if status == 200:
+            flash(f"Producto SKU {id_sku} actualizado por svc-catalog.", "ok")
+        else:
+            flash(f"El producto no cambió: {clientes.mensaje_error('catalog', status, r)}", "error")
+        return redirect(url_for("catalogo.productos"))
     try:
         repo.actualizar_producto(id_sku, request.form, usuario_actual())
         flash(f"Producto SKU {id_sku} actualizado.", "ok")
@@ -72,6 +101,13 @@ def editar_producto(id_sku: int):
 @requiere_vista("products")
 def estado_producto(id_sku: int):
     activo = request.form.get("activo") == "1"
+    if clientes.activo():
+        status, r = clientes.como_usuario("catalog", "PATCH", f"/api/v1/catalog/products/{id_sku}", {"activo": activo})
+        if status == 200:
+            flash(f"Producto SKU {id_sku} {'activado' if activo else 'desactivado'} por svc-catalog.", "ok")
+        else:
+            flash(f"El producto no cambió: {clientes.mensaje_error('catalog', status, r)}", "error")
+        return redirect(url_for("catalogo.productos"))
     try:
         repo.cambiar_estado_producto(id_sku, activo, usuario_actual())
         flash(

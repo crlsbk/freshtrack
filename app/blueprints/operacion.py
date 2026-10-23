@@ -29,6 +29,7 @@ from app.domain import inventario as dom_inv
 from app.domain import mermas as dom_mermas
 from app.domain import ventas as dom_ventas
 from app.security import login_required, requiere_vista, usuario_actual
+from app.services import clientes
 
 bp = Blueprint("operacion", __name__)
 
@@ -122,6 +123,31 @@ def inventario():
 @requiere_vista("sales")
 def ventas():
     usuario = usuario_actual()
+
+    if request.method == "POST" and clientes.activo():
+        # La venta la ejecuta svc-commercial con la Saga orquestada (reserva FEFO →
+        # venta → descuento de existencias, con compensación si algo falla).
+        status, r = clientes.como_usuario(
+            "commercial", "POST", "/api/v1/commercial/checkout",
+            {
+                "id_locacion": request.form.get("id_locacion"),
+                "canal": "TIENDA",
+                "lineas": [{"id_sku": request.form.get("id_sku"), "cantidad": request.form.get("cantidad")}],
+            },
+        )
+        if status == 201:
+            reparto = " · ".join(
+                f"{float(a.get('cantidad', a.get('consumido', 0))):g} del lote {a.get('codigo_lote') or a.get('codigo_lote_prov', '')}"
+                for a in r.get("lineas", [])
+            )
+            flash(
+                f"Venta {r['folio']} registrada por ${r['total']:,.2f} a través de svc-commercial. "
+                f"Lotes consumidos (FEFO): {reparto}.",
+                "ok",
+            )
+        else:
+            flash(f"La venta no se registró: {clientes.mensaje_error('commercial', status, r)}", "error")
+        return redirect(url_for("operacion.ventas"))
 
     if request.method == "POST":
         try:
@@ -227,6 +253,29 @@ def fefo():
 @requiere_vista("shrinkage")
 def mermas():
     usuario = usuario_actual()
+
+    if request.method == "POST" and clientes.activo():
+        status, r = clientes.como_usuario(
+            "commercial", "POST", "/api/v1/commercial/shrinkage",
+            {
+                "id_lote": request.form.get("id_lote"),
+                "id_locacion": request.form.get("id_locacion"),
+                "cantidad": request.form.get("cantidad"),
+                "causa": request.form.get("causa_merma"),
+                "observacion": request.form.get("observacion"),
+            },
+        )
+        if status == 201:
+            flash(
+                f"Merma registrada a través de svc-commercial: {float(r['cantidad']):g} "
+                f"{r.get('unidad_medida', '')} de {r.get('producto', '')} (lote {r.get('codigo_lote_prov', '')}) "
+                f"por {r.get('causa_etiqueta', r.get('causa', ''))}. Valor ${float(r.get('valor_merma', 0)):,.2f}. "
+                f"Quedan {float(r.get('existencia_restante', 0)):g} en existencia.",
+                "ok",
+            )
+        else:
+            flash(f"La merma no se registró: {clientes.mensaje_error('commercial', status, r)}", "error")
+        return redirect(url_for("operacion.mermas"))
 
     if request.method == "POST":
         try:

@@ -17,6 +17,7 @@
   {{ ui.kpi('Ticket promedio', ui.moneda(resumen.ticket_promedio)) }}
 </div>
 
+{% if current_role in ['admin', 'store_manager', 'warehouse'] %}
 <div class="form-card">
   <div class="card-title">Registrar venta</div>
   <form method="post" action="{{ url_for('operacion.ventas') }}" id="form-venta">
@@ -63,6 +64,7 @@
   </div>
 </div>
 
+{% endif %}
 <form class="filtros" method="get" action="{{ url_for('operacion.ventas') }}">
   <div class="campo campo-ancho">
     <label class="form-label" for="q">Buscar</label>

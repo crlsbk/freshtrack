@@ -140,6 +140,17 @@ services:
       SVC_PLANNING_URL: http://svc_planning:5006
       SVC_ALERTS_URL: http://svc_alerts:5007
       SVC_AUDIT_URL: http://svc_audit:5008
+      # La web es el frontend de los microservicios: login, ventas, mermas, productos,
+      # pronóstico y reabastecimiento se ejecutan en ellos por HTTP.
+      WEB_USA_MICROSERVICIOS: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      svc_auth: { condition: service_healthy }
+      svc_catalog: { condition: service_healthy }
+      svc_commercial: { condition: service_healthy }
+      svc_planning: { condition: service_healthy }
     ports:
       - "${APP_PORT:-5000}:5000"
     command: ["python", "run.py"]

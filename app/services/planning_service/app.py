@@ -195,7 +195,7 @@ def _decidir(id_orden: str, aprobar: bool):
     errores=("400", "409"),
     exito="200",
 )
-@requiere_auth("buyer")
+@requiere_auth("buyer", "store_manager", "planner")
 def aprobar_orden(id_orden: str):
     """Aprobación humana: solo órdenes PENDIENTE; registra quién y cuándo decidió."""
     return _decidir(id_orden, aprobar=True)
@@ -203,7 +203,7 @@ def aprobar_orden(id_orden: str):
 
 @app.post("/api/v1/planning/replenishment/orders/<id_orden>/reject")
 @documentar("Rechaza una orden PENDIENTE", raiz_respuesta="orden_decision", errores=("409",), exito="200")
-@requiere_auth("buyer")
+@requiere_auth("buyer", "store_manager", "planner")
 def rechazar_orden(id_orden: str):
     """Rechazo humano de la orden sugerida."""
     return _decidir(id_orden, aprobar=False)

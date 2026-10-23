@@ -20,6 +20,7 @@ from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as motor_reab
 from app.domain import transferencias as motor_tr
 from app.security import login_required, requiere_vista, usuario_actual
+from app.services import clientes
 
 bp = Blueprint("analitica", __name__)
 
@@ -57,6 +58,30 @@ def pronostico():
 @login_required
 @requiere_vista("forecast")
 def pronostico_ejecutar():
+    if clientes.activo():
+        # El cálculo lo hace svc-planning: guarda la corrida en PostgreSQL y la serie en MongoDB.
+        cuerpo = {
+            "metodo": request.form.get("metodo", "SUAVIZACION_EXPONENCIAL"),
+            "horizonte": request.form.get("horizonte") or 7,
+            "ventana": request.form.get("ventana") or 28,
+            "alpha": request.form.get("alpha") or 0.30,
+            "dias_historia": request.form.get("dias_historia") or 120,
+        }
+        if request.form.get("id_locacion"):
+            cuerpo["id_locacion"] = request.form["id_locacion"]
+        status, r = clientes.como_usuario("planning", "POST", "/api/v1/planning/forecast/run", cuerpo, timeout=120)
+        if status == 201 and r.get("series", 0) == 0:
+            flash("No hay series con historia suficiente para pronosticar. Carga datos con el ETL o registra ventas primero.", "error")
+        elif status == 201:
+            flash(
+                f"Pronóstico ejecutado por svc-planning ({r.get('metodo_etiqueta', r.get('metodo'))}): "
+                f"{r['series']} series de producto + tienda, horizonte {r['horizonte']} días. "
+                f"Error medido — MAE {r['mae']}, RMSE {r['rmse']}, WMAPE {r['wmape']}%.",
+                "ok",
+            )
+        else:
+            flash(f"El pronóstico no se ejecutó: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.pronostico"))
     try:
         resultado = motor_pron.ejecutar_pronostico(
             usuario=usuario_actual(),
@@ -126,6 +151,19 @@ def reabastecimiento():
 @login_required
 @requiere_vista("replenishment")
 def reabastecimiento_generar():
+    if clientes.activo():
+        cuerpo = {"horizonte": request.form.get("horizonte")} if request.form.get("horizonte") else {}
+        status, r = clientes.como_usuario("planning", "POST", "/api/v1/planning/replenishment/generate", cuerpo, timeout=120)
+        if status == 201:
+            flash(
+                f"svc-planning revisó {r.get('revisadas', 0)} combinaciones de producto y tienda y generó "
+                f"{r.get('total', 0)} recomendaciones nuevas (quedan pendientes de aprobación).",
+                "ok",
+            )
+            motor_alertas.generar_alertas(usuario_actual())
+        else:
+            flash(f"No se generaron recomendaciones: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.reabastecimiento"))
     try:
         resultado = motor_reab.generar_recomendaciones(
             usuario=usuario_actual(),
@@ -161,6 +199,22 @@ def reabastecimiento_decidir(id_orden: str):
     # la misma lista desde la que actuó (si venía de «Pendiente» no pierde la
     # cola) y el aviso le dice con qué filtro encontrar la orden ya decidida.
     filtro = _filtro_ordenes(request.form.get("filtro"))
+    if clientes.activo():
+        accion = "approve" if aprobar else "reject"
+        cuerpo = {"cantidad": cantidad} if (aprobar and cantidad) else {}
+        status, r = clientes.como_usuario(
+            "planning", "POST", f"/api/v1/planning/replenishment/orders/{id_orden}/{accion}", cuerpo
+        )
+        if status == 200:
+            flash(
+                f"Orden {r['estado'].lower()} a través de svc-planning"
+                + (f" por {float(r['cantidad']):g} unidades." if aprobar and r.get("cantidad") is not None else ".")
+                + f" La encuentras con el filtro «{r['estado']}».",
+                "ok",
+            )
+        else:
+            flash(f"La orden no cambió: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.reabastecimiento", estado=filtro))
     try:
         resultado = motor_reab.decidir_orden(
             id_orden,

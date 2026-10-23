@@ -28,12 +28,15 @@
   </div>
   <button class="btn btn-primary" type="submit">Filtrar</button>
   <a class="btn btn-ghost" href="{{ url_for('catalogo.productos') }}">Limpiar</a>
+  {% if current_role in ['admin', 'buyer'] %}
   <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nuevo-producto')">
     + Nuevo producto
   </button>
+  {% endif %}
 </form>
 
 {# ── Formulario de alta ── #}
+{% if current_role in ['admin', 'buyer'] %}
 <div class="form-card" id="form-nuevo-producto" style="display:none;">
   <div class="card-title">Registrar producto</div>
   <form method="post" action="{{ url_for('catalogo.productos') }}">
@@ -109,6 +112,7 @@
     </div>
   </form>
 </div>
+{% endif %}
 
 {# ── Listado ── #}
 <div class="table-wrap">
@@ -163,6 +167,7 @@
             {% endif %}
           </td>
           <td>
+            {% if current_role in ['admin', 'buyer'] %}
             <div class="acciones">
               <button class="btn btn-ghost btn-sm" type="button"
                       onclick="toggleForm('editar-producto-{{ p.id_sku }}')">Editar</button>
@@ -175,6 +180,7 @@
                 </button>
               </form>
             </div>
+            {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
         </tr>
         <tr id="editar-producto-{{ p.id_sku }}" style="display:none;">

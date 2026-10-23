@@ -43,15 +43,31 @@ def url_publica(clave: str) -> str:
     return f"http://{host}:{svc['puerto']}"
 
 
-def llamar(clave: str, metodo: str, ruta: str, *, token: str | None = None, cuerpo: Any = None, timeout: float = 3.0) -> tuple[int, Any]:
+def nombre(clave: str) -> str:
+    return next(s["nombre"] for s in SERVICIOS if s["clave"] == clave)
+
+
+def llamar(
+    clave: str,
+    metodo: str,
+    ruta: str,
+    *,
+    token: str | None = None,
+    cuerpo: Any = None,
+    timeout: float = 3.0,
+    correlation_id: str | None = None,
+) -> tuple[int, Any]:
     """Petición JSON a un microservicio. Devuelve (status, cuerpo); status 0 si no respondió."""
-    datos = json.dumps(cuerpo).encode() if cuerpo is not None else None
+    datos = json.dumps(cuerpo, default=str).encode() if cuerpo is not None else None
     req = urllib.request.Request(url_interna(clave) + ruta, data=datos, method=metodo)
     req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", "freshtrack-web")
     if datos is not None:
         req.add_header("Content-Type", "application/json")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
+    if correlation_id:
+        req.add_header("X-Correlation-Id", correlation_id)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, json.loads(resp.read() or b"null")
@@ -82,3 +98,77 @@ def estado_servicios() -> list[dict[str, Any]]:
 
     with ThreadPoolExecutor(max_workers=len(SERVICIOS)) as pool:
         return list(pool.map(consultar, SERVICIOS))
+
+
+# =============================================================================
+# La web como frontend de los microservicios
+# =============================================================================
+def como_usuario(clave: str, metodo: str, ruta: str, cuerpo: Any = None, timeout: float = 15.0) -> tuple[int, Any]:
+    """
+    Llama a un microservicio en nombre del usuario de la sesión web: reenvía su JWT
+    (el servicio aplica su propio RBAC) y un X-Correlation-Id para seguir la operación
+    en los logs de ambos lados.
+    """
+    import logging
+    import uuid
+
+    from flask import g, has_request_context, session
+
+    token = session.get("token") if has_request_context() else None
+    cid = uuid.uuid4().hex
+    if has_request_context():
+        g.ultimo_correlation_id = cid
+    inicio = time.perf_counter()
+    status, respuesta = llamar(clave, metodo, ruta, token=token, cuerpo=cuerpo, timeout=timeout, correlation_id=cid)
+    logging.getLogger("freshtrack.web").info(
+        "web -> %s %s %s = %s (%.0f ms, cid=%s)",
+        nombre(clave), metodo, ruta, status or "sin respuesta", (time.perf_counter() - inicio) * 1000, cid,
+    )
+    return status, respuesta
+
+
+def mensaje_error(clave: str, status: int, respuesta: Any) -> str:
+    """Texto para el usuario cuando un microservicio rechaza o no atiende la operación."""
+    if status == 0:
+        return f"{nombre(clave)} no está disponible en este momento. Intenta de nuevo en unos segundos."
+    texto = (respuesta or {}).get("mensaje") if isinstance(respuesta, dict) else None
+    if status == 403:
+        return f"Tu rol no tiene permiso para esta operación ({nombre(clave)} respondió 403)."
+    if status == 401:
+        return "Tu sesión expiró o fue cerrada. Vuelve a iniciar sesión."
+    detalle = ""
+    if isinstance(respuesta, dict) and isinstance(respuesta.get("detalles"), dict):
+        faltantes = respuesta["detalles"].get("faltantes")
+        if faltantes:
+            detalle = " Faltan: " + ", ".join(faltantes) + "."
+    return f"{texto or 'La operación no se completó.'}{detalle} ({nombre(clave)}, HTTP {status})"
+
+
+def activo() -> bool:
+    """
+    Si la web delega las operaciones en los microservicios (por omisión sí).
+    WEB_USA_MICROSERVICIOS=false deja a la web en modo autónomo, útil al desarrollar
+    solo la interfaz sin levantar los 8 servicios.
+    """
+    return os.getenv("WEB_USA_MICROSERVICIOS", "true").strip().lower() not in ("0", "false", "no")
+
+
+def reenviar(clave: str, metodo: str, ruta: str, consulta: str, cuerpo: bytes | None,
+             content_type: str | None, accept: str | None, token: str | None) -> tuple[int, bytes, str, str]:
+    """Reenvía una petición tal cual (para el gateway /svc/... que usa el navegador)."""
+    url = url_interna(clave) + ruta + (f"?{consulta}" if consulta else "")
+    req = urllib.request.Request(url, data=cuerpo or None, method=metodo)
+    req.add_header("Accept", accept or "application/json")
+    req.add_header("User-Agent", "freshtrack-web-gateway")
+    if content_type and cuerpo:
+        req.add_header("Content-Type", content_type)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, resp.read(), resp.headers.get("Content-Type", "application/json"), resp.headers.get("X-Correlation-Id", "")
+    except urllib.error.HTTPError as err:
+        return err.code, err.read(), err.headers.get("Content-Type", "application/json"), err.headers.get("X-Correlation-Id", "")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        cuerpo_error = json.dumps({"error": "servicio_no_disponible", "mensaje": f"{nombre(clave)} no respondió."}).encode()
+        return 502, cuerpo_error, "application/json", ""

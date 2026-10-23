@@ -77,6 +77,24 @@ def main() -> int:
     st, cuerpo = pedir(base("svc-inventory") + "/api/v1/inventory/stock", headers=auth)
     paso("token revocado rechazado en svc-inventory (401)", st == 401 and "token_revocado" in cuerpo, str(st))
 
+    # --- La web como frontend: login por formulario (svc-auth) y gateway /svc/... ---
+    import http.cookiejar
+    import urllib.parse
+
+    jar = http.cookiejar.CookieJar()
+    navegador = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    datos = urllib.parse.urlencode({"email": "admin@freshtrack.mx", "password": "Admin2026!"}).encode()
+    try:
+        r = navegador.open(base("web") + "/login", data=datos, timeout=15)
+        paso("login en la web (delegado a svc-auth)", r.status == 200 and "/login" not in r.geturl(), r.geturl())
+        r = navegador.open(urllib.request.Request(base("web") + "/svc/inventory/api/v1/inventory/stock?por_pagina=1",
+                                                  headers={"Accept": "application/xml"}), timeout=15)
+        cuerpo = r.read().decode()
+        paso("gateway web /svc/inventory → svc-inventory (XML)",
+             r.status == 200 and r.headers.get("X-Servicio") == "svc-inventory" and cuerpo.startswith("<?xml"), str(r.status))
+    except Exception as e:  # noqa: BLE001
+        paso("flujo web → microservicios", False, str(e))
+
     print(f"\n{'TODO CORRECTO' if not fallos else f'{fallos} FALLO(S)'}")
     return 1 if fallos else 0
 

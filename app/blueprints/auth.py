@@ -22,7 +22,9 @@ from flask import (
 )
 
 from app import auditoria
+from app.db import one
 from app.navegacion import ruta_inicial
+from app.services import clientes
 from app.security import (
     autenticar,
     cerrar_sesion_web,
@@ -39,6 +41,32 @@ def _ip() -> str | None:
     return (reenviada.split(",")[0].strip() or request.remote_addr) or None
 
 
+def _login_por_svc_auth(email: str, password: str):
+    """
+    El login de la web lo resuelve svc-auth: valida la contraseña, emite el JWT y
+    crea la sesión en Redis. La web solo guarda ese token en su cookie de sesión y
+    lo reenvía en cada operación que delega a los demás microservicios.
+    """
+    status, r = clientes.como_usuario(
+        "auth", "POST", "/api/v1/auth/login", {"email": email, "password": password}
+    )
+    if status != 200:
+        if status == 0:
+            return None, None, None, "El servicio de autenticación (svc-auth) no está disponible."
+        return None, None, None, (r or {}).get("mensaje") or "Correo o contraseña incorrectos."
+    u = r["usuario"]
+    rol = one("SELECT nombre_rol FROM operacion.rol WHERE clave = :c", c=u["rol"]) or {}
+    usuario = {
+        "id_usuario": u["id_usuario"],
+        "email": u["email"],
+        "nombre_completo": u["nombre"],
+        "rol_clave": u["rol"],
+        "nombre_rol": rol.get("nombre_rol", u["rol"]),
+        "id_locacion": u["id_locacion"],
+    }
+    return usuario, r["token"], r["jti"], None
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if "user_id" in session:
@@ -50,14 +78,19 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
-        usuario, error = autenticar(
-            email, password, ip=_ip(), user_agent=request.headers.get("User-Agent")
-        )
+        if clientes.activo():
+            usuario, token, jti, error = _login_por_svc_auth(email, password)
+        else:
+            usuario, error = autenticar(
+                email, password, ip=_ip(), user_agent=request.headers.get("User-Agent")
+            )
+            token = jti = None
+            if usuario:
+                token, jti = crear_token(
+                    usuario, ip=_ip(), user_agent=request.headers.get("User-Agent")
+                )
 
         if usuario:
-            token, jti = crear_token(
-                usuario, ip=_ip(), user_agent=request.headers.get("User-Agent")
-            )
             iniciar_sesion_web(usuario, token, jti)
             auditoria.registrar(
                 "LOGIN",
@@ -79,6 +112,9 @@ def login():
 
 @bp.route("/logout")
 def logout():
+    if clientes.activo() and session.get("token"):
+        # svc-auth revoca el JWT (PostgreSQL + denylist de Redis) y borra la sesión.
+        clientes.como_usuario("auth", "POST", "/api/v1/auth/logout")
     cerrar_sesion_web()
     return redirect(url_for("publico.inicio"))
 

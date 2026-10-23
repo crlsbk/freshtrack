@@ -69,4 +69,54 @@
   </table>
 </div>
 {% endif %}
+{# ── Consola: el navegador llama a los microservicios a través del gateway /svc/... ── #}
+<div class="card" style="margin-top:24px;">
+  <div class="card-title">Probar los microservicios desde la web</div>
+  <p class="text-muted" style="font-size:14px;margin:-8px 0 16px;">
+    Cada botón hace una petición real desde tu navegador a <span class="mono">/svc/&lt;servicio&gt;/api/v1/...</span>;
+    la web la reenvía al contenedor con tu token. Ábrelo con F12 → Red para ver las peticiones.
+  </p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+    <button class="btn btn-ghost btn-sm" data-svc="auth" data-ruta="/api/v1/auth/me">Mi sesión · svc-auth</button>
+    <button class="btn btn-ghost btn-sm" data-svc="catalog" data-ruta="/api/v1/catalog/products?por_pagina=3">Productos · svc-catalog</button>
+    <button class="btn btn-ghost btn-sm" data-svc="inventory" data-ruta="/api/v1/inventory/stock?dias_max=3&amp;por_pagina=5">Lotes por vencer · svc-inventory</button>
+    <button class="btn btn-ghost btn-sm" data-svc="commercial" data-ruta="/api/v1/commercial/sales?por_pagina=5">Últimas ventas · svc-commercial</button>
+    <button class="btn btn-ghost btn-sm" data-svc="asn" data-ruta="/api/v1/asn?por_pagina=5">Avisos ASN · svc-asn</button>
+    <button class="btn btn-ghost btn-sm" data-svc="planning" data-ruta="/api/v1/planning/replenishment/orders?estado=PENDIENTE&amp;por_pagina=5">Órdenes · svc-planning</button>
+    <button class="btn btn-ghost btn-sm" data-svc="alerts" data-ruta="/api/v1/alerts/esg/carbon-avoided">Reporte ESG · svc-alerts</button>
+    <button class="btn btn-ghost btn-sm" data-svc="audit" data-ruta="/api/v1/audit/events?por_pagina=5">Bitácora · svc-audit</button>
+    <label style="margin-left:auto;display:flex;gap:6px;align-items:center;font-size:13px;">
+      Respuesta en
+      <select class="input" id="svc-formato" style="width:auto;height:32px;">
+        <option value="application/json">JSON</option>
+        <option value="application/xml">XML</option>
+      </select>
+    </label>
+  </div>
+  <div id="svc-peticion" class="text-muted mono" style="font-size:12.5px;margin-bottom:8px;">Elige una consulta.</div>
+  <pre id="svc-respuesta" class="explicacion" style="max-height:380px;overflow:auto;"></pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-svc]').forEach(boton => boton.addEventListener('click', async () => {
+  const url = `/svc/${boton.dataset.svc}${boton.dataset.ruta}`;
+  const accept = document.getElementById('svc-formato').value;
+  const inicio = performance.now();
+  document.getElementById('svc-peticion').textContent = `GET ${url} · Accept: ${accept} …`;
+  try {
+    const r = await fetch(url, { headers: { Accept: accept } });
+    const texto = await r.text();
+    const ms = Math.round(performance.now() - inicio);
+    document.getElementById('svc-peticion').textContent =
+      `GET ${url} → ${r.status} · ${r.headers.get('X-Servicio') || ''} · ${ms} ms · correlation ${r.headers.get('X-Correlation-Id') || '—'}`;
+    let mostrado = texto;
+    if (accept.includes('json')) { try { mostrado = JSON.stringify(JSON.parse(texto), null, 2); } catch (e) {} }
+    document.getElementById('svc-respuesta').textContent = mostrado;
+  } catch (e) {
+    document.getElementById('svc-respuesta').textContent = 'Error de red: ' + e;
+  }
+}));
+</script>
 {% endblock %}

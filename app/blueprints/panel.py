@@ -467,3 +467,29 @@ def microservicios():
         estado_verificacion=st_verif,
         contadores=sorted(((contadores or {}).get("contadores") or {}).items()) if st_cont == 200 else [],
     )
+
+
+@bp.route("/svc/<clave>/<path:ruta>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@login_required
+def gateway_microservicios(clave: str, ruta: str):
+    """
+    Gateway de la web hacia los microservicios: el navegador llama a /svc/<servicio>/api/v1/...
+    y la web reenvía la petición con el JWT de la sesión. Así el frontend consume los
+    servicios por HTTP sin exponer el token en JavaScript ni depender de CORS.
+    """
+    from flask import Response, session
+
+    from app.services import clientes
+
+    if clave not in {s["clave"] for s in clientes.SERVICIOS}:
+        return {"error": "no_encontrado", "mensaje": f"No existe el servicio '{clave}'."}, 404
+    status, cuerpo, tipo, cid = clientes.reenviar(
+        clave, request.method, "/" + ruta, request.query_string.decode(),
+        request.get_data() or None, request.headers.get("Content-Type"),
+        request.headers.get("Accept"), session.get("token"),
+    )
+    resp = Response(cuerpo, status=status, content_type=tipo)
+    resp.headers["X-Servicio"] = clientes.nombre(clave)
+    if cid:
+        resp.headers["X-Correlation-Id"] = cid
+    return resp

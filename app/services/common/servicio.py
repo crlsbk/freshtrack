@@ -20,7 +20,11 @@ import os
 import time
 from typing import Iterable
 
+from datetime import date, datetime
+from decimal import Decimal
+
 from flask import Flask, Response, g, request, send_from_directory
+from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 
 from app.config import Config
@@ -68,6 +72,21 @@ def _estado_dependencias(dependencias: Iterable[str]) -> dict[str, bool]:
     return estado
 
 
+class JsonContrato(DefaultJSONProvider):
+    """JSON del contrato: fechas ISO 8601, decimales como número, UTF-8 sin escapar y orden original."""
+
+    sort_keys = False
+    ensure_ascii = False
+
+    @staticmethod
+    def default(o):
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        if isinstance(o, Decimal):
+            return float(o)
+        return DefaultJSONProvider.default(o)
+
+
 def crear_servicio(
     nombre: str,
     titulo: str,
@@ -79,8 +98,7 @@ def crear_servicio(
     app = Flask(nombre)
     app.config.from_object(Config)
     app.config["JSON_SORT_KEYS"] = False
-    app.json.sort_keys = False  # type: ignore[attr-defined]
-    app.json.ensure_ascii = False  # type: ignore[attr-defined]
+    app.json = JsonContrato(app)
     log = logging.getLogger(f"freshtrack.{nombre}")
 
     @app.before_request

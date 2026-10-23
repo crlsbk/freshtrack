@@ -18,12 +18,13 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from flask import request
+from flask import g, request
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.db import a_float, one, query, transaccion
 from app.events.dispatcher import publicar_evento
+from app.repos.catalogo import normalizar_gtin
 from app.services import cache_service
 from app.services.common.auth import requiere_auth
 from app.services.common.rate_limit import limite_tasa
@@ -50,7 +51,8 @@ app = crear_servicio(
 
 CACHE_PREFIX_PRODUCTS = "catalog:products:"
 CACHE_KEY_LOCATIONS = "catalog:locations:all"
-CAMPOS_PRODUCTO = """p.id_sku, p.codigo_gtin, p.nombre, p.categoria, p.unidad_medida,
+CAMPOS_PRODUCTO = """p.id_sku, p.codigo_gtin, p.nombre, p.categoria, p.unidad_medida, p.id_proveedor,
+                     p.stock_seguridad, p.punto_reorden, p.perecedero,
                      p.vida_util_estandar, p.precio_costo, p.precio_venta, p.activo"""
 
 _PRODUCTO_EJEMPLO = {
@@ -68,6 +70,9 @@ def _producto(fila: dict) -> dict:
     d = dict(fila)
     d["precio_venta"] = a_float(d["precio_venta"])
     d["precio_costo"] = a_float(d["precio_costo"])
+    for campo in ("stock_seguridad", "punto_reorden"):
+        if campo in d:
+            d[campo] = a_float(d[campo])
     d.pop("_total", None)
     return d
 
@@ -83,6 +88,11 @@ def _validar_producto(datos: dict, parcial: bool) -> dict:
             if len(valor) > largo:
                 raise ErrorApi(400, "parametro_invalido", f"'{campo}' admite como máximo {largo} caracteres.")
             limpio[campo] = valor
+    if "codigo_gtin" in limpio:
+        try:
+            limpio["codigo_gtin"] = normalizar_gtin(limpio["codigo_gtin"])
+        except ValueError as exc:
+            raise ErrorApi(400, "parametro_invalido", str(exc)) from exc
     if "vida_util_estandar" in datos or "vida_util_dias" in datos:
         limpio["vida_util_estandar"] = entero(
             {"vida_util_estandar": datos.get("vida_util_estandar", datos.get("vida_util_dias"))},
@@ -92,9 +102,17 @@ def _validar_producto(datos: dict, parcial: bool) -> dict:
         limpio["precio_venta"] = decimal_pos(datos, "precio_venta")
     if "precio_costo" in datos:
         limpio["precio_costo"] = decimal_pos(datos, "precio_costo")
-    if "activo" in datos:
-        v = datos["activo"]
-        limpio["activo"] = v if isinstance(v, bool) else str(v).lower() in ("true", "1")
+    for campo in ("activo", "perecedero"):
+        if campo in datos and datos[campo] not in (None, ""):
+            v = datos[campo]
+            limpio[campo] = v if isinstance(v, bool) else str(v).strip().lower() in ("true", "1", "on", "si", "sí")
+    if datos.get("id_proveedor") not in (None, ""):
+        limpio["id_proveedor"] = entero(datos, "id_proveedor", minimo=1)
+        if not one("SELECT 1 AS x FROM operacion.proveedor WHERE id_proveedor = :p", p=limpio["id_proveedor"]):
+            raise ErrorApi(409, "regla_negocio", f"El proveedor {limpio['id_proveedor']} no existe.")
+    for campo in ("stock_seguridad", "punto_reorden"):
+        if datos.get(campo) not in (None, ""):
+            limpio[campo] = decimal_pos(datos, campo, permitir_cero=True)
     if not limpio:
         raise ErrorApi(400, "cuerpo_vacio", "No se recibió ningún campo de producto para actualizar.")
     return limpio
@@ -194,15 +212,11 @@ def crear_producto():
     # GTIN interno (prefijo 2 = uso interno GS1) cuando el comprador no lo captura.
     datos.setdefault("codigo_gtin", f"2{time.time_ns() // 1_000_000 % 10**13:013d}")
     try:
-        with transaccion() as conn:
+        with transaccion(id_usuario=g.usuario_actual.get("sub"), usuario_email=g.usuario_actual.get("email")) as conn:
             id_sku = conn.execute(
                 text(
-                    """
-                    INSERT INTO operacion.producto
-                        (codigo_gtin, nombre, categoria, unidad_medida, vida_util_estandar, precio_venta, precio_costo)
-                    VALUES (:codigo_gtin, :nombre, :categoria, :unidad_medida, :vida_util_estandar, :precio_venta, :precio_costo)
-                    RETURNING id_sku
-                    """
+                    f"INSERT INTO operacion.producto ({', '.join(datos)}) "
+                    f"VALUES ({', '.join(':' + c for c in datos)}) RETURNING id_sku"
                 ),
                 datos,
             ).scalar()
@@ -224,7 +238,7 @@ def _actualizar(id_sku: int, parcial: bool):
     )
     asignaciones = ", ".join(f"{c} = :{c}" for c in datos)
     try:
-        with transaccion() as conn:
+        with transaccion(id_usuario=g.usuario_actual.get("sub"), usuario_email=g.usuario_actual.get("email")) as conn:
             conn.execute(text(f"UPDATE operacion.producto SET {asignaciones} WHERE id_sku = :id_sku"), {**datos, "id_sku": id_sku})
     except IntegrityError:
         return error_response(409, "duplicado", "El código GTIN ya pertenece a otro producto.")
@@ -270,7 +284,7 @@ def modificar_producto(id_sku: int):
 @requiere_auth("admin")
 def desactivar_producto(id_sku: int):
     """Desactiva el producto (no se borra: conserva la trazabilidad de sus lotes)."""
-    with transaccion() as conn:
+    with transaccion(id_usuario=g.usuario_actual.get("sub"), usuario_email=g.usuario_actual.get("email")) as conn:
         res = conn.execute(text("UPDATE operacion.producto SET activo = false WHERE id_sku = :s"), {"s": id_sku})
         if res.rowcount == 0:
             return error_response(404, "no_encontrado", f"SKU {id_sku} no encontrado.")

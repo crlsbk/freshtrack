@@ -26,6 +26,14 @@
           <xs:simpleType><xs:restriction base="xs:decimal"><xs:minExclusive value="0"/></xs:restriction></xs:simpleType>
         </xs:element>
         <xs:element name="activo" type="xs:boolean" minOccurs="0"/>
+        <xs:element name="perecedero" type="xs:boolean" minOccurs="0"/>
+        <xs:element name="id_proveedor" type="xs:positiveInteger" minOccurs="0"/>
+        <xs:element name="stock_seguridad" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:decimal"><xs:minInclusive value="0"/></xs:restriction></xs:simpleType>
+        </xs:element>
+        <xs:element name="punto_reorden" minOccurs="0">
+          <xs:simpleType><xs:restriction base="xs:decimal"><xs:minInclusive value="0"/></xs:restriction></xs:simpleType>
+        </xs:element>
       </xs:all>
     </xs:complexType>
   </xs:element>

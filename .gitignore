@@ -17,5 +17,3 @@ __pycache__/
 # vive en docs/, no aca)
 /output/
 
-# Estado local del agente (memoria y logs de sesion, no van al repo)
-.workbuddy-ai/

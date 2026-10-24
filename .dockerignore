@@ -6,7 +6,6 @@ __pycache__
 *.pyc
 .env
 .pytest_cache
-.workbuddy-ai
 .context
 output
 docs

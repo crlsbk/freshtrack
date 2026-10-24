@@ -11,7 +11,7 @@
 # la aplicacion no pueden discrepar. Si no hay .env, usa POSTGRES_PORT o 5432.
 #
 # Ubicacion del PostgreSQL portable. Se puede sobreescribir por entorno:
-#   PG_HOME   directorio que contiene pgsql/bin y data/   (por defecto ~/.workbuddy-ai/binaries/postgres)
+#   PG_HOME   directorio que contiene pgsql/bin y data/   (por defecto ~/.freshtrack/postgres)
 #   PG_DATA   directorio de datos                          (por defecto $PG_HOME/data)
 #   PG_LOG    archivo de log                               (por defecto $PG_HOME/server.log)
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-PG_HOME="${PG_HOME:-$HOME/.workbuddy-ai/binaries/postgres}"
+PG_HOME="${PG_HOME:-$HOME/.freshtrack/postgres}"
 PG_DATA="${PG_DATA:-$PG_HOME/data}"
 PG_LOG="${PG_LOG:-$PG_HOME/server.log}"
 

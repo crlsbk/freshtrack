@@ -6,7 +6,7 @@
 > [`SEGUNDO_PARCIAL.md`](SEGUNDO_PARCIAL.md). El catálogo exacto de endpoints, generado desde
 > el OpenAPI de cada servicio, está en [`ENDPOINTS_MICROSERVICIOS.md`](ENDPOINTS_MICROSERVICIOS.md).
 
-Documento oficial de especificación, diseño, arquitectura e interoperabilidad de los 8 microservicios de la plataforma FreshTrack, desarrollado conforme a la guía [`instrucciones_microservicios.md`](../instrucciones_microservicios.md).
+Documento oficial de especificación, diseño, arquitectura e interoperabilidad de los 8 microservicios de la plataforma FreshTrack.
 
 ---
 

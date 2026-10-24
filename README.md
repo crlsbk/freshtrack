@@ -6,9 +6,8 @@ REST, cada uno en su contenedor, sobre **PostgreSQL** (fuente de verdad transacc
 revocación de JWT, caché, contadores, rate limiting, bloqueos distribuidos y eventos).
 
 > **Segundo parcial · Equipo 05 · Proyecto IAC**
-> Documentación de la entrega: [`docs/SEGUNDO_PARCIAL.md`](docs/SEGUNDO_PARCIAL.md)
-> (contratos JSON/XML, catálogo de endpoints, seguridad, Redis, pruebas, CI/CD y matriz de
-> trazabilidad). Fichas por microservicio: [`docs/DOCUMENTACION_TECNICA_MICROSERVICIOS.md`](docs/DOCUMENTACION_TECNICA_MICROSERVICIOS.md).
+> Presentación de la entrega: [`segundaEntrega/`](segundaEntrega/) · Video: https://youtu.be/vGuDwYUnJJA
+> Reporte de pruebas: [`docs/pruebas/REPORTE_PRUEBAS.md`](docs/pruebas/REPORTE_PRUEBAS.md).
 
 ---
 
@@ -147,8 +146,8 @@ Vistas principales: `operacion.v_inventario_lote`, `operacion.v_lote_riesgo`,
 `analitica.v_demanda_diaria`, `analitica.v_merma_agregada`, `analitica.v_alerta_abierta`,
 `analitica.v_trazabilidad_lote`, `auditoria.v_bitacora`.
 
-**Persistencia políglota.** La arquitectura completa contempla tres motores (ver §1.2 y
-`docs/Documento_Analitico_FreshTrack.pdf`): PostgreSQL como fuente transaccional,
+**Persistencia políglota.** La arquitectura completa contempla tres motores (ver §1.2):
+PostgreSQL como fuente transaccional,
 MongoDB para pronósticos y alertas como documentos, y Redis para sesiones, denylist de
 JWT, caché y bloqueos distribuidos. En esta entrega **solo PostgreSQL está en uso**: es
 el único motor que el sistema consulta y el único del que dependen los resultados que se
@@ -339,7 +338,7 @@ sí.
 
 ```text
 ├── app/                      Aplicación Flask (factory + blueprints)
-├── docs/                     Documentos de diseño y reporte técnico
+├── docs/pruebas/             Reporte de pruebas generado desde pytest
 ├── scripts/
 │   ├── bootstrap_db.py       Crea base, roles, esquemas y datos base
 │   ├── ETL.py                Carga la historia operativa
@@ -377,4 +376,4 @@ sí.
 - La bitácora de auditoría es inmutable por disparador.
 - `.env` está en `.gitignore`. Las claves de demostración deben rotarse antes de publicar.
 - Microservicios: JWT verificado en cada petición (firma, expiración, registro en
-  PostgreSQL, denylist y sesión viva en Redis) y RBAC por endpoint. Ver `docs/SEGUNDO_PARCIAL.md`.
+  PostgreSQL, denylist y sesión viva en Redis) y RBAC por endpoint.

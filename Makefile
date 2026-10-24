@@ -22,7 +22,7 @@ endif
 # Accion para `make db` (start | stop | status | restart). Por defecto, arrancar.
 ACCION ?= start
 
-.PHONY: help setup venv db bootstrap etl app demo verify smoke test test-unit test-integration smoke-http services up infra down clean verify-polyglot verify-mongo verify-redis verify-microservices verify-security check-planeador check-servicios
+.PHONY: help setup venv db bootstrap etl app demo verify smoke test test-unit test-integration reporte-pruebas smoke-http services up infra down clean verify-polyglot verify-mongo verify-redis verify-microservices verify-security check-planeador check-servicios
 
 help:
 	@echo "FreshTrack — objetivos disponibles:"
@@ -39,6 +39,7 @@ help:
 	@echo "  make verify-microservices Comprueba los 8 microservicios contenerizados (JSON/XML/Saga)"
 	@echo "  make smoke      Recorre todas las pantallas con los 7 roles"
 	@echo "  make test       Pruebas unitarias + de integración (pytest)"
+	@echo "  make reporte-pruebas  Reporte del punto 12 en docs/pruebas/"
 	@echo "  make test-unit  Solo pruebas unitarias (no requieren bases de datos)"
 	@echo "  make smoke-http Prueba HTTP contra los contenedores levantados"
 	@echo "  make check-servicios Barrido de los 8 microservicios: JSON/XML, saga, XSD y docker logs"
@@ -105,6 +106,9 @@ test-unit:
 
 test-integration:
 	$(PYBIN) -m pytest tests/integration -v
+
+reporte-pruebas:
+	$(PYBIN) scripts/generar_reporte_pruebas.py
 
 check-planeador:
 	$(PYTHON) scripts/check_planeador.py $(CHECK_ARGS)

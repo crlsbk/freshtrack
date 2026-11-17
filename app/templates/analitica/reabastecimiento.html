@@ -147,6 +147,36 @@
             </div>
             <div class="detalle-valor">{{ "%.0f" | format(o.moq | float) }} {{ o.unidad_medida }}</div>
           </div>
+          {% if o.costo_faltante is not none %}
+            <div class="detalle-item">
+              <div class="detalle-etiqueta">
+                Newsvendor: Costo faltante (Cu) / excedente (Co)
+                {{ ui.ayuda('Cu = Margen perdido si hay desabasto (Precio venta − Costo). Co = Pérdida neta por excedente que caduca (Costo − Valor salvamento).') }}
+              </div>
+              <div class="detalle-valor">{{ ui.moneda(o.costo_faltante) }} / {{ ui.moneda(o.costo_excedente) }}</div>
+            </div>
+            <div class="detalle-item">
+              <div class="detalle-etiqueta">
+                Newsvendor: Fractil crítico Cu/(Cu+Co)
+                {{ ui.ayuda('Nivel de servicio óptimo económico que equilibra el costo de quedarse sin stock frente al riesgo de caducidad.') }}
+              </div>
+              <div class="detalle-valor">{{ "%.1f" | format((o.fractil_critico | float) * 100) }}%</div>
+            </div>
+            <div class="detalle-item">
+              <div class="detalle-etiqueta">
+                Óptimo Newsvendor vs Política Simple
+                {{ ui.ayuda('Compara la cantidad óptima bajo incertidumbre y vida útil frente al cálculo tradicional con stock de seguridad fijo.') }}
+              </div>
+              <div class="detalle-valor">{{ (o.cantidad_newsvendor) | cantidad(2) }} vs {{ (o.cantidad_politica_simple) | cantidad(2) }} {{ o.unidad_medida }}</div>
+            </div>
+            <div class="detalle-item">
+              <div class="detalle-etiqueta">
+                Ahorro esperado en costo
+                {{ ui.ayuda('Reducción esperada en el costo total (faltantes + desperdicio) frente a la política de reposición simple.') }}
+              </div>
+              <div class="detalle-valor text-success">{{ ui.moneda(o.ahorro_esperado or 0) }}</div>
+            </div>
+          {% endif %}
           {% if o.cantidad_aprobada is not none %}
             <div class="detalle-item">
               <div class="detalle-etiqueta">

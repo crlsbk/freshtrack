@@ -14,6 +14,9 @@
   <button class="btn btn-primary" type="button" onclick="toggleForm('form-recepcion')">
     + Registrar recepción
   </button>
+  <form method="post" action="{{ url_for('operacion.lotes_escanear_caducidad') }}">
+    <button class="btn btn-ghost" type="submit">Escanear y bloquear caducados</button>
+  </form>
   <form method="get" action="{{ url_for('operacion.lotes') }}"
         style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex:1;">
     <div class="campo campo-ancho">
@@ -141,6 +144,7 @@
         <th>Vida útil</th>
         <th>Recibido</th>
         <th>Existencia</th>
+        <th>Estado calidad</th>
         <th>Riesgo</th>
         <th>Trazar</th>
       </tr>
@@ -174,6 +178,18 @@
           </td>
           <td class="mono">{{ (l.cantidad_recibida) | cantidad(2) }}</td>
           <td class="mono">{{ (l.existencia_total) | cantidad(2) }}</td>
+          <td>
+            {{ ui.estado(l.estado) }}
+            <form method="post" action="{{ url_for('operacion.lotes_cambiar_estado', id_lote=l.id_lote) }}"
+                  style="display:flex;gap:4px;margin-top:4px;">
+              <select class="input" name="estado" style="padding:2px 6px;font-size:11px;min-width:105px;">
+                {% for est in ['DISPONIBLE', 'BLOQUEADO', 'CUARENTENA', 'DAÑADO', 'RETIRADO', 'VENCIDO'] %}
+                  <option value="{{ est }}" {% if l.estado == est %}selected{% endif %}>{{ est }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-ghost btn-sm" type="submit" style="padding:2px 6px;font-size:11px;">Aplicar</button>
+            </form>
+          </td>
           <td>{{ ui.riesgo(l.clasificacion) }}</td>
           <td>
             <a class="btn btn-ghost btn-sm"
@@ -181,7 +197,7 @@
           </td>
         </tr>
       {% else %}
-        {{ ui.vacio('No hay lotes que coincidan con el filtro.', 11) }}
+        {{ ui.vacio('No hay lotes que coincidan con el filtro.', 12) }}
       {% endfor %}
     </tbody>
   </table>

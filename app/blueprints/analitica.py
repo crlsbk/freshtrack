@@ -19,6 +19,7 @@ from app.domain import inventario as dom_inv
 from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as motor_reab
 from app.domain import transferencias as motor_tr
+from app.domain import triaje as dom_triaje
 from app.security import login_required, requiere_vista, usuario_actual
 from app.services import clientes
 
@@ -37,6 +38,16 @@ def pronostico():
 
     series = motor_pron.pronostico_por_serie(id_run) if id_run else []
     precision = motor_pron.precision_global()
+    backtest = None
+    try:
+        if clientes.activo():
+            st, resp = clientes.como_usuario("planning", "GET", "/api/v1/planning/forecast/backtest", timeout=5)
+            if st == 200 and isinstance(resp, dict):
+                backtest = resp
+        if backtest is None:
+            backtest = motor_pron.evaluar_backtest_comparativo(horizonte=7)
+    except Exception:
+        backtest = None
 
     return render_template(
         "analitica/pronostico.html",
@@ -45,6 +56,7 @@ def pronostico():
         corridas=motor_pron.corridas(10),
         series=series,
         precision=precision,
+        backtest=backtest,
         id_run=id_run,
         metodos=motor_pron.METODOS,
         horizonte_defecto=a_int(config_valor("horizonte_pronostico_dias", "7"), 7),
@@ -256,6 +268,25 @@ def transferencias():
 @login_required
 @requiere_vista("transfers")
 def transferencias_detectar():
+    if clientes.activo():
+        status, r = clientes.como_usuario("planning", "POST", "/api/v1/planning/transfers/detect", {})
+        if status == 201:
+            if r.get("total", 0) == 0:
+                flash(
+                    f"svc-planning no encontró transferencias que pasaran las cuatro validaciones "
+                    f"({r.get('descartadas', 0)} candidatas descartadas).",
+                    "ok",
+                )
+            else:
+                flash(
+                    f"svc-planning sugirió {r['total']} transferencias entre tiendas. "
+                    f"Cada una pasó origen suficiente, destino con necesidad, llegada antes de vencer y consumo.",
+                    "ok",
+                )
+            motor_alertas.generar_alertas(usuario_actual())
+        else:
+            flash(f"No se detectaron transferencias: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.transferencias"))
     try:
         resultado = motor_tr.detectar_oportunidades(usuario=usuario_actual())
         if resultado["total"] == 0:
@@ -283,6 +314,21 @@ def transferencias_detectar():
 def transferencias_decidir(id_transferencia: str):
     aprobar = request.form.get("decision") == "aprobar"
     cantidad = request.form.get("cantidad")
+    if clientes.activo():
+        accion = "approve" if aprobar else "reject"
+        cuerpo = {"cantidad": cantidad} if (aprobar and cantidad) else {}
+        status, r = clientes.como_usuario(
+            "planning", "POST", f"/api/v1/planning/transfers/{id_transferencia}/{accion}", cuerpo
+        )
+        if status == 200:
+            flash(
+                f"Transferencia {r['estado'].lower()} vía svc-planning"
+                + (f" por {float(r['cantidad']):g} unidades." if aprobar and r.get("cantidad") is not None else "."),
+                "ok",
+            )
+        else:
+            flash(f"La transferencia no cambió: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.transferencias"))
     try:
         resultado = motor_tr.decidir_transferencia(
             id_transferencia,
@@ -304,6 +350,20 @@ def transferencias_decidir(id_transferencia: str):
 @login_required
 @requiere_vista("transfers")
 def transferencias_ejecutar(id_transferencia: str):
+    if clientes.activo():
+        status, r = clientes.como_usuario(
+            "planning", "POST", f"/api/v1/planning/transfers/{id_transferencia}/execute", {}
+        )
+        if status == 200:
+            flash(
+                f"Transferencia ejecutada por svc-planning: {float(r['cantidad']):g} unidades de "
+                f"{r['origen']} a {r['destino']} (origen: {float(r['existencia_origen']):g}, "
+                f"destino: {float(r['existencia_destino']):g}).",
+                "ok",
+            )
+        else:
+            flash(f"No se ejecutó la transferencia: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.transferencias"))
     try:
         resultado = motor_tr.ejecutar_transferencia(
             id_transferencia, usuario=usuario_actual()
@@ -343,6 +403,18 @@ def descuentos():
 @login_required
 @requiere_vista("discounts")
 def descuentos_generar():
+    if clientes.activo():
+        status, r = clientes.como_usuario("planning", "POST", "/api/v1/planning/discounts/generate", {})
+        if status == 201:
+            flash(
+                f"svc-planning generó {r['total']} sugerencias de descuento respetando margen y caducidad."
+                if r.get("total")
+                else "svc-planning no detectó lotes en vigilancia o crítico elegibles para descuento.",
+                "ok",
+            )
+        else:
+            flash(f"No se generaron descuentos: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.descuentos"))
     try:
         resultado = dom_desc.sugerir_descuentos(usuario=usuario_actual())
         flash(
@@ -362,6 +434,16 @@ def descuentos_generar():
 @requiere_vista("discounts")
 def descuentos_decidir(id_descuento: str):
     aprobar = request.form.get("decision") == "aprobar"
+    if clientes.activo():
+        accion = "approve" if aprobar else "reject"
+        status, r = clientes.como_usuario(
+            "planning", "POST", f"/api/v1/planning/discounts/{id_descuento}/{accion}", {}
+        )
+        if status == 200:
+            flash(f"Descuento {r['estado'].lower()} a través de svc-planning.", "ok")
+        else:
+            flash(f"El descuento no cambió: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.descuentos"))
     try:
         resultado = dom_desc.decidir_descuento(
             id_descuento, aprobar=aprobar, usuario=usuario_actual()
@@ -370,3 +452,75 @@ def descuentos_decidir(id_descuento: str):
     except (ValueError, SQLAlchemyError) as e:
         flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
     return redirect(url_for("analitica.descuentos"))
+
+
+# ===========================================================================
+# TRIAJE AUTOMÁTICO (DESCUENTO ↔ TRASLADO ↔ MERMA)
+# ===========================================================================
+@bp.route("/triaje")
+@login_required
+@requiere_vista("triage")
+def triaje():
+    id_loc = int(request.args["locacion"]) if request.args.get("locacion") else None
+    filtro_accion = (request.args.get("accion") or "").upper()
+    evaluacion = None
+    if clientes.activo():
+        ruta = "/api/v1/planning/triage" + (f"?id_locacion={id_loc}" if id_loc else "")
+        status, r = clientes.como_usuario("planning", "GET", ruta, timeout=10)
+        if status == 200 and isinstance(r, dict):
+            evaluacion = r
+    if evaluacion is None:
+        evaluacion = dom_triaje.evaluar_triaje_lotes(id_locacion=id_loc)
+
+    decisiones = evaluacion.get("decisiones", [])
+    if filtro_accion in ("TRASLADO", "DESCUENTO", "MERMA", "NORMAL"):
+        decisiones = [d for d in decisiones if d["accion"] == filtro_accion]
+
+    return render_template(
+        "analitica/triaje.html",
+        active="triage",
+        evaluacion=evaluacion,
+        decisiones=decisiones,
+        locaciones=dom_inv.locaciones_activas("Tienda"),
+        id_locacion=id_loc,
+        filtro_accion=filtro_accion,
+    )
+
+
+@bp.post("/triaje/ejecutar")
+@login_required
+@requiere_vista("triage")
+def triaje_ejecutar():
+    cuerpo = {}
+    if request.form.get("id_locacion"):
+        cuerpo["id_locacion"] = int(request.form["id_locacion"])
+    if clientes.activo():
+        status, r = clientes.como_usuario("planning", "POST", "/api/v1/planning/triage/run", cuerpo, timeout=30)
+        if status == 201:
+            ap = r.get("aplicados", {})
+            flash(
+                f"Triaje automático ejecutado vía svc-planning: {r.get('total_evaluados', 0)} lotes evaluados → "
+                f"{ap.get('traslados_creados', 0)} traslados sugeridos, "
+                f"{ap.get('descuentos_creados', 0)} descuentos propuestos, "
+                f"{ap.get('lotes_vencidos_bloqueados', 0)} lotes vencidos bloqueados.",
+                "ok",
+            )
+            motor_alertas.generar_alertas(usuario_actual())
+        else:
+            flash(f"No se pudo ejecutar el triaje: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(url_for("analitica.triaje"))
+
+    try:
+        res = dom_triaje.ejecutar_triaje_automatico(
+            usuario=usuario_actual(), id_locacion=cuerpo.get("id_locacion")
+        )
+        ap = res["aplicados"]
+        flash(
+            f"Triaje automático ejecutado: {ap['traslados_creados']} traslados, "
+            f"{ap['descuentos_creados']} descuentos, {ap['lotes_vencidos_bloqueados']} lotes vencidos bloqueados.",
+            "ok",
+        )
+        motor_alertas.generar_alertas(usuario_actual())
+    except (ValueError, SQLAlchemyError) as e:
+        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
+    return redirect(url_for("analitica.triaje"))

@@ -43,6 +43,7 @@ def _lotes_para_consumo(conn, id_sku: int, id_locacion: int, bloquear: bool = Tr
         SELECT e.id_existencia::text AS id_existencia,
                e.id_lote::text      AS id_lote,
                l.codigo_lote_prov,
+               l.estado,
                e.cantidad_disponible,
                e.cantidad_reservada,
                l.fecha_caducidad,
@@ -52,6 +53,7 @@ def _lotes_para_consumo(conn, id_sku: int, id_locacion: int, bloquear: bool = Tr
         JOIN operacion.lote l ON l.id_lote = e.id_lote
         WHERE l.id_sku = :id_sku
           AND e.id_locacion = :id_locacion
+          AND l.estado = 'DISPONIBLE'
           AND (e.cantidad_disponible - e.cantidad_reservada) > 0
           AND l.fecha_caducidad >= CURRENT_DATE
         ORDER BY l.fecha_caducidad ASC, l.codigo_lote_prov ASC
@@ -74,6 +76,12 @@ def repartir_fefo(lotes: list[dict], cantidad: float) -> list[dict]:
     for lote in lotes:
         if restante <= 1e-9:
             break
+        estado = str(lote.get("estado") or lote.get("estado_lote") or "DISPONIBLE").upper()
+        if estado != "DISPONIBLE":
+            continue
+        dias_r = lote.get("dias_restantes")
+        if dias_r is not None and int(dias_r) < 0:
+            continue
         disponible = a_float(lote["cantidad_disponible"]) - a_float(
             lote.get("cantidad_reservada") or 0
         )
@@ -103,7 +111,7 @@ def previsualizar_fefo(id_sku: int, id_locacion: int, cantidad: float) -> dict:
     """
     lotes = query(
         """
-        SELECT e.id_lote::text AS id_lote, l.codigo_lote_prov,
+        SELECT e.id_lote::text AS id_lote, l.codigo_lote_prov, l.estado,
                e.cantidad_disponible, e.cantidad_reservada,
                l.fecha_caducidad,
                (l.fecha_caducidad - CURRENT_DATE) AS dias_restantes,
@@ -112,6 +120,7 @@ def previsualizar_fefo(id_sku: int, id_locacion: int, cantidad: float) -> dict:
         JOIN operacion.lote l ON l.id_lote = e.id_lote
         WHERE l.id_sku = :id_sku
           AND e.id_locacion = :id_locacion
+          AND l.estado = 'DISPONIBLE'
           AND (e.cantidad_disponible - e.cantidad_reservada) > 0
           AND l.fecha_caducidad >= CURRENT_DATE
         ORDER BY l.fecha_caducidad ASC, l.codigo_lote_prov ASC

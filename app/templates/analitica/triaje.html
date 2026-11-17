@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Triaje preventivo{% endblock %}
+{% block breadcrumb %}Analítica › Triaje preventivo (Descuento ↔ Traslado ↔ Merma){% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Analítica preventiva',
+  'Triaje automático: Descuento ↔ Traslado ↔ Merma',
+  'Evalúa automáticamente cada lote con riesgo de caducidad y selecciona la única ruta que recupera mayor valor neto sin contradicciones entre tiendas y precios.'
+) }}
+
+{% set r = evaluacion.resumen %}
+<div class="stat-grid-4">
+  {{ ui.kpi('Traslados elegidos', r.get('TRASLADO', 0), 'Venta a precio lleno en tienda con déficit', '#0284c7',
+            href=url_for('analitica.triaje', accion='TRASLADO', locacion=id_locacion), icono='camion') }}
+  {{ ui.kpi('Descuentos elegidos', r.get('DESCUENTO', 0), 'Rebaja preventiva respetando margen piso', '#d97706',
+            href=url_for('analitica.triaje', accion='DESCUENTO', locacion=id_locacion), icono='flechas') }}
+  {{ ui.kpi('Mermas / bloqueos', r.get('MERMA', 0), 'Caducados o no aptos excluidos de FEFO', '#dc2626',
+            href=url_for('analitica.triaje', accion='MERMA', locacion=id_locacion), icono='basura') }}
+  {{ ui.kpi('Valor rescatable estimado', ui.moneda(evaluacion.valor_rescatable_estimado), 'Comparando traslado vs descuento', '#16a34a', icono='dinero') }}
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-title">Cómo decide automáticamente el motor</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:12.5px;color:var(--muted-foreground);">
+    <div>
+      <strong style="color:#dc2626;">1. Merma / Inmovilización</strong><br/>
+      Si el lote ya venció o está en <code>BLOQUEADO</code>, <code>CUARENTENA</code> o <code>DAÑADO</code>, se excluye de FEFO y se marca para baja o inspección.
+    </div>
+    <div>
+      <strong style="color:#0284c7;">2. Traslado entre tiendas</strong><br/>
+      Si otra tienda tiene déficit proyectado y el lote llega a tiempo ($d > 1$ día), se compara su ingreso neto descontando logística ($P_{\text{venta}} - C_{\text{log}}$).
+    </div>
+    <div>
+      <strong style="color:#d97706;">3. Descuento preventivo</strong><br/>
+      Si no hay tienda destino apta o vence pronto, se evalúa rebaja (15%–30%) respetando margen piso y se elige la opción de mayor recuperación.
+    </div>
+  </div>
+</div>
+
+<div class="filtros">
+  <form method="post" action="{{ url_for('analitica.triaje_ejecutar') }}" style="display:flex;gap:10px;align-items:center;">
+    {% if id_locacion %}<input type="hidden" name="id_locacion" value="{{ id_locacion }}"/>{% endif %}
+    <button class="btn btn-primary" type="submit">Ejecutar triaje y materializar propuestas</button>
+  </form>
+  <form method="get" action="{{ url_for('analitica.triaje') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    <div class="campo">
+      <label class="form-label">Tienda</label>
+      <select class="input" name="locacion">
+        <option value="">Todas</option>
+        {% for l in locaciones %}
+          <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label class="form-label">Decisión</label>
+      <select class="input" name="accion">
+        <option value="">Todas ({{ evaluacion.total_evaluados }})</option>
+        {% for a in ['TRASLADO', 'DESCUENTO', 'MERMA', 'NORMAL'] %}
+          <option value="{{ a }}" {% if filtro_accion == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-ghost" type="submit">Filtrar</button>
+    <a class="btn btn-ghost" href="{{ url_for('analitica.transferencias') }}">Ver Transferencias →</a>
+    <a class="btn btn-ghost" href="{{ url_for('analitica.descuentos') }}">Ver Descuentos →</a>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Lotes evaluados en el flujo preventivo ({{ decisiones | length }})</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Producto / Lote</th>
+        <th>Tienda</th>
+        <th>Stock / Días</th>
+        <th>En riesgo</th>
+        <th>Valor Traslado</th>
+        <th>Valor Descuento</th>
+        <th>Costo en Riesgo</th>
+        <th>Decisión Elegida</th>
+        <th>Justificación económica</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in decisiones %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ d.producto }}</div>
+            <div class="mono text-muted" style="font-size:11px;">
+              {{ d.codigo_lote_prov }} · {{ ui.estado(d.estado_lote) }}
+            </div>
+          </td>
+          <td>{{ d.locacion }}</td>
+          <td class="mono">
+            {{ (d.cantidad_disponible) | cantidad(2) }} {{ d.unidad_medida }}<br/>
+            <span class="{% if d.dias_restantes <= 2 %}text-danger{% elif d.dias_restantes <= 5 %}text-warning{% endif %}" style="font-size:11px;">
+              {{ d.dias_restantes }} d restantes
+            </span>
+          </td>
+          <td class="mono">{{ (d.unidades_en_riesgo) | cantidad(2) }}</td>
+          <td class="mono {% if d.accion == 'TRASLADO' %}text-success{% endif %}" style="font-weight:{% if d.accion == 'TRASLADO' %}700{% else %}400{% endif %};">
+            {{ ui.moneda(d.valor_traslado_neto) }}
+          </td>
+          <td class="mono {% if d.accion == 'DESCUENTO' %}text-warning{% endif %}" style="font-weight:{% if d.accion == 'DESCUENTO' %}700{% else %}400{% endif %};">
+            {{ ui.moneda(d.valor_descuento_neto) }}
+          </td>
+          <td class="mono text-danger">{{ ui.moneda(d.costo_merma_potencial) }}</td>
+          <td>
+            {% if d.accion == 'TRASLADO' %}
+              <span class="badge badge-info">TRASLADO</span>
+            {% elif d.accion == 'DESCUENTO' %}
+              <span class="badge badge-warning">DESCUENTO</span>
+            {% elif d.accion == 'MERMA' %}
+              <span class="badge badge-danger">MERMA</span>
+            {% else %}
+              <span class="badge badge-success">NORMAL FEFO</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;max-width:340px;">{{ d.explicacion }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No hay lotes en ventana de riesgo con los filtros seleccionados.', 9) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -86,6 +86,7 @@ def lotes():
             clasificacion=request.args.get("riesgo") or None,
             id_locacion=int(request.args["locacion"]) if request.args.get("locacion") else None,
         ),
+        estados_lote=dom_inv.ESTADOS_LOTE_VALIDOS,
         productos=dom_inv.productos_activos(),
         proveedores=dom_inv.proveedores_activos(),
         locaciones=dom_inv.locaciones_activas(),
@@ -93,6 +94,58 @@ def lotes():
         filtro=request.args.get("q", ""),
         filtro_riesgo=request.args.get("riesgo", ""),
     )
+
+
+@bp.post("/lotes/<id_lote>/estado")
+@login_required
+@requiere_vista("batches")
+def lotes_cambiar_estado(id_lote: str):
+    nuevo_estado = request.form.get("estado", "")
+    motivo = request.form.get("motivo")
+    if clientes.activo():
+        status, r = clientes.como_usuario(
+            "inventory",
+            "PATCH",
+            f"/api/v1/inventory/batches/{id_lote}/status",
+            {"estado": nuevo_estado, "motivo": motivo},
+        )
+        if status == 200:
+            flash(
+                f"Estado del lote {r.get('codigo_lote_prov', '')} actualizado vía svc-inventory a «{r['estado']}». "
+                + ("Elegible para FEFO." if r.get("elegible_fefo") else "Inmovilizado (excluido de FEFO y ventas)."),
+                "ok",
+            )
+        else:
+            flash(f"No se cambió el estado del lote: {clientes.mensaje_error('inventory', status, r)}", "error")
+        return redirect(url_for("operacion.lotes"))
+    try:
+        res = dom_inv.cambiar_estado_lote(
+            id_lote=id_lote, nuevo_estado=nuevo_estado, motivo=motivo, usuario=usuario_actual()
+        )
+        flash(f"Estado del lote {res['codigo_lote_prov']} cambiado a «{res['estado']}».", "ok")
+    except (ValueError, SQLAlchemyError) as e:
+        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
+    return redirect(url_for("operacion.lotes"))
+
+
+@bp.post("/lotes/escanear-caducidad")
+@login_required
+@requiere_vista("batches")
+def lotes_escanear_caducidad():
+    if clientes.activo():
+        status, r = clientes.como_usuario("inventory", "POST", "/api/v1/inventory/expiration/scan", {"dias_critico": 2})
+        if status == 200:
+            flash(
+                f"Escaneo svc-inventory completado: {r.get('lotes_vencidos_bloqueados', 0)} lote(s) vencido(s) bloqueados en FEFO, "
+                f"{r.get('lotes_criticos_actuales', 0)} lote(s) en riesgo crítico.",
+                "ok",
+            )
+        else:
+            flash(f"No se ejecutó el escaneo: {clientes.mensaje_error('inventory', status, r)}", "error")
+        return redirect(url_for("operacion.lotes"))
+    res = dom_inv.bloquear_lotes_vencidos(usuario=usuario_actual())
+    flash(f"Se bloquearon {res['bloqueados']} lote(s) vencido(s) de la cola FEFO.", "ok")
+    return redirect(url_for("operacion.lotes"))
 
 
 # ===========================================================================

@@ -41,6 +41,7 @@ def sugerir_descuentos(*, usuario: dict, dias_hasta: int | None = None) -> dict:
         FROM operacion.v_inventario_lote v
         JOIN operacion.producto p ON p.id_sku = v.id_sku
         WHERE v.cantidad_disponible > 0
+          AND v.estado_lote = 'DISPONIBLE'
           AND v.dias_restantes BETWEEN 0 AND :dias
           AND v.clasificacion IN ('VIGILANCIA', 'CRITICO')
         ORDER BY v.fecha_caducidad ASC
@@ -63,9 +64,19 @@ def sugerir_descuentos(*, usuario: dict, dias_hasta: int | None = None) -> dict:
         if existente:
             continue
 
+        dias_r = a_int(c["dias_restantes"], 0)
         pct = pct_critico if c["clasificacion"] == "CRITICO" else pct_vigilancia
         precio_normal = a_float(c["precio_venta"])
+        precio_costo = a_float(c["precio_costo"])
         precio_nuevo = round(precio_normal * (1 - pct / 100), 2)
+        piso = precio_costo * (0.85 if dias_r <= 1 else 1.0)
+        if precio_nuevo < piso:
+            if precio_normal <= piso or piso <= 0:
+                continue
+            pct = round((1.0 - piso / precio_normal) * 100.0, 2)
+            precio_nuevo = round(piso, 2)
+            if pct < 5.0:
+                continue
         cantidad = a_float(c["cantidad_disponible"])
         ingreso = round(cantidad * precio_nuevo, 2)
 
@@ -160,6 +171,8 @@ def decidir_descuento(id_descuento: str, *, aprobar: bool, usuario: dict) -> dic
     d = one(
         """
         SELECT d.id_descuento::text, d.estado, d.descuento_pct, d.cantidad,
+               d.id_lote::text, d.id_locacion, d.dias_restantes,
+               d.precio_normal, d.precio_nuevo,
                p.nombre AS producto, loc.nombre AS locacion
         FROM analitica.descuento d
         JOIN operacion.lote l       ON l.id_lote = d.id_lote
@@ -189,6 +202,54 @@ def decidir_descuento(id_descuento: str, *, aprobar: bool, usuario: dict) -> dic
             ),
             {"estado": estado, "uid": usuario["id_usuario"], "id": id_descuento},
         )
+        if aprobar:
+            existe_de = conn.execute(
+                text(
+                    "SELECT 1 FROM analitica.desperdicio_evitado WHERE id_descuento = CAST(:id AS uuid) LIMIT 1"
+                ),
+                {"id": id_descuento},
+            ).first()
+            if not existe_de:
+                from app.domain import pronostico
+
+                dem_diaria = pronostico.demanda_diaria_promedio(
+                    one("SELECT id_sku FROM operacion.lote WHERE id_lote = CAST(:l AS uuid)", l=d["id_lote"])["id_sku"],
+                    d["id_locacion"],
+                    28,
+                )
+                dias_r = max(1, a_int(d["dias_restantes"], 1))
+                cant_int = a_float(d["cantidad"])
+                contrafactual = round(min(cant_int, dem_diaria * dias_r), 2)
+                en_riesgo = round(max(0.0, cant_int - contrafactual), 2)
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO analitica.desperdicio_evitado
+                            (tipo_intervencion, id_descuento, id_lote, id_locacion,
+                             cantidad_en_riesgo, cantidad_intervenida, cantidad_recuperada,
+                             cantidad_mermada, valor_recuperado,
+                             demanda_base_contrafactual, desperdicio_proyectado, desperdicio_evitado_neto,
+                             metodologia)
+                        VALUES
+                            ('DESCUENTO', CAST(:id AS uuid), CAST(:lote AS uuid), :loc,
+                             :riesgo, :intervenida, 0, 0, 0,
+                             :contra, :riesgo, 0, :metodologia)
+                        """
+                    ),
+                    {
+                        "id": id_descuento,
+                        "lote": d["id_lote"],
+                        "loc": d["id_locacion"],
+                        "riesgo": en_riesgo,
+                        "intervenida": cant_int,
+                        "contra": contrafactual,
+                        "metodologia": (
+                            "Descuento preventivo con línea base contrafactual: se descuenta la "
+                            "demanda orgánica esperada a precio lleno antes de la caducidad para "
+                            "estimar únicamente el desperdicio neto atribuible al descuento."
+                        ),
+                    },
+                )
 
     auditoria.registrar(
         "APPROVE_DISCOUNT" if aprobar else "REJECT_DISCOUNT",

@@ -21,9 +21,10 @@ from flask import g, request
 from sqlalchemy import text
 
 from app.db import a_float, one, query, transaccion
+from app.domain import inventario as dom_inv
 from app.domain.ventas import _lotes_para_consumo, repartir_fefo
 from app.services import cache_service
-from app.services.common.auth import requiere_auth
+from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
 from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import (
     ErrorApi,
@@ -90,6 +91,7 @@ def consultar_stock():
         f"""
         SELECT e.id_existencia::text AS id_existencia, e.id_locacion, loc.nombre AS locacion,
                l.id_lote::text AS id_lote, l.id_sku, p.nombre AS producto, l.codigo_lote_prov,
+               l.estado AS estado_lote,
                l.fecha_caducidad, (l.fecha_caducidad - CURRENT_DATE) AS dias_restantes,
                e.cantidad_disponible, e.cantidad_reservada,
                (e.cantidad_disponible - e.cantidad_reservada) AS disponible_neto,
@@ -186,6 +188,7 @@ def reservar_fefo():
     datos = leer_cuerpo("reserva_request", requerido=True)
     requerir_campos(datos, "id_locacion", "lineas")
     id_locacion = entero(datos, "id_locacion", minimo=1)
+    validar_alcance_locacion(id_locacion)
     lineas = _lineas_validas(datos.get("lineas"))
     saga_id = datos.get("saga_id")
 
@@ -281,6 +284,94 @@ def cancelar_reserva():
             )
     cache_service.incrementar_contador("inventory", "reserve_cancelled")
     return render_response({"status": "RESERVA_CANCELADA", "liberados": len(reservas)}, status=200, root_tag="compensacion_response")
+
+
+@app.patch("/api/v1/inventory/batches/<id_lote>/status")
+@documentar(
+    "Cambia el estado de calidad / elegibilidad FEFO de un lote",
+    cuerpo={"estado": "CUARENTENA", "motivo": "Inspección de temperatura preventiva"},
+    raiz_xml="batch_status_request",
+    respuesta={"id_lote": "0f8b6f8e-...", "estado_anterior": "DISPONIBLE", "estado": "CUARENTENA", "elegible_fefo": False},
+    raiz_respuesta="batch_status_response",
+    errores=("400", "403", "404"),
+    exito="200",
+)
+@requiere_auth("warehouse", "store_manager", "planner")
+def cambiar_estado_lote_api(id_lote: str):
+    """Bloquea, pone en cuarentena, retira o libera un lote; solo DISPONIBLE entra en FEFO."""
+    id_lote = validar_uuid(id_lote, "id_lote")
+    datos = leer_cuerpo(requerido=True)
+    requerir_campos(datos, "estado")
+    id_loc_body = entero(datos, "id_locacion", minimo=1)
+    if id_loc_body is not None:
+        validar_alcance_locacion(id_loc_body)
+    locs = query(
+        """
+        SELECT DISTINCT id_locacion FROM operacion.existencia WHERE id_lote = CAST(:id AS uuid)
+        UNION
+        SELECT id_locacion_recepcion AS id_locacion FROM operacion.lote
+         WHERE id_lote = CAST(:id AS uuid) AND id_locacion_recepcion IS NOT NULL
+        """,
+        id=id_lote,
+    )
+    locs_set = {int(r["id_locacion"]) for r in locs if r.get("id_locacion") is not None}
+    loc_token = (getattr(g, "usuario_actual", None) or {}).get("id_locacion")
+    if locs_set and (loc_token is None or int(loc_token) not in locs_set):
+        validar_alcance_locacion(next(iter(locs_set)))
+    try:
+        res = dom_inv.cambiar_estado_lote(
+            id_lote=id_lote,
+            nuevo_estado=str(datos["estado"]),
+            motivo=datos.get("motivo"),
+            usuario=usuario_desde_token(),
+        )
+    except ValueError as err:
+        msg = str(err)
+        codigo = 404 if "no existe" in msg.lower() else 400
+        return error_response(codigo, "parametro_invalido" if codigo == 400 else "no_encontrado", msg)
+    cache_service.incrementar_contador("inventory", "batch_status_changed")
+    return render_response(res, status=200, root_tag="batch_status_response")
+
+
+@app.post("/api/v1/inventory/expiration/scan")
+@documentar(
+    "Escanea caducidades, bloquea lotes vencidos y clasifica riesgo",
+    cuerpo={"dias_critico": 2},
+    raiz_xml="expiration_scan_request",
+    raiz_respuesta="expiration_scan_response",
+    errores=("400", "403"),
+    exito="200",
+)
+@requiere_auth("warehouse", "store_manager", "planner")
+def escanear_caducidades():
+    """Bloquea automáticamente lotes vencidos de la cola FEFO y reporta lotes en riesgo."""
+    datos = leer_cuerpo()
+    dias_critico = entero(datos, "dias_critico", minimo=0, defecto=2) or 2
+    res_bloq = dom_inv.bloquear_lotes_vencidos(usuario=usuario_desde_token())
+    criticos = query(
+        """
+        SELECT id_lote::text, codigo_lote_prov, producto, id_locacion, locacion,
+               cantidad_disponible, dias_restantes, clasificacion, estado_lote
+        FROM operacion.v_inventario_lote
+        WHERE cantidad_disponible > 0 AND dias_restantes <= :d
+        ORDER BY fecha_caducidad ASC
+        LIMIT 100
+        """,
+        d=dias_critico,
+    )
+    for c in criticos:
+        c["cantidad_disponible"] = a_float(c["cantidad_disponible"])
+    cache_service.incrementar_contador("inventory", "expiration_scan")
+    return render_response(
+        {
+            "lotes_vencidos_bloqueados": res_bloq["bloqueados"],
+            "detalle_bloqueados": res_bloq["lotes"],
+            "lotes_criticos_actuales": len(criticos),
+            "detalle_criticos": criticos,
+        },
+        status=200,
+        root_tag="expiration_scan_response",
+    )
 
 
 if __name__ == "__main__":

@@ -27,13 +27,141 @@ pueda revisarla y aprobarla o rechazarla. El sistema nunca decide solo.
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
+from statistics import NormalDist
 
 from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, a_int, config_valor, one, query, transaccion
 from app.domain import pronostico
+
+
+# ---------------------------------------------------------------------------
+# Optimizador Newsvendor (cantidad óptima bajo demanda incierta y caducidad)
+# ---------------------------------------------------------------------------
+def _desviacion_diaria(id_sku: int, id_locacion: int, dias: int = 28) -> float:
+    """Calcula la desviación estándar de la demanda diaria (incluyendo días en cero)."""
+    filas = query(
+        """
+        SELECT fecha, SUM(cantidad) AS cantidad
+        FROM analitica.v_demanda_diaria
+        WHERE id_sku = :sku AND id_locacion = :loc
+          AND fecha >= CURRENT_DATE - :dias
+        GROUP BY fecha
+        """,
+        sku=id_sku,
+        loc=id_locacion,
+        dias=dias,
+    )
+    por_fecha = {f["fecha"]: a_float(f["cantidad"]) for f in filas}
+    hoy = date.today()
+    valores = [por_fecha.get(hoy - timedelta(days=i), 0.0) for i in range(dias)]
+    if not valores:
+        return 0.0
+    media = sum(valores) / len(valores)
+    var = sum((v - media) ** 2 for v in valores) / len(valores)
+    return round(math.sqrt(var), 4)
+
+
+def _costo_esperado_politica(
+    nivel_objetivo: float,
+    media: float,
+    sigma: float,
+    c_u: float,
+    c_o: float,
+    max_vida: float | None = None,
+) -> float:
+    """Costo esperado total E[C_u * (D - S)+ + C_o * (S - D)+] bajo demanda Normal."""
+    penal_vida = (
+        max(0.0, nivel_objetivo - max_vida) * c_o * 0.5
+        if max_vida is not None and max_vida > 0
+        else 0.0
+    )
+    if sigma <= 1e-6:
+        faltante = max(0.0, media - nivel_objetivo)
+        excedente = max(0.0, nivel_objetivo - media)
+        return round(faltante * c_u + excedente * c_o + penal_vida, 2)
+
+    norm = NormalDist(0.0, 1.0)
+    z = (nivel_objetivo - media) / sigma
+    esperado_exceso = max(0.0, sigma * (z * norm.cdf(z) + norm.pdf(z)))
+    esperado_faltante = max(0.0, esperado_exceso + (media - nivel_objetivo))
+    return round(esperado_faltante * c_u + esperado_exceso * c_o + penal_vida, 2)
+
+
+def optimizar_newsvendor(
+    *,
+    precio_venta: float,
+    precio_costo: float,
+    demanda_media: float,
+    desviacion_estandar: float,
+    vida_util_dias: int,
+    demanda_diaria: float,
+    stock_util: float = 0.0,
+    entradas: float = 0.0,
+    stock_seguridad_simple: float = 0.0,
+    valor_salvamento: float | None = None,
+) -> dict:
+    """
+    Modelo Newsvendor para perecederos:
+      - Costo de faltante (underage): C_u = max(0.01, P_venta - C_costo)
+      - Costo de excedente (overage): C_o = max(0.01, C_costo - V_rescate)
+      - Fractil crítico: F(Q*) = C_u / (C_u + C_o)
+      - Inventario objetivo: S* = min(mu + z * sigma, demanda_diaria * vida_util_dias)
+    """
+    p_venta = max(0.0, a_float(precio_venta))
+    p_costo = max(0.01, a_float(precio_costo))
+    if valor_salvamento is None:
+        # Recuperación parcial vía liquidación preventiva si vida útil > 3 días; si no, 0.
+        valor_salvamento = round(p_costo * 0.25, 2) if vida_util_dias > 3 else 0.0
+
+    c_u = round(max(0.01, p_venta - p_costo), 2)
+    c_o = round(max(0.01, p_costo - valor_salvamento), 2)
+    fractil = round(c_u / (c_u + c_o), 4)
+    fractil_acotado = min(0.99, max(0.01, fractil))
+
+    z_score = round(NormalDist(0.0, 1.0).inv_cdf(fractil_acotado), 4)
+    sigma = max(0.0, a_float(desviacion_estandar))
+    objetivo_raw = max(0.0, demanda_media + z_score * sigma)
+
+    max_vida = (
+        round(demanda_diaria * max(1, vida_util_dias), 2)
+        if demanda_diaria > 0
+        else None
+    )
+    acotado_por_caducidad = bool(max_vida is not None and objetivo_raw > max_vida)
+    objetivo_nv = round(min(objetivo_raw, max_vida) if max_vida is not None else objetivo_raw, 2)
+
+    necesidad_nv = round(max(0.0, objetivo_nv - stock_util - entradas), 2)
+    objetivo_simple = round(max(0.0, demanda_media + stock_seguridad_simple), 2)
+    necesidad_simple = round(max(0.0, objetivo_simple - stock_util - entradas), 2)
+
+    costo_esp_nv = _costo_esperado_politica(
+        objetivo_nv, demanda_media, sigma, c_u, c_o, max_vida
+    )
+    costo_esp_simple = _costo_esperado_politica(
+        objetivo_simple, demanda_media, sigma, c_u, c_o, max_vida
+    )
+    ahorro = round(max(0.0, costo_esp_simple - costo_esp_nv), 2)
+
+    return {
+        "costo_faltante": c_u,
+        "costo_excedente": c_o,
+        "valor_salvamento": valor_salvamento,
+        "fractil_critico": fractil,
+        "z_score": z_score,
+        "sigma_horizonte": round(sigma, 2),
+        "stock_objetivo_newsvendor": objetivo_nv,
+        "stock_objetivo_simple": objetivo_simple,
+        "acotado_por_caducidad": acotado_por_caducidad,
+        "cantidad_newsvendor": necesidad_nv,
+        "cantidad_politica_simple": necesidad_simple,
+        "costo_esperado_newsvendor": costo_esp_nv,
+        "costo_esperado_simple": costo_esp_simple,
+        "ahorro_esperado": ahorro,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -188,13 +316,37 @@ def analizar_sku_locacion(
         )["total"]
     )
 
-    necesidad = round(
+    necesidad_simple = round(
         demanda_horizonte + stock_seguridad - inventario_util - entradas, 2
     )
+    vida_util = a_int(producto["vida_util_estandar"], 15)
+    sigma_diaria = _desviacion_diaria(id_sku, id_locacion, 28)
+    sigma_horizonte = max(
+        sigma_diaria * math.sqrt(max(1, horizonte)),
+        demanda_horizonte * 0.10,
+    )
+    nv = optimizar_newsvendor(
+        precio_venta=a_float(producto["precio_venta"]),
+        precio_costo=a_float(producto["precio_costo"]),
+        demanda_media=demanda_horizonte,
+        desviacion_estandar=sigma_horizonte,
+        vida_util_dias=vida_util,
+        demanda_diaria=demanda_diaria,
+        stock_util=inventario_util,
+        entradas=entradas,
+        stock_seguridad_simple=stock_seguridad,
+    )
+    # La necesidad neta recomendada usa la cantidad óptima Newsvendor
+    necesidad = nv["cantidad_newsvendor"] if nv["cantidad_newsvendor"] > 0 else necesidad_simple
 
     moq = a_float(producto["moq"])
     advertencias: list[str] = []
     cantidad_sugerida = 0.0
+
+    if nv["acotado_por_caducidad"]:
+        advertencias.append(
+            f"Restricción de caducidad Newsvendor: el nivel objetivo se acotó a {vida_util} días de vida útil para evitar merma futura."
+        )
 
     if necesidad <= 0:
         cantidad_sugerida = 0.0
@@ -289,6 +441,8 @@ def analizar_sku_locacion(
         "entradas_confirmadas": round(entradas, 2),
         "stock_seguridad": stock_seguridad,
         "necesidad_neta": necesidad,
+        "necesidad_politica_simple": necesidad_simple,
+        "newsvendor": nv,
         "cantidad_sugerida": round(cantidad_sugerida, 2),
         "prioridad": prioridad,
         "advertencias": advertencias,
@@ -298,9 +452,10 @@ def analizar_sku_locacion(
 
 
 def explicar(analisis: dict) -> str:
-    """Texto legible con el desglose completo de la recomendación."""
+    """Texto legible con el desglose completo de la recomendación y Newsvendor."""
     p = analisis["producto"]
     loc = analisis["locacion"]
+    nv = analisis.get("newsvendor") or {}
     lineas = [
         f"Producto: {p['nombre']}",
         f"Tienda: {loc['nombre']}",
@@ -314,12 +469,25 @@ def explicar(analisis: dict) -> str:
         f"Lead time                          {analisis['lead_time_dias']:>10} días",
         f"MOQ                                {analisis['moq']:>10,.2f}",
         "",
-        f"Necesidad neta                     {analisis['necesidad_neta']:>10,.2f}",
+        f"Necesidad neta (Newsvendor)        {analisis['necesidad_neta']:>10,.2f}",
+    ]
+    if nv:
+        lineas.extend([
+            "",
+            "Modelo Newsvendor:",
+            f"  Costo de faltante (Cu)           ${nv['costo_faltante']:>9,.2f}",
+            f"  Costo de excedente (Co)          ${nv['costo_excedente']:>9,.2f}",
+            f"  Fractil crítico Cu/(Cu+Co)       {nv['fractil_critico']:>10.4f}",
+            f"  Cantidad óptima Newsvendor       {nv['cantidad_newsvendor']:>10,.2f}",
+            f"  Política simple (referencia)     {nv['cantidad_politica_simple']:>10,.2f}",
+            f"  Ahorro esperado en costo         ${nv['ahorro_esperado']:>9,.2f}",
+        ])
+    lineas.extend([
         "",
         f"Recomendación: ordenar {analisis['cantidad_sugerida']:,.0f} {p['unidad_medida']}"
         if analisis["cantidad_sugerida"] > 0
         else "Recomendación: no ordenar. El inventario útil cubre la demanda.",
-    ]
+    ])
     if analisis["advertencias"]:
         lineas.append("")
         lineas.append("Advertencias:")
@@ -381,7 +549,10 @@ def generar_recomendaciones(
                          demanda_pronosticada, inventario_fisico, inventario_riesgo,
                          inventario_util, entradas_confirmadas, stock_seguridad,
                          lead_time_dias, moq,
-                         necesidad_neta, cantidad_sugerida, prioridad, estado,
+                         necesidad_neta, cantidad_sugerida,
+                         costo_faltante, costo_excedente, fractil_critico,
+                         cantidad_newsvendor, cantidad_politica_simple, ahorro_esperado,
+                         prioridad, estado,
                          explicacion, advertencias, id_usuario_solicita)
                     VALUES
                         (:sku, :loc, :prov,
@@ -389,7 +560,9 @@ def generar_recomendaciones(
                           WHERE estado='COMPLETADO' ORDER BY fecha_ejecucion DESC LIMIT 1),
                          :demanda, :fisico, :riesgo, :util, :entradas, :seguridad,
                          :lead, :moq,
-                         :necesidad, :sugerida, :prioridad, 'PENDIENTE',
+                         :necesidad, :sugerida,
+                         :cu, :co, :fractil, :cant_nv, :cant_simple, :ahorro_esp,
+                         :prioridad, 'PENDIENTE',
                          :explicacion, CAST(:advertencias AS jsonb), CAST(:uid AS uuid))
                     RETURNING id_orden::text
                     """
@@ -408,6 +581,12 @@ def generar_recomendaciones(
                     "moq": analisis["moq"],
                     "necesidad": analisis["necesidad_neta"],
                     "sugerida": analisis["cantidad_sugerida"],
+                    "cu": analisis["newsvendor"]["costo_faltante"],
+                    "co": analisis["newsvendor"]["costo_excedente"],
+                    "fractil": analisis["newsvendor"]["fractil_critico"],
+                    "cant_nv": analisis["newsvendor"]["cantidad_newsvendor"],
+                    "cant_simple": analisis["newsvendor"]["cantidad_politica_simple"],
+                    "ahorro_esp": analisis["newsvendor"]["ahorro_esperado"],
                     "prioridad": analisis["prioridad"],
                     "explicacion": explicar(analisis),
                     "advertencias": _json(analisis["advertencias"]),
@@ -468,6 +647,8 @@ def listar_ordenes(estado: str | None = None, limite: int = 100) -> list[dict]:
                o.inventario_util, o.entradas_confirmadas, o.stock_seguridad,
                o.lead_time_dias, o.moq,
                o.necesidad_neta, o.cantidad_sugerida, o.cantidad_aprobada,
+               o.costo_faltante, o.costo_excedente, o.fractil_critico,
+               o.cantidad_newsvendor, o.cantidad_politica_simple, o.ahorro_esperado,
                o.explicacion, o.advertencias,
                p.nombre AS producto, p.id_sku, p.unidad_medida, p.precio_costo,
                loc.nombre AS locacion, loc.id_locacion,

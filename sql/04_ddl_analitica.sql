@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS analitica.forecast_run (
     mae              numeric(12,4),
     rmse             numeric(12,4),
     wmape            numeric(8,4),
+    sesgo            numeric(12,4),
+    naive_mae        numeric(12,4),
+    naive_wmape      numeric(8,4),
     observaciones    text,
     CONSTRAINT chk_fc_metodo CHECK (metodo IN (
         'MEDIA_MOVIL', 'MEDIA_MOVIL_PONDERADA', 'SUAVIZACION_EXPONENCIAL'
@@ -47,6 +50,11 @@ CREATE TABLE IF NOT EXISTS analitica.forecast_run (
     CONSTRAINT chk_fc_horizonte CHECK (horizonte_dias BETWEEN 1 AND 90),
     CONSTRAINT chk_fc_estado CHECK (estado IN ('COMPLETADO', 'ERROR', 'PARCIAL'))
 );
+
+ALTER TABLE analitica.forecast_run
+    ADD COLUMN IF NOT EXISTS sesgo       numeric(12,4),
+    ADD COLUMN IF NOT EXISTS naive_mae   numeric(12,4),
+    ADD COLUMN IF NOT EXISTS naive_wmape numeric(8,4);
 
 CREATE INDEX IF NOT EXISTS idx_fcrun_fecha ON analitica.forecast_run (fecha_ejecucion DESC);
 
@@ -89,6 +97,12 @@ CREATE TABLE IF NOT EXISTS analitica.orden_reabastecimiento (
     necesidad_neta        numeric(12,2) NOT NULL DEFAULT 0,
     cantidad_sugerida     numeric(12,2) NOT NULL DEFAULT 0,
     cantidad_aprobada     numeric(12,2),
+    costo_faltante        numeric(12,2),
+    costo_excedente       numeric(12,2),
+    fractil_critico       numeric(6,4),
+    cantidad_newsvendor   numeric(12,2),
+    cantidad_politica_simple numeric(12,2),
+    ahorro_esperado       numeric(12,2),
     prioridad             varchar(10) NOT NULL DEFAULT 'MEDIA',
     estado                varchar(20) NOT NULL DEFAULT 'PENDIENTE',
     explicacion           text,
@@ -102,6 +116,14 @@ CREATE TABLE IF NOT EXISTS analitica.orden_reabastecimiento (
     )),
     CONSTRAINT chk_or_prioridad CHECK (prioridad IN ('ALTA', 'MEDIA', 'BAJA'))
 );
+
+ALTER TABLE analitica.orden_reabastecimiento
+    ADD COLUMN IF NOT EXISTS costo_faltante numeric(12,2),
+    ADD COLUMN IF NOT EXISTS costo_excedente numeric(12,2),
+    ADD COLUMN IF NOT EXISTS fractil_critico numeric(6,4),
+    ADD COLUMN IF NOT EXISTS cantidad_newsvendor numeric(12,2),
+    ADD COLUMN IF NOT EXISTS cantidad_politica_simple numeric(12,2),
+    ADD COLUMN IF NOT EXISTS ahorro_esperado numeric(12,2);
 
 CREATE INDEX IF NOT EXISTS idx_or_estado ON analitica.orden_reabastecimiento (estado, fecha_creacion DESC);
 CREATE INDEX IF NOT EXISTS idx_or_sku    ON analitica.orden_reabastecimiento (id_sku, id_locacion);
@@ -215,10 +237,18 @@ CREATE TABLE IF NOT EXISTS analitica.desperdicio_evitado (
     cantidad_recuperada   numeric(12,2) NOT NULL DEFAULT 0,
     cantidad_mermada      numeric(12,2) NOT NULL DEFAULT 0,
     valor_recuperado      numeric(14,2) NOT NULL DEFAULT 0,
+    demanda_base_contrafactual numeric(12,2) NOT NULL DEFAULT 0,
+    desperdicio_proyectado     numeric(12,2) NOT NULL DEFAULT 0,
+    desperdicio_evitado_neto   numeric(12,2) NOT NULL DEFAULT 0,
     metodologia           text NOT NULL,
     fecha_registro        timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_de_tipo CHECK (tipo_intervencion IN ('TRANSFERENCIA', 'DESCUENTO'))
 );
+
+ALTER TABLE analitica.desperdicio_evitado
+    ADD COLUMN IF NOT EXISTS demanda_base_contrafactual numeric(12,2) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS desperdicio_proyectado     numeric(12,2) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS desperdicio_evitado_neto   numeric(12,2) NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_de_fecha ON analitica.desperdicio_evitado (fecha_registro DESC);
 

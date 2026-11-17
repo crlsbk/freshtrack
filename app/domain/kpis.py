@@ -502,20 +502,17 @@ def metricas_periodo(dias: int | None = 30) -> dict:
 # ---------------------------------------------------------------------------
 def calcular_desperdicio_evitado() -> dict:
     """
-    Recalcula el desperdicio evitado a partir de las intervenciones reales.
-
-    Para cada transferencia ejecutada y cada descuento aplicado, se cuentan las
-    unidades de ese lote vendidas en el destino entre la intervención y la fecha
-    de caducidad. Eso es lo recuperado. Lo que se mermó en ese mismo intervalo
-    es la merma residual.
+    Recalcula el desperdicio evitado a partir de las intervenciones reales
+    (transferencias ejecutadas y descuentos aprobados), descontando la línea
+    base contrafactual (demanda orgánica sin intervención).
     """
     with transaccion() as conn:
-        actualizados = conn.execute(
+        act_tr = conn.execute(
             text(
                 """
                 WITH intervenciones AS (
                     SELECT de.id_registro::text, de.id_lote, de.id_locacion,
-                           de.cantidad_intervenida, de.tipo_intervencion,
+                           de.cantidad_intervenida, de.demanda_base_contrafactual,
                            t.fecha_ejecucion AS desde,
                            t.id_locacion_destino AS loc_destino,
                            l.fecha_caducidad
@@ -551,11 +548,13 @@ def calcular_desperdicio_evitado() -> dict:
                    SET cantidad_recuperada = LEAST(v.recuperado, de.cantidad_intervenida),
                        cantidad_mermada    = m.perdido,
                        valor_recuperado    = v.valor,
-                       metodologia = 'Unidades del lote efectivamente vendidas en la tienda '
-                                     'destino entre la fecha de ejecución de la transferencia '
-                                     'y la fecha de caducidad del lote. La merma residual son '
-                                     'las unidades de ese mismo lote dadas de baja en el '
-                                     'destino dentro del mismo intervalo.'
+                       desperdicio_proyectado = GREATEST(de.cantidad_en_riesgo, de.cantidad_intervenida - de.demanda_base_contrafactual),
+                       desperdicio_evitado_neto = LEAST(
+                           de.cantidad_intervenida,
+                           GREATEST(0, LEAST(v.recuperado, de.cantidad_intervenida) - de.demanda_base_contrafactual)
+                       ),
+                       metodologia = 'Unidades del lote vendidas en tienda destino entre la ejecución '
+                                     'y la caducidad, descontando cualquier demanda base contrafactual.'
                   FROM vendido v, mermado m
                  WHERE de.id_registro = CAST(v.id_registro AS uuid)
                    AND de.id_registro = CAST(m.id_registro AS uuid)
@@ -564,24 +563,88 @@ def calcular_desperdicio_evitado() -> dict:
             )
         ).rowcount or 0
 
-    return {"actualizados": actualizados}
+        act_desc = conn.execute(
+            text(
+                """
+                WITH intervenciones AS (
+                    SELECT de.id_registro::text, de.id_lote, de.id_locacion,
+                           de.cantidad_intervenida, de.demanda_base_contrafactual,
+                           COALESCE(d.fecha_decision, d.fecha_creacion) AS desde,
+                           l.fecha_caducidad
+                    FROM analitica.desperdicio_evitado de
+                    JOIN analitica.descuento d ON d.id_descuento = de.id_descuento
+                    JOIN operacion.lote l ON l.id_lote = de.id_lote
+                    WHERE de.tipo_intervencion = 'DESCUENTO'
+                ),
+                vendido AS (
+                    SELECT i.id_registro,
+                           COALESCE(SUM(vd.cantidad), 0) AS recuperado,
+                           COALESCE(SUM(vd.subtotal), 0) AS valor
+                    FROM intervenciones i
+                    LEFT JOIN operacion.venta_detalle vd
+                           ON vd.id_lote = i.id_lote
+                          AND vd.id_locacion = i.id_locacion
+                          AND vd.fecha_transaccion >= i.desde
+                          AND vd.fecha_transaccion::date <= i.fecha_caducidad
+                    GROUP BY i.id_registro
+                ),
+                mermado AS (
+                    SELECT i.id_registro,
+                           COALESCE(SUM(m.cantidad), 0) AS perdido
+                    FROM intervenciones i
+                    LEFT JOIN operacion.merma m
+                           ON m.id_lote = i.id_lote
+                          AND m.id_locacion = i.id_locacion
+                          AND m.fecha_registro >= i.desde
+                          AND m.fecha_registro::date <= i.fecha_caducidad
+                    GROUP BY i.id_registro
+                )
+                UPDATE analitica.desperdicio_evitado de
+                   SET cantidad_recuperada = LEAST(v.recuperado, de.cantidad_intervenida),
+                       cantidad_mermada    = m.perdido,
+                       valor_recuperado    = v.valor,
+                       desperdicio_proyectado = GREATEST(de.cantidad_en_riesgo, de.cantidad_intervenida - de.demanda_base_contrafactual),
+                       desperdicio_evitado_neto = LEAST(
+                           de.cantidad_intervenida,
+                           GREATEST(0, LEAST(v.recuperado, de.cantidad_intervenida) - de.demanda_base_contrafactual)
+                       ),
+                       metodologia = 'Descuento preventivo: las unidades vendidas tras el descuento '
+                                     'se contrastan contra la línea base contrafactual orgánica para '
+                                     'estimar el desperdicio neto evitado.'
+                  FROM vendido v, mermado m
+                 WHERE de.id_registro = CAST(v.id_registro AS uuid)
+                   AND de.id_registro = CAST(m.id_registro AS uuid)
+                   AND de.tipo_intervencion = 'DESCUENTO'
+                """
+            )
+        ).rowcount or 0
+
+    return {"actualizados": act_tr + act_desc, "transferencias": act_tr, "descuentos": act_desc}
 
 
 def resumen_desperdicio_evitado() -> dict:
     totales = one(
         """
-        SELECT COALESCE(SUM(cantidad_en_riesgo), 0)   AS en_riesgo,
-               COALESCE(SUM(cantidad_intervenida), 0) AS intervenido,
-               COALESCE(SUM(cantidad_recuperada), 0)  AS recuperado,
-               COALESCE(SUM(cantidad_mermada), 0)     AS mermado,
-               COALESCE(SUM(valor_recuperado), 0)     AS valor,
-               COUNT(*)                               AS intervenciones
+        SELECT COALESCE(SUM(cantidad_en_riesgo), 0)         AS en_riesgo,
+               COALESCE(SUM(cantidad_intervenida), 0)       AS intervenido,
+               COALESCE(SUM(cantidad_recuperada), 0)        AS recuperado,
+               COALESCE(SUM(cantidad_mermada), 0)           AS mermado,
+               COALESCE(SUM(valor_recuperado), 0)           AS valor,
+               COALESCE(SUM(demanda_base_contrafactual), 0) AS contrafactual,
+               COALESCE(SUM(desperdicio_evitado_neto), 0)   AS evitado_neto,
+               COUNT(*)                                     AS intervenciones
         FROM analitica.desperdicio_evitado
         """
     ) or {}
 
     en_riesgo = a_float(totales.get("en_riesgo"))
     recuperado = a_float(totales.get("recuperado"))
+    evitado_neto = a_float(totales.get("evitado_neto"))
+    # Si todavía no se ha recalculado neto (registros legacy), usar recuperado - contrafactual
+    if evitado_neto == 0 and recuperado > 0 and a_float(totales.get("contrafactual")) == 0:
+        evitado_neto = recuperado
+        totales["evitado_neto"] = evitado_neto
+
     totales["tasa_recuperacion"] = (
         round(100 * recuperado / en_riesgo, 1) if en_riesgo else 0.0
     )
@@ -590,9 +653,11 @@ def resumen_desperdicio_evitado() -> dict:
         """
         SELECT de.id_registro::text, de.tipo_intervencion, de.cantidad_en_riesgo,
                de.cantidad_intervenida, de.cantidad_recuperada, de.cantidad_mermada,
-               de.valor_recuperado, de.fecha_registro, de.metodologia,
+               de.valor_recuperado, de.demanda_base_contrafactual,
+               de.desperdicio_evitado_neto, de.fecha_registro, de.metodologia,
                p.nombre AS producto, p.unidad_medida,
                o.nombre AS origen, d.nombre AS destino,
+               loc.nombre AS locacion_desc,
                l.codigo_lote_prov, l.fecha_caducidad
         FROM analitica.desperdicio_evitado de
         JOIN operacion.lote l ON l.id_lote = de.id_lote
@@ -600,6 +665,7 @@ def resumen_desperdicio_evitado() -> dict:
         LEFT JOIN analitica.transferencia t ON t.id_transferencia = de.id_transferencia
         LEFT JOIN operacion.locacion o ON o.id_locacion = t.id_locacion_origen
         LEFT JOIN operacion.locacion d ON d.id_locacion = t.id_locacion_destino
+        LEFT JOIN operacion.locacion loc ON loc.id_locacion = de.id_locacion
         ORDER BY de.fecha_registro DESC
         LIMIT 50
         """
@@ -608,8 +674,95 @@ def resumen_desperdicio_evitado() -> dict:
     return {"totales": totales, "detalle": detalle}
 
 
+def indicadores_desperdicio_completo(dias: int = 30) -> dict:
+    """
+    Devuelve los 6 indicadores diferenciados requeridos en instructions.md:
+      1. Producto en riesgo
+      2. Desperdicio proyectado
+      3. Producto recuperado
+      4. Desperdicio evitado estimado (contra línea base contrafactual)
+      5. Reducción observada de merma
+      6. CO2e evitado estimado (con factor y supuestos documentados)
+    """
+    riesgo_actual = one(
+        """
+        WITH dem AS (
+            SELECT id_sku, id_locacion, AVG(cantidad) AS diaria
+            FROM analitica.v_demanda_diaria
+            WHERE fecha >= CURRENT_DATE - 28
+            GROUP BY id_sku, id_locacion
+        )
+        SELECT COALESCE(SUM(v.cantidad_disponible), 0) AS unidades_riesgo,
+               COALESCE(SUM(v.valor_inventario), 0) AS valor_riesgo,
+               COUNT(DISTINCT v.id_lote) AS lotes_riesgo,
+               COALESCE(SUM(GREATEST(0, v.cantidad_disponible - COALESCE(d.diaria, 0) * GREATEST(0, v.dias_restantes))), 0) AS proy_unidades,
+               COALESCE(SUM(GREATEST(0, v.cantidad_disponible - COALESCE(d.diaria, 0) * GREATEST(0, v.dias_restantes)) * v.costo_unitario), 0) AS proy_valor
+        FROM operacion.v_inventario_lote v
+        LEFT JOIN dem d ON d.id_sku = v.id_sku AND d.id_locacion = v.id_locacion
+        WHERE v.cantidad_disponible > 0
+          AND v.estado_lote = 'DISPONIBLE'
+          AND v.clasificacion IN ('CRITICO', 'VIGILANCIA')
+        """
+    ) or {}
+
+    evitado = resumen_desperdicio_evitado()["totales"]
+    recuperado = a_float(evitado.get("recuperado"))
+    contrafactual = a_float(evitado.get("contrafactual"))
+    evitado_neto = a_float(evitado.get("evitado_neto"))
+    valor_rec = a_float(evitado.get("valor"))
+
+    tasa_reciente = tasa_merma(dias)
+    tasa_historica = tasa_merma(180)
+    tasa_rec_pct = a_float(tasa_reciente.get("tasa_pct"))
+    tasa_hist_pct = a_float(tasa_historica.get("tasa_pct"))
+    reduccion_pts = round(tasa_hist_pct - tasa_rec_pct, 2)
+
+    factor_co2 = 2.5
+    co2_evitado = round(evitado_neto * factor_co2, 2)
+
+    return {
+        "producto_en_riesgo": {
+            "unidades": round(a_float(riesgo_actual.get("unidades_riesgo")), 2),
+            "valor": round(a_float(riesgo_actual.get("valor_riesgo")), 2),
+            "lotes": a_int(riesgo_actual.get("lotes_riesgo")),
+            "definicion": "Existencia vigente en clasificación VIGILANCIA o CRÍTICO con probabilidad de caducar.",
+        },
+        "desperdicio_proyectado": {
+            "unidades": round(a_float(riesgo_actual.get("proy_unidades")), 2),
+            "valor": round(a_float(riesgo_actual.get("proy_valor")), 2),
+            "definicion": "Cantidad estimada que se perdería si no se ejecuta ninguna intervención antes del vencimiento.",
+        },
+        "producto_recuperado": {
+            "unidades": round(recuperado, 2),
+            "valor": round(valor_rec, 2),
+            "definicion": "Unidades efectivamente vendidas pertenecientes a lotes con transferencia ejecutada o descuento aprobado.",
+        },
+        "desperdicio_evitado_estimado": {
+            "unidades": round(evitado_neto, 2),
+            "contrafactual_organico": round(contrafactual, 2),
+            "porcentaje_causal": round(100 * evitado_neto / recuperado, 1) if recuperado > 0 else 0.0,
+            "definicion": "Diferencia neta frente a la línea base contrafactual sin intervención (excluye ventas orgánicas que habrían ocurrido a precio normal).",
+        },
+        "reduccion_observada_merma": {
+            "tasa_reciente_pct": tasa_rec_pct,
+            "tasa_base_historica_pct": tasa_hist_pct,
+            "cambio_puntos_pct": reduccion_pts,
+            "merma_reciente_unidades": a_float(tasa_reciente.get("mermado")),
+            "ventana_dias": dias,
+            "definicion": "Cambio empírico comprobado en las mermas registradas en PostgreSQL frente al histórico base.",
+        },
+        "co2e_evitado_estimado": {
+            "kg_co2e": co2_evitado,
+            "toneladas_co2e": round(co2_evitado / 1000.0, 4),
+            "factor": "2.5 kg CO2e / kg alimento perecedero (referencia FAO)",
+            "definicion": "Conversión ambiental calculada únicamente sobre el desperdicio evitado estimado neto (contrafactual).",
+        },
+    }
+
+
 def kpis_sostenibilidad(dias: int = 180) -> dict:
-    """Indicadores de sostenibilidad: lo que se evitó y su equivalencia."""
+    """Indicadores de sostenibilidad: separa recuperación bruta, neto contrafactual y merma observada."""
+    completo = indicadores_desperdicio_completo(min(dias, 30))
     evitado = resumen_desperdicio_evitado()["totales"]
     merma = one(
         """
@@ -622,20 +775,17 @@ def kpis_sostenibilidad(dias: int = 180) -> dict:
     ) or {}
 
     recuperado = a_float(evitado.get("recuperado"))
+    evitado_neto = a_float(evitado.get("evitado_neto"))
     mermado = a_float(merma.get("unidades"))
     total = recuperado + mermado
 
-    # 2.5 kg de CO2e por kg de alimento desperdiciado (referencia FAO)
-    kg_evitados = recuperado
     return {
         "unidades_recuperadas": recuperado,
+        "desperdicio_evitado_neto": evitado_neto,
         "unidades_mermadas": mermado,
         "valor_recuperado": a_float(evitado.get("valor")),
         "tasa_aprovechamiento": round(100 * recuperado / total, 1) if total else 0.0,
-        "co2e_evitado_kg": round(kg_evitados * 2.5, 1),
-        "metodologia": (
-            "Unidades recuperadas mediante transferencias y descuentos aprobados, "
-            "medidas como ventas reales del lote antes de su caducidad. "
-            "La equivalencia de CO2e usa 2.5 kg CO2e por kg de alimento (referencia FAO)."
-        ),
+        "co2e_evitado_kg": completo["co2e_evitado_estimado"]["kg_co2e"],
+        "completo": completo,
+        "metodologia": completo["desperdicio_evitado_estimado"]["definicion"] + " " + completo["co2e_evitado_estimado"]["factor"],
     }

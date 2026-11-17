@@ -24,6 +24,32 @@
 </div>
 {% endif %}
 
+{% if indicadores_6 %}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title" style="margin-bottom:12px;">Medición Causal del Desperdicio (6 Indicadores Diferenciados)</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+    {{ ui.kpi('1. Producto en riesgo', (indicadores_6.producto_en_riesgo.unidades | cantidad(2)) ~ ' u.',
+              indicadores_6.producto_en_riesgo.lotes ~ ' lotes vigentes en vigilancia/crítico (' ~ ui.moneda(indicadores_6.producto_en_riesgo.valor) ~ ')',
+              '#d97706', None, indicadores_6.producto_en_riesgo.definicion, 'alerta') }}
+    {{ ui.kpi('2. Desperdicio proyectado', (indicadores_6.desperdicio_proyectado.unidades | cantidad(2)) ~ ' u.',
+              'Pérdida estimada sin acción (' ~ ui.moneda(indicadores_6.desperdicio_proyectado.valor) ~ ')',
+              '#dc2626', None, indicadores_6.desperdicio_proyectado.definicion, 'basura') }}
+    {{ ui.kpi('3. Producto recuperado (bruto)', (indicadores_6.producto_recuperado.unidades | cantidad(2)) ~ ' u.',
+              'Ventas totales de lotes intervenidos (' ~ ui.moneda(indicadores_6.producto_recuperado.valor) ~ ')',
+              '#0284c7', None, indicadores_6.producto_recuperado.definicion, 'carrito') }}
+    {{ ui.kpi('4. Desperdicio evitado estimado', (indicadores_6.desperdicio_evitado_estimado.unidades | cantidad(2)) ~ ' u.',
+              'Neto vs línea base orgánica (' ~ (indicadores_6.desperdicio_evitado_estimado.contrafactual_organico | cantidad(2)) ~ ' u. orgánicas)',
+              '#16a34a', None, indicadores_6.desperdicio_evitado_estimado.definicion, 'check') }}
+    {{ ui.kpi('5. Reducción observada de merma', (indicadores_6.reduccion_observada_merma.cambio_puntos_pct | cantidad(2)) ~ ' pts',
+              'Tasa actual ' ~ indicadores_6.reduccion_observada_merma.tasa_reciente_pct ~ '% vs base ' ~ indicadores_6.reduccion_observada_merma.tasa_base_historica_pct ~ '%',
+              '#7c3aed', None, indicadores_6.reduccion_observada_merma.definicion, 'diana') }}
+    {{ ui.kpi('6. CO₂e evitado estimado', (indicadores_6.co2e_evitado_estimado.kg_co2e | cantidad(1)) ~ ' kg',
+              indicadores_6.co2e_evitado_estimado.factor,
+              '#16a34a', None, indicadores_6.co2e_evitado_estimado.definicion, 'hoja') }}
+  </div>
+</div>
+{% endif %}
+
 {# ── Cifra principal ── #}
 <div class="savings-hero">
   <div class="savings-hero-label">Unidades rescatadas por intervenciones</div>
@@ -121,11 +147,13 @@
         <th>Tipo</th>
         <th>Producto</th>
         <th>Lote</th>
-        <th>Origen → Destino</th>
+        <th>Origen → Destino / Tienda</th>
         <th>Caducidad</th>
         <th>En riesgo</th>
         <th>Intervenido</th>
-        <th>Recuperado</th>
+        <th>Recuperado (bruto)</th>
+        <th>Base orgánica</th>
+        <th>Evitado neto</th>
         <th>Mermado</th>
         <th>Valor recuperado</th>
       </tr>
@@ -142,19 +170,21 @@
           <td style="font-weight:600;">{{ d.producto }}</td>
           <td class="mono" style="font-size:11px;">{{ d.codigo_lote_prov }}</td>
           <td style="font-size:12px;">
-            {% if d.origen %}{{ d.origen }} → {{ d.destino }}{% else %}—{% endif %}
+            {% if d.origen %}{{ d.origen }} → {{ d.destino }}{% elif d.locacion_desc %}{{ d.locacion_desc }}{% else %}—{% endif %}
           </td>
           <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad | fecha_hora }}</td>
           <td class="mono">{{ (d.cantidad_en_riesgo) | cantidad(2) }}</td>
           <td class="mono">{{ (d.cantidad_intervenida) | cantidad(2) }}</td>
+          <td class="mono">{{ (d.cantidad_recuperada) | cantidad(2) }}</td>
+          <td class="mono text-muted">{{ (d.demanda_base_contrafactual or 0) | cantidad(2) }}</td>
           <td class="mono text-success" style="font-weight:600;">
-            {{ (d.cantidad_recuperada) | cantidad(2) }}
+            {{ (d.desperdicio_evitado_neto or 0) | cantidad(2) }}
           </td>
           <td class="mono text-danger">{{ (d.cantidad_mermada) | cantidad(2) }}</td>
           <td class="mono">{{ ui.moneda(d.valor_recuperado) }}</td>
         </tr>
       {% else %}
-        {{ ui.vacio('Todavía no hay intervenciones registradas. Ejecuta una transferencia aprobada para generar el primer registro.', 11) }}
+        {{ ui.vacio('Todavía no hay intervenciones registradas. Ejecuta una transferencia aprobada o aprueba un descuento para generar el primer registro.', 13) }}
       {% endfor %}
     </tbody>
   </table>

@@ -211,10 +211,26 @@ CREATE TABLE IF NOT EXISTS operacion.lote (
     CONSTRAINT chk_lote_prod   CHECK (fecha_produccion IS NULL OR fecha_produccion <= fecha_recepcion),
     CONSTRAINT chk_lote_cant   CHECK (cantidad_recibida >= 0),
     CONSTRAINT chk_lote_estado CHECK (
-        estado IN ('DISPONIBLE', 'AGOTADO', 'VENCIDO', 'MERMA', 'BLOQUEADO')
+        estado IN (
+            'DISPONIBLE', 'RESERVADO', 'AGOTADO', 'VENCIDO', 'MERMA',
+            'BLOQUEADO', 'CUARENTENA', 'DAÑADO', 'RETIRADO'
+        )
     ),
     CONSTRAINT uq_lote_proveedor UNIQUE (id_proveedor, codigo_lote_prov)
 );
+
+-- Migración idempotente de restricciones de estado de lote
+DO $$
+BEGIN
+    ALTER TABLE operacion.lote DROP CONSTRAINT IF EXISTS chk_lote_estado;
+    ALTER TABLE operacion.lote ADD CONSTRAINT chk_lote_estado CHECK (
+        estado IN (
+            'DISPONIBLE', 'RESERVADO', 'AGOTADO', 'VENCIDO', 'MERMA',
+            'BLOQUEADO', 'CUARENTENA', 'DAÑADO', 'RETIRADO'
+        )
+    );
+END
+$$;
 
 CREATE INDEX IF NOT EXISTS idx_lote_caducidad ON operacion.lote (fecha_caducidad);
 CREATE INDEX IF NOT EXISTS idx_lote_sku       ON operacion.lote (id_sku, fecha_caducidad);
@@ -235,8 +251,24 @@ CREATE TABLE IF NOT EXISTS operacion.existencia (
     actualizado_en      timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_cantidad_disponible CHECK (cantidad_disponible >= 0),
     CONSTRAINT chk_cantidad_reservada  CHECK (cantidad_reservada >= 0),
+    CONSTRAINT chk_disponible_no_menor_reservada CHECK (cantidad_disponible >= cantidad_reservada),
     CONSTRAINT uq_existencia_lote_loc  UNIQUE (id_lote, id_locacion)
 );
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_disponible_no_menor_reservada'
+    ) THEN
+        UPDATE operacion.existencia
+           SET cantidad_reservada = LEAST(cantidad_reservada, cantidad_disponible)
+         WHERE cantidad_reservada > cantidad_disponible;
+        ALTER TABLE operacion.existencia
+            ADD CONSTRAINT chk_disponible_no_menor_reservada
+            CHECK (cantidad_disponible >= cantidad_reservada);
+    END IF;
+END
+$$;
 
 CREATE INDEX IF NOT EXISTS idx_existencia_lote      ON operacion.existencia (id_lote);
 CREATE INDEX IF NOT EXISTS idx_existencia_locacion  ON operacion.existencia (id_locacion);

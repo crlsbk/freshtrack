@@ -106,18 +106,62 @@
       {{ ui.kpi('WMAPE', ((corrida.wmape) | cantidad(1)) ~ '%',
                 'Error sobre la demanda total', '#d97706', None,
                 'Weighted Mean Absolute Percentage Error: error porcentual ponderado por volumen. Es el estándar de oro en retail porque no se distorsiona con SKUs de baja rotación.', 'tendencia') }}
-      {{ ui.kpi('Duración', (corrida.duracion_ms | string) ~ ' ms', 'Tiempo de cómputo', None, None,
-                'Tiempo total transcurrido en procesar y proyectar todas las series temporales.', 'reloj') }}
+      {{ ui.kpi('Sesgo (Bias)', (corrida.sesgo | cantidad(2)) if corrida.sesgo is not none else '0.00',
+                'Positivo = sobreestima · Negativo = subestima', None, None,
+                'Sesgo promedio (Pronosticado − Real). Permite detectar si el modelo sistemáticamente infla o subestima la demanda.', 'reloj') }}
     </div>
 
-    <div class="aviso-info">
-      <strong>Cómo se mide:</strong> sobre el tramo final del historial se pronostica
-      hacia adelante y se compara con la demanda real ya registrada (validación
-      retrospectiva). El MAE dice cuántas unidades se desvía en promedio el pronóstico;
-      el WMAPE expresa ese error como porcentaje de la demanda total, que es la cifra
-      comparable entre productos de tamaños muy distintos.
-    </div>
+    {% if corrida.naive_mae is not none %}
+      <div class="aviso-info" style="margin-top:12px;">
+        <strong>Validación temporal vs. Línea Base Ingenua (Naive):</strong>
+        Modelo actual MAE <strong>{{ corrida.mae | cantidad(2) }}</strong> (WMAPE {{ corrida.wmape | cantidad(1) }}%)
+        frente a predicción Naive MAE <strong>{{ corrida.naive_mae | cantidad(2) }}</strong>
+        (WMAPE {{ corrida.naive_wmape | cantidad(1) }}%).
+      </div>
+    {% else %}
+      <div class="aviso-info">
+        <strong>Cómo se mide:</strong> sobre el tramo final del historial se pronostica
+        hacia adelante y se compara con la demanda real ya registrada (validación
+        retrospectiva). El MAE dice cuántas unidades se desvía en promedio el pronóstico;
+        el WMAPE expresa ese error como porcentaje de la demanda total, que es la cifra
+        comparable entre productos de tamaños muy distintos.
+      </div>
+    {% endif %}
   </div>
+
+  {% if backtest and backtest.resumen_global %}
+    <div class="table-wrap" style="margin-bottom:20px;">
+      <div class="table-header">
+        <div class="table-header-title">Comparativa de validación temporal (Modelos vs. Naive · {{ backtest.total_series }} series)</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Modelo</th>
+            <th>MAE</th>
+            <th>RMSE</th>
+            <th>WMAPE (%)</th>
+            <th>Sesgo (Bias)</th>
+            <th>Puntos evaluados</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for nombre_m, gm in backtest.resumen_global.items() %}
+            <tr>
+              <td style="font-weight:600;">
+                {{ metodos.get(nombre_m, {}).get('etiqueta', 'Predicción Ingenua (Naive)') }}
+              </td>
+              <td class="mono">{{ (gm.mae) | cantidad(2) if gm.mae is not none else '—' }}</td>
+              <td class="mono">{{ (gm.rmse) | cantidad(2) if gm.rmse is not none else '—' }}</td>
+              <td class="mono">{{ ((gm.wmape) | cantidad(1)) ~ '%' if gm.wmape is not none else '—' }}</td>
+              <td class="mono">{{ (gm.sesgo) | cantidad(2) if gm.sesgo is not none else '—' }}</td>
+              <td class="mono">{{ gm.puntos }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
 
   {# ── Pronóstico por producto y tienda ── #}
   <div class="table-wrap" style="margin-bottom:20px;">

@@ -19,11 +19,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from flask import g, request
 
 from app.db import a_float, one, query
+from app.domain import descuentos as dom_desc
 from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as dom_reab
+from app.domain import transferencias as dom_tr
+from app.domain import triaje as dom_triaje
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service, doc_store
-from app.services.common.auth import requiere_auth, usuario_desde_token
+from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
 from app.services.common.response import (
     ErrorApi,
     decimal_pos,
@@ -242,6 +245,315 @@ def contexto_completo_sku(sku_id: int):
         status=200,
         root_tag="sku_full_context",
     )
+
+
+# =============================================================================
+# Optimizador Newsvendor y Backtesting vs. Naive
+# =============================================================================
+@app.post("/api/v1/planning/newsvendor/evaluate")
+@documentar(
+    "Calcula cantidad óptima Newsvendor vs política simple (SKU + tienda)",
+    cuerpo={"id_sku": 1, "id_locacion": 3, "horizonte": 7},
+    raiz_xml="newsvendor_request",
+    respuesta={"cantidad_newsvendor": 42.0, "cantidad_politica_simple": 38.0, "fractil_critico": 0.65, "ahorro_esperado": 120.5},
+    raiz_respuesta="newsvendor_evaluation",
+    errores=("400", "404"),
+    exito="200",
+)
+@requiere_auth("planner", "buyer", "store_manager")
+def evaluar_newsvendor():
+    """Evalúa un par SKU + tienda aplicando el modelo Newsvendor con costos de faltante/excedente y caducidad."""
+    datos = leer_cuerpo(requerido=True)
+    id_sku = entero(datos, "id_sku", minimo=1)
+    id_locacion = g.contexto.get("location_id") or entero(datos, "id_locacion", minimo=1)
+    if not id_sku or not id_locacion:
+        raise ErrorApi(400, "campos_requeridos", "'id_sku' e 'id_locacion' son obligatorios.")
+    horizonte = entero(datos, "horizonte", minimo=1, defecto=7) or 7
+    try:
+        analisis = dom_reab.analizar_sku_locacion(id_sku, id_locacion, horizonte)
+    except ValueError as err:
+        return error_response(404, "no_encontrado", str(err))
+    return render_response(
+        {
+            "id_sku": id_sku,
+            "producto": analisis["producto"]["nombre"],
+            "id_locacion": id_locacion,
+            "locacion": analisis["locacion"]["nombre"],
+            "horizonte": horizonte,
+            "demanda_horizonte": analisis["demanda_horizonte"],
+            "inventario_util": analisis["inventario_util"],
+            "inventario_riesgo": analisis["inventario_riesgo"],
+            "cantidad_sugerida": analisis["cantidad_sugerida"],
+            "newsvendor": analisis["newsvendor"],
+            "advertencias": analisis["advertencias"],
+        },
+        status=200,
+        root_tag="newsvendor_evaluation",
+    )
+
+
+@app.get("/api/v1/planning/forecast/backtest")
+@documentar(
+    "Backtesting temporal cronológico comparando modelos contra Naive (MAE, WMAPE y Sesgo)",
+    consulta=[("id_sku", "integer", "Producto opcional"), ("id_locacion", "integer", "Tienda opcional"), ("horizonte", "integer", "Días (defecto 7)")],
+    raiz_respuesta="forecast_backtest",
+)
+@requiere_auth("planner", "buyer", "auditor")
+def backtest_comparativo():
+    """Evalúa todos los métodos frente a la línea base ingenua (Naive) midiendo sesgo y error temporal."""
+    id_sku = entero(request.args, "id_sku", minimo=1)
+    id_locacion = g.contexto.get("location_id") or entero(request.args, "id_locacion", minimo=1)
+    horizonte = entero(request.args, "horizonte", minimo=1, defecto=7) or 7
+    res = motor_pron.evaluar_backtest_comparativo(
+        id_sku=id_sku,
+        id_locacion=id_locacion,
+        horizonte=horizonte,
+    )
+    return render_response(res, status=200, root_tag="forecast_backtest")
+
+
+# =============================================================================
+# Transferencias entre tiendas (REST JSON/XML)
+# =============================================================================
+ESTADOS_TRANSFER = {"SUGERIDA", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA"}
+ESTADOS_DISCOUNT = {"SUGERIDO", "APROBADO", "RECHAZADO", "APLICADO"}
+
+
+@app.get("/api/v1/planning/transfers")
+@documentar(
+    "Lista transferencias entre tiendas (filtros)",
+    consulta=[("estado", "string", "SUGERIDA/APROBADA/EJECUTADA/RECHAZADA"), ("limite", "integer", "Máximo registros")],
+    raiz_respuesta="transfers_list",
+)
+@requiere_auth("planner", "store_manager", "warehouse")
+def listar_transferencias_api():
+    """Lista las propuestas y ejecuciones de transferencia entre tiendas."""
+    estado = (request.args.get("estado") or "").upper() or None
+    if estado and estado not in ESTADOS_TRANSFER:
+        raise ErrorApi(400, "parametro_invalido", f"Estado inválido. Valores: {sorted(ESTADOS_TRANSFER)}")
+    limite = min(entero(request.args, "limite", minimo=1, defecto=100) or 100, 300)
+    filas = dom_tr.listar_transferencias(estado=estado, limite=limite)
+    for f in filas:
+        f["cantidad"] = a_float(f["cantidad"])
+    return render_response(
+        {"total": len(filas), "resumen": dom_tr.resumen_transferencias(), "transferencias": filas},
+        status=200,
+        root_tag="transfers_list",
+    )
+
+
+@app.post("/api/v1/planning/transfers/detect")
+@documentar(
+    "Detecta oportunidades de transferencia entre tiendas",
+    cuerpo={"horizonte": 7},
+    raiz_xml="transfers_detect_request",
+    raiz_respuesta="transfers_detected",
+    errores=("400",),
+    exito="201",
+)
+@requiere_auth("planner", "store_manager")
+def detectar_transferencias_api():
+    """Evalúa excesos vs faltantes y crea propuestas SUGERIDA válidas en PostgreSQL."""
+    datos = leer_cuerpo()
+    horizonte = entero(datos, "horizonte", minimo=1)
+    res = dom_tr.detectar_oportunidades(usuario=usuario_desde_token(), horizonte=horizonte)
+    publicar_evento("TRANSFERENCIAS_DETECTADAS", {"total": res["total"], "descartadas": res.get("descartadas", 0)})
+    return render_response(res, status=201, root_tag="transfers_detected")
+
+
+def _decidir_transferencia_api(id_transferencia: str, aprobar: bool):
+    id_transferencia = validar_uuid(id_transferencia, "id_transferencia")
+    datos = leer_cuerpo()
+    cantidad = decimal_pos(datos, "cantidad") if aprobar else None
+    fila = one(
+        "SELECT id_locacion_origen, id_locacion_destino FROM analitica.transferencia WHERE id_transferencia = CAST(:id AS uuid)",
+        id=id_transferencia,
+    )
+    if not fila:
+        return error_response(404, "no_encontrado", f"Transferencia {id_transferencia} no encontrada.")
+    validar_alcance_locacion(fila["id_locacion_origen"])
+    try:
+        res = dom_tr.decidir_transferencia(
+            id_transferencia, aprobar=aprobar, usuario=usuario_desde_token(), cantidad=cantidad
+        )
+    except ValueError as err:
+        return error_response(409, "regla_negocio", str(err))
+    publicar_evento("TRANSFERENCIA_" + ("APROBADA" if aprobar else "RECHAZADA"), res)
+    return render_response(res, status=200, root_tag="transfer_decision")
+
+
+@app.post("/api/v1/planning/transfers/<id_transferencia>/approve")
+@documentar(
+    "Aprueba una transferencia SUGERIDA",
+    cuerpo={"cantidad": 10},
+    raiz_xml="aprobacion_transferencia_request",
+    raiz_respuesta="transfer_decision",
+    errores=("400", "403", "404", "409"),
+    exito="200",
+)
+@requiere_auth("store_manager", "planner")
+def aprobar_transferencia_api(id_transferencia: str):
+    """Aprueba humanamente la transferencia sugerida."""
+    return _decidir_transferencia_api(id_transferencia, True)
+
+
+@app.post("/api/v1/planning/transfers/<id_transferencia>/reject")
+@documentar("Rechaza una transferencia SUGERIDA", raiz_respuesta="transfer_decision", errores=("400", "403", "404", "409"), exito="200")
+@requiere_auth("store_manager", "planner")
+def rechazar_transferencia_api(id_transferencia: str):
+    """Rechaza la transferencia sugerida."""
+    return _decidir_transferencia_api(id_transferencia, False)
+
+
+@app.post("/api/v1/planning/transfers/<id_transferencia>/execute")
+@documentar(
+    "Ejecuta una transferencia APROBADA moviendo inventario entre tiendas",
+    raiz_respuesta="transfer_executed",
+    errores=("400", "403", "404", "409"),
+    exito="200",
+)
+@requiere_auth("store_manager", "warehouse", "planner")
+def ejecutar_transferencia_api(id_transferencia: str):
+    """Descuenta stock en origen, suma en destino, escribe kardex y registra en desperdicio_evitado."""
+    id_transferencia = validar_uuid(id_transferencia, "id_transferencia")
+    fila = one(
+        "SELECT id_locacion_origen FROM analitica.transferencia WHERE id_transferencia = CAST(:id AS uuid)",
+        id=id_transferencia,
+    )
+    if not fila:
+        return error_response(404, "no_encontrado", f"Transferencia {id_transferencia} no encontrada.")
+    validar_alcance_locacion(fila["id_locacion_origen"])
+    try:
+        res = dom_tr.ejecutar_transferencia(id_transferencia, usuario=usuario_desde_token())
+    except ValueError as err:
+        return error_response(409, "regla_negocio", str(err))
+    publicar_evento("TRANSFERENCIA_EJECUTADA", res)
+    return render_response(res, status=200, root_tag="transfer_executed")
+
+
+# =============================================================================
+# Descuentos preventivos (REST JSON/XML)
+# =============================================================================
+@app.get("/api/v1/planning/discounts")
+@documentar(
+    "Lista descuentos preventivos por lote (filtros)",
+    consulta=[("estado", "string", "SUGERIDO/APROBADO/RECHAZADO"), ("limite", "integer", "Máximo registros")],
+    raiz_respuesta="discounts_list",
+)
+@requiere_auth("planner", "store_manager", "buyer")
+def listar_descuentos_api():
+    """Lista las sugerencias y aprobaciones de descuento preventivo."""
+    estado = (request.args.get("estado") or "").upper() or None
+    if estado and estado not in ESTADOS_DISCOUNT:
+        raise ErrorApi(400, "parametro_invalido", f"Estado inválido. Valores: {sorted(ESTADOS_DISCOUNT)}")
+    limite = min(entero(request.args, "limite", minimo=1, defecto=100) or 100, 300)
+    filas = dom_desc.listar_descuentos(estado=estado, limite=limite)
+    for f in filas:
+        f["cantidad"] = a_float(f["cantidad"])
+        f["descuento_pct"] = a_float(f["descuento_pct"])
+        f["precio_normal"] = a_float(f["precio_normal"])
+        f["precio_nuevo"] = a_float(f["precio_nuevo"])
+        f["ingreso_potencial"] = a_float(f["ingreso_potencial"])
+    return render_response(
+        {"total": len(filas), "resumen": dom_desc.resumen_descuentos(), "descuentos": filas},
+        status=200,
+        root_tag="discounts_list",
+    )
+
+
+@app.post("/api/v1/planning/discounts/generate")
+@documentar(
+    "Genera sugerencias de descuentos preventivos respetando margen y caducidad",
+    cuerpo={"dias_hasta": 5},
+    raiz_xml="discounts_generate_request",
+    raiz_respuesta="discounts_generated",
+    errores=("400",),
+    exito="201",
+)
+@requiere_auth("planner", "store_manager")
+def generar_descuentos_api():
+    """Calcula descuentos preventivos respetando costo piso y lotes elegibles."""
+    datos = leer_cuerpo()
+    dias = entero(datos, "dias_hasta", minimo=0)
+    res = dom_desc.sugerir_descuentos(usuario=usuario_desde_token(), dias_hasta=dias)
+    publicar_evento("DESCUENTOS_SUGERIDOS", {"total": res["total"]})
+    return render_response(res, status=201, root_tag="discounts_generated")
+
+
+def _decidir_descuento_api(id_descuento: str, aprobar: bool):
+    id_descuento = validar_uuid(id_descuento, "id_descuento")
+    fila = one(
+        "SELECT id_locacion FROM analitica.descuento WHERE id_descuento = CAST(:id AS uuid)",
+        id=id_descuento,
+    )
+    if not fila:
+        return error_response(404, "no_encontrado", f"Descuento {id_descuento} no encontrado.")
+    validar_alcance_locacion(fila["id_locacion"])
+    try:
+        res = dom_desc.decidir_descuento(id_descuento, aprobar=aprobar, usuario=usuario_desde_token())
+    except ValueError as err:
+        return error_response(409, "regla_negocio", str(err))
+    publicar_evento("DESCUENTO_" + ("APROBADO" if aprobar else "RECHAZADO"), res)
+    return render_response(res, status=200, root_tag="discount_decision")
+
+
+@app.post("/api/v1/planning/discounts/<id_descuento>/approve")
+@documentar("Aprueba un descuento preventivo", raiz_respuesta="discount_decision", errores=("400", "403", "404", "409"), exito="200")
+@requiere_auth("store_manager", "planner")
+def aprobar_descuento_api(id_descuento: str):
+    """Aprueba el descuento preventivo y da de alta su seguimiento en desperdicio_evitado."""
+    return _decidir_descuento_api(id_descuento, True)
+
+
+@app.post("/api/v1/planning/discounts/<id_descuento>/reject")
+@documentar("Rechaza un descuento preventivo", raiz_respuesta="discount_decision", errores=("400", "403", "404", "409"), exito="200")
+@requiere_auth("store_manager", "planner")
+def rechazar_descuento_api(id_descuento: str):
+    """Rechaza la propuesta de descuento."""
+    return _decidir_descuento_api(id_descuento, False)
+
+
+# =============================================================================
+# Motor de Triaje Automático: Descuento ↔ Traslado ↔ Merma
+# =============================================================================
+@app.get("/api/v1/planning/triage")
+@documentar(
+    "Evalúa en vivo la decisión óptima por lote (Descuento ↔ Traslado ↔ Merma)",
+    consulta=[("id_locacion", "integer", "Tienda opcional"), ("horizonte", "integer", "Días (defecto 7)")],
+    raiz_respuesta="triage_evaluation",
+)
+@requiere_auth("planner", "store_manager", "buyer")
+def evaluar_triaje_api():
+    """Calcula sin escribir en BD qué ruta económica recupera más valor para cada lote en riesgo."""
+    id_locacion = g.contexto.get("location_id") or entero(request.args, "id_locacion", minimo=1)
+    horizonte = entero(request.args, "horizonte", minimo=1, defecto=7)
+    res = dom_triaje.evaluar_triaje_lotes(id_locacion=id_locacion, horizonte=horizonte)
+    return render_response(res, status=200, root_tag="triage_evaluation")
+
+
+@app.post("/api/v1/planning/triage/run")
+@documentar(
+    "Ejecuta el motor de triaje automático (Descuento ↔ Traslado ↔ Merma) y materializa decisiones",
+    cuerpo={"horizonte": 7},
+    raiz_xml="triage_run_request",
+    raiz_respuesta="triage_run_result",
+    errores=("400", "403"),
+    exito="201",
+)
+@requiere_auth("planner", "store_manager")
+def ejecutar_triaje_api():
+    """Evalúa lotes en riesgo, resuelve la mejor acción económica y crea traslados, descuentos o bloqueos."""
+    datos = leer_cuerpo()
+    id_locacion = g.contexto.get("location_id") or entero(datos, "id_locacion", minimo=1)
+    validar_alcance_locacion(id_locacion)
+    horizonte = entero(datos, "horizonte", minimo=1, defecto=7)
+    res = dom_triaje.ejecutar_triaje_automatico(
+        usuario=usuario_desde_token(),
+        id_locacion=id_locacion,
+        horizonte=horizonte,
+    )
+    publicar_evento("TRIAJE_PREVENTIVO_EJECUTADO", res["aplicados"])
+    return render_response(res, status=201, root_tag="triage_run_result")
 
 
 if __name__ == "__main__":

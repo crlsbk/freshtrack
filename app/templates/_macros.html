@@ -60,8 +60,9 @@
       'SUGERIDA': 'info', 'SUGERIDO': 'info', 'EJECUTADA': 'success',
       'APROBADO': 'success', 'RECHAZADO': 'danger', 'CANCELADA': 'neutral',
       'ABIERTA': 'danger', 'ATENDIDA': 'success', 'DESCARTADA': 'neutral',
-      'AGOTADO': 'neutral', 'DISPONIBLE': 'success', 'VENCIDO': 'danger',
-      'BLOQUEADO': 'warning'} %}
+      'AGOTADO': 'neutral', 'DISPONIBLE': 'success', 'RESERVADO': 'info',
+      'VENCIDO': 'danger', 'BLOQUEADO': 'warning', 'CUARENTENA': 'warning',
+      'DAÑADO': 'danger', 'RETIRADO': 'neutral', 'MERMA': 'danger'} %}
   <span class="badge badge-{{ mapa.get(valor, 'neutral') }}">{{ valor | legible }}</span>
 {% endmacro %}
 

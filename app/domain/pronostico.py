@@ -145,16 +145,32 @@ def _pronosticar_fecha(
 
 def _metricas(reales: list[float], pronosticados: list[float]) -> dict:
     if not reales:
-        return {"mae": None, "rmse": None, "wmape": None, "n": 0, "suma_real": 0.0}
+        return {
+            "mae": None,
+            "rmse": None,
+            "wmape": None,
+            "wape": None,
+            "sesgo": None,
+            "demanda_intermitente": False,
+            "n": 0,
+            "suma_real": 0.0,
+        }
     errores = [r - p for r, p in zip(reales, pronosticados)]
     mae = sum(abs(e) for e in errores) / len(errores)
     rmse = math.sqrt(sum(e * e for e in errores) / len(errores))
+    # Sesgo (Bias): promedio de (pronosticado - real). >0 sobreestima, <0 subestima.
+    sesgo = sum(p - r for r, p in zip(reales, pronosticados)) / len(errores)
     suma_real = sum(abs(r) for r in reales)
     wmape = (sum(abs(e) for e in errores) / suma_real * 100) if suma_real > 0 else None
+    ceros = sum(1 for r in reales if abs(r) < 1e-9)
+    intermitente = (ceros / len(reales)) >= 0.30
     return {
         "mae": round(mae, 4),
         "rmse": round(rmse, 4),
         "wmape": round(wmape, 4) if wmape is not None else None,
+        "wape": round(wmape, 4) if wmape is not None else None,
+        "sesgo": round(sesgo, 4),
+        "demanda_intermitente": intermitente,
         "n": len(reales),
         "suma_real": round(suma_real, 4),
     }
@@ -172,12 +188,13 @@ def pronosticar_serie(
     Pronostica una serie (producto + tienda) y mide su error con backtest.
 
     El backtest es walk-forward sobre los últimos `horizonte` días de historia:
-    para cada día se pronostica usando únicamente la información previa.
+    para cada día se pronostica usando únicamente la información previa, y se
+    compara además contra una predicción ingenua (Naive estacional semanal).
     """
     factores = _factores_semana(serie)
     dias_backtest = min(horizonte, max(1, len(serie) // 5))
 
-    reales, pronosticados = [], []
+    reales, pronosticados, naive_pronosticados = [], [], []
     if len(serie) > dias_backtest:
         for i in range(len(serie) - dias_backtest, len(serie)):
             entrenamiento = serie[:i]
@@ -185,7 +202,16 @@ def pronosticar_serie(
             pronosticados.append(
                 _pronosticar_fecha(entrenamiento, fecha, metodo, ventana, alpha, factores)
             )
+            # Predicción ingenua (Naive): mismo día de la semana anterior o último día observado
+            naive_val = entrenamiento[-7][1] if len(entrenamiento) >= 7 else (entrenamiento[-1][1] if entrenamiento else 0.0)
+            naive_pronosticados.append(naive_val)
             reales.append(real)
+
+    metricas = _metricas(reales, pronosticados)
+    metricas_naive = _metricas(reales, naive_pronosticados)
+    mejora_vs_naive = None
+    if metricas["mae"] is not None and metricas_naive["mae"] and metricas_naive["mae"] > 0:
+        mejora_vs_naive = round((metricas_naive["mae"] - metricas["mae"]) / metricas_naive["mae"] * 100, 2)
 
     pronostico = []
     for h in range(1, horizonte + 1):
@@ -203,7 +229,9 @@ def pronosticar_serie(
 
     return {
         "pronostico": pronostico,
-        "metricas": _metricas(reales, pronosticados),
+        "metricas": metricas,
+        "metricas_naive": metricas_naive,
+        "mejora_vs_naive_pct": mejora_vs_naive,
         "factores_semana": factores,
         "dias_backtest": dias_backtest,
         "nivel_ajustado": round(
@@ -270,7 +298,8 @@ def ejecutar_pronostico(
     id_run = None
     series_procesadas = 0
     resultados: list[dict] = []
-    suma_abs, suma_cuad, suma_real, n_total = 0.0, 0.0, 0.0, 0
+    suma_abs, suma_cuad, suma_real, suma_sesgo, n_total = 0.0, 0.0, 0.0, 0.0, 0
+    suma_naive_abs, suma_naive_real, n_naive = 0.0, 0.0, 0
 
     with transaccion(
         id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
@@ -336,20 +365,31 @@ def ejecutar_pronostico(
                     "id_sku": sku,
                     "id_locacion": loc,
                     "metricas": metricas,
+                    "metricas_naive": salida["metricas_naive"],
+                    "mejora_vs_naive_pct": salida["mejora_vs_naive_pct"],
                     "pronostico": salida["pronostico"],
                 }
             )
             if metricas["n"]:
                 suma_abs += metricas["mae"] * metricas["n"]
                 suma_cuad += (metricas["rmse"] ** 2) * metricas["n"]
+                suma_sesgo += (metricas["sesgo"] or 0.0) * metricas["n"]
                 suma_real += metricas["suma_real"]
                 n_total += metricas["n"]
+            m_naive = salida["metricas_naive"]
+            if m_naive["n"] and m_naive["mae"] is not None:
+                suma_naive_abs += m_naive["mae"] * m_naive["n"]
+                suma_naive_real += m_naive["suma_real"]
+                n_naive += m_naive["n"]
 
         mae_global = round(suma_abs / n_total, 4) if n_total else None
         rmse_global = round(math.sqrt(suma_cuad / n_total), 4) if n_total else None
         # Mismo universo en numerador y denominador: los días de backtest de las
         # series evaluadas (no toda la demanda de todas las tiendas).
         wmape_global = round(suma_abs / suma_real * 100, 4) if suma_real > 0 else None
+        sesgo_global = round(suma_sesgo / n_total, 4) if n_total else None
+        naive_mae_global = round(suma_naive_abs / n_naive, 4) if n_naive else None
+        naive_wmape_global = round(suma_naive_abs / suma_naive_real * 100, 4) if suma_naive_real > 0 else None
 
         duracion = int((time.time() - inicio_reloj) * 1000)
         conn.execute(
@@ -357,7 +397,8 @@ def ejecutar_pronostico(
                 """
                 UPDATE analitica.forecast_run
                    SET estado = 'COMPLETADO', n_series = :n, mae = :mae,
-                       rmse = :rmse, wmape = :wmape, duracion_ms = :ms
+                       rmse = :rmse, wmape = :wmape, sesgo = :sesgo,
+                       naive_mae = :n_mae, naive_wmape = :n_wmape, duracion_ms = :ms
                  WHERE id_run = CAST(:id AS uuid)
                 """
             ),
@@ -366,6 +407,9 @@ def ejecutar_pronostico(
                 "mae": mae_global,
                 "rmse": rmse_global,
                 "wmape": wmape_global,
+                "sesgo": sesgo_global,
+                "n_mae": naive_mae_global,
+                "n_wmape": naive_wmape_global,
                 "ms": duracion,
                 "id": id_run,
             },
@@ -450,6 +494,9 @@ def ejecutar_pronostico(
         "mae": mae_global,
         "rmse": rmse_global,
         "wmape": wmape_global,
+        "sesgo": sesgo_global,
+        "naive_mae": naive_mae_global,
+        "naive_wmape": naive_wmape_global,
         "resultados": resultados,
         "duracion_ms": duracion,
     }
@@ -462,6 +509,130 @@ def _json(valor) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Backtesting comparativo (modelos vs. Naive por SKU y tienda)
+# ---------------------------------------------------------------------------
+def evaluar_backtest_comparativo(
+    *,
+    id_sku: int | None = None,
+    id_locacion: int | None = None,
+    horizonte: int = 7,
+    ventana: int = 28,
+    alpha: float = 0.30,
+    dias_historia: int = 120,
+    min_dias_historia: int = 14,
+) -> dict:
+    """
+    Evalúa en validación temporal cronológica (walk-forward) los tres métodos
+    frente a la predicción ingenua (Naive) por producto y tienda, reportando
+    MAE, RMSE, WMAPE, Sesgo y demanda intermitente.
+    """
+    fecha_fin = escalar("SELECT max(fecha) FROM analitica.v_demanda_diaria") or date.today()
+    fecha_inicio = fecha_fin - timedelta(days=dias_historia)
+    condiciones = ["v.fecha >= :inicio"]
+    params: dict = {"inicio": fecha_inicio}
+    if id_locacion:
+        condiciones.append("v.id_locacion = :id_locacion")
+        params["id_locacion"] = id_locacion
+    if id_sku:
+        condiciones.append("v.id_sku = :id_sku")
+        params["id_sku"] = id_sku
+
+    filas = query(
+        f"""
+        SELECT v.id_sku, v.id_locacion, v.fecha, v.cantidad,
+               p.nombre AS producto, loc.nombre AS locacion
+        FROM analitica.v_demanda_diaria v
+        JOIN operacion.producto p ON p.id_sku = v.id_sku
+        JOIN operacion.locacion loc ON loc.id_locacion = v.id_locacion
+        WHERE {' AND '.join(condiciones)}
+        ORDER BY v.id_sku, v.id_locacion, v.fecha
+        """,
+        **params,
+    )
+
+    grupos: dict[tuple[int, int], list[dict]] = {}
+    nombres: dict[tuple[int, int], tuple[str, str]] = {}
+    for fila in filas:
+        key = (fila["id_sku"], fila["id_locacion"])
+        grupos.setdefault(key, []).append(fila)
+        nombres[key] = (fila["producto"], fila["locacion"])
+
+    resumen_modelos: dict[str, dict] = {
+        m: {"abs": 0.0, "real": 0.0, "sesgo": 0.0, "cuad": 0.0, "n": 0}
+        for m in (*METODOS.keys(), "NAIVE")
+    }
+    detalle_series: list[dict] = []
+
+    for (sku, loc), filas_serie in grupos.items():
+        serie = _serie_completa(filas_serie, fecha_inicio, fecha_fin)
+        if sum(1 for _, v in serie if v > 0) < min_dias_historia:
+            continue
+
+        comparativa_serie: dict[str, dict] = {}
+        naive_capturado = False
+        for metodo in METODOS:
+            sal = pronosticar_serie(serie, metodo, horizonte, ventana, alpha, fecha_fin)
+            m = sal["metricas"]
+            comparativa_serie[metodo] = {
+                "mae": m["mae"],
+                "wmape": m["wmape"],
+                "sesgo": m["sesgo"],
+                "demanda_intermitente": m["demanda_intermitente"],
+            }
+            if m["n"]:
+                resumen_modelos[metodo]["abs"] += m["mae"] * m["n"]
+                resumen_modelos[metodo]["cuad"] += (m["rmse"] ** 2) * m["n"]
+                resumen_modelos[metodo]["sesgo"] += (m["sesgo"] or 0.0) * m["n"]
+                resumen_modelos[metodo]["real"] += m["suma_real"]
+                resumen_modelos[metodo]["n"] += m["n"]
+            if not naive_capturado:
+                mn = sal["metricas_naive"]
+                comparativa_serie["NAIVE"] = {
+                    "mae": mn["mae"],
+                    "wmape": mn["wmape"],
+                    "sesgo": mn["sesgo"],
+                }
+                if mn["n"]:
+                    resumen_modelos["NAIVE"]["abs"] += mn["mae"] * mn["n"]
+                    resumen_modelos["NAIVE"]["cuad"] += (mn["rmse"] ** 2) * mn["n"]
+                    resumen_modelos["NAIVE"]["sesgo"] += (mn["sesgo"] or 0.0) * mn["n"]
+                    resumen_modelos["NAIVE"]["real"] += mn["suma_real"]
+                    resumen_modelos["NAIVE"]["n"] += mn["n"]
+                naive_capturado = True
+
+        mejor = min(METODOS.keys(), key=lambda m: comparativa_serie[m]["mae"] or 1e9)
+        prod_nom, loc_nom = nombres[(sku, loc)]
+        detalle_series.append(
+            {
+                "id_sku": sku,
+                "producto": prod_nom,
+                "id_locacion": loc,
+                "locacion": loc_nom,
+                "mejor_modelo": mejor,
+                "modelos": comparativa_serie,
+            }
+        )
+
+    global_modelos = {}
+    for nombre, acc in resumen_modelos.items():
+        n = acc["n"]
+        global_modelos[nombre] = {
+            "mae": round(acc["abs"] / n, 4) if n else None,
+            "rmse": round(math.sqrt(acc["cuad"] / n), 4) if n else None,
+            "wmape": round(acc["abs"] / acc["real"] * 100, 4) if acc["real"] > 0 else None,
+            "sesgo": round(acc["sesgo"] / n, 4) if n else None,
+            "puntos": n,
+        }
+
+    return {
+        "horizonte": horizonte,
+        "total_series": len(detalle_series),
+        "resumen_global": global_modelos,
+        "series": detalle_series[:100],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Consultas
 # ---------------------------------------------------------------------------
 def ultima_corrida() -> dict | None:
@@ -469,7 +640,7 @@ def ultima_corrida() -> dict | None:
         """
         SELECT r.id_run::text, r.metodo, r.parametros, r.periodo_inicio, r.periodo_fin,
                r.horizonte_dias, r.fecha_ejecucion, r.n_series, r.estado,
-               r.mae, r.rmse, r.wmape, r.duracion_ms,
+               r.mae, r.rmse, r.wmape, r.sesgo, r.naive_mae, r.naive_wmape, r.duracion_ms,
                u.nombre_completo AS ejecutado_por
         FROM analitica.forecast_run r
         LEFT JOIN operacion.usuario u ON u.id_usuario = r.id_usuario
@@ -484,8 +655,8 @@ def corridas(limite: int = 20) -> list[dict]:
     return query(
         """
         SELECT r.id_run::text, r.metodo, r.horizonte_dias, r.fecha_ejecucion,
-               r.n_series, r.mae, r.rmse, r.wmape, r.duracion_ms, r.estado,
-               r.periodo_inicio, r.periodo_fin,
+               r.n_series, r.mae, r.rmse, r.wmape, r.sesgo, r.naive_mae, r.naive_wmape,
+               r.duracion_ms, r.estado, r.periodo_inicio, r.periodo_fin,
                u.nombre_completo AS ejecutado_por
         FROM analitica.forecast_run r
         LEFT JOIN operacion.usuario u ON u.id_usuario = r.id_usuario

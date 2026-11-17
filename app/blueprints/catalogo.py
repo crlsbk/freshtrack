@@ -47,7 +47,7 @@ def productos():
     if request.method == "POST" and clientes.activo():
         status, r = clientes.como_usuario("catalog", "POST", "/api/v1/catalog/products", _producto_desde_formulario())
         if status == 201:
-            flash(f"Producto «{r['nombre']}» dado de alta por svc-catalog (SKU {r['id_sku']}).", "ok")
+            flash(f"Producto «{r['nombre']}» registrado correctamente (SKU {r['id_sku']}).", "ok")
         else:
             flash(f"El producto no se registró: {clientes.mensaje_error('catalog', status, r)}", "error")
         return redirect(url_for("catalogo.productos"))
@@ -55,7 +55,7 @@ def productos():
     if request.method == "POST":
         try:
             resultado = repo.crear_producto(request.form, usuario)
-            flash(f"Producto «{resultado['nombre']}» registrado en PostgreSQL.", "ok")
+            flash(f"Producto «{resultado['nombre']}» registrado correctamente.", "ok")
         except ValueError as e:
             flash(str(e), "error")
         except SQLAlchemyError as e:
@@ -82,7 +82,7 @@ def editar_producto(id_sku: int):
     if clientes.activo():
         status, r = clientes.como_usuario("catalog", "PATCH", f"/api/v1/catalog/products/{id_sku}", _producto_desde_formulario())
         if status == 200:
-            flash(f"Producto SKU {id_sku} actualizado por svc-catalog.", "ok")
+            flash(f"Producto SKU {id_sku} actualizado correctamente.", "ok")
         else:
             flash(f"El producto no cambió: {clientes.mensaje_error('catalog', status, r)}", "error")
         return redirect(url_for("catalogo.productos"))
@@ -104,7 +104,7 @@ def estado_producto(id_sku: int):
     if clientes.activo():
         status, r = clientes.como_usuario("catalog", "PATCH", f"/api/v1/catalog/products/{id_sku}", {"activo": activo})
         if status == 200:
-            flash(f"Producto SKU {id_sku} {'activado' if activo else 'desactivado'} por svc-catalog.", "ok")
+            flash(f"Producto SKU {id_sku} {'activado' if activo else 'desactivado'} correctamente.", "ok")
         else:
             flash(f"El producto no cambió: {clientes.mensaje_error('catalog', status, r)}", "error")
         return redirect(url_for("catalogo.productos"))
@@ -132,7 +132,7 @@ def proveedores():
         try:
             resultado = repo.crear_proveedor(request.form, usuario)
             flash(
-                f"Proveedor «{resultado['razon_social']}» registrado en PostgreSQL.",
+                f"Proveedor «{resultado['razon_social']}» registrado correctamente.",
                 "ok",
             )
         except ValueError as e:
@@ -190,7 +190,7 @@ def locaciones():
     if request.method == "POST":
         try:
             resultado = repo.crear_locacion(request.form, usuario)
-            flash(f"«{resultado['nombre']}» registrada en PostgreSQL.", "ok")
+            flash(f"«{resultado['nombre']}» registrada correctamente.", "ok")
         except ValueError as e:
             flash(str(e), "error")
         except SQLAlchemyError as e:

@@ -116,7 +116,7 @@ def alertas_regenerar():
     try:
         resultado = motor_alertas.generar_alertas(usuario_actual())
         flash(
-            f"Alertas recalculadas desde PostgreSQL: {resultado['generadas']} reglas "
+            f"Alertas actualizadas: {resultado['generadas']} reglas "
             f"aplicadas, {resultado['cerradas']} cerradas por dejar de aplicar, "
             f"{resultado['abiertas']} abiertas en total.",
             "ok",
@@ -163,6 +163,9 @@ def desperdicio_evitado():
         sostenibilidad=motor_kpis.kpis_sostenibilidad(180),
         indicadores_6=indicadores_6,
         esg_api=esg_api,
+        tasa=motor_kpis.tasa_merma(180),
+        por_categoria=motor_kpis.merma_por_categoria(180),
+        serie=motor_kpis.serie_mensual(12),
     )
 
 
@@ -187,16 +190,8 @@ def desperdicio_recalcular():
 # ===========================================================================
 @bp.route("/sostenibilidad")
 @login_required
-@requiere_vista("sustainability")
 def sostenibilidad():
-    return render_template(
-        "panel/sostenibilidad.html",
-        active="sustainability",
-        indicadores=motor_kpis.kpis_sostenibilidad(180),
-        tasa=motor_kpis.tasa_merma(180),
-        por_categoria=motor_kpis.merma_por_categoria(180),
-        serie=motor_kpis.serie_mensual(12),
-    )
+    return redirect(url_for("panel.desperdicio_evitado"))
 
 
 # ===========================================================================
@@ -210,8 +205,7 @@ def usuarios():
         try:
             resultado = repo.crear_usuario(request.form, usuario_actual())
             flash(
-                f"Usuario «{resultado['email']}» creado en PostgreSQL con su "
-                f"contraseña cifrada con bcrypt.",
+                f"Usuario «{resultado['email']}» creado correctamente.",
                 "ok",
             )
         except ValueError as e:
@@ -367,7 +361,7 @@ def configuracion():
     if request.method == "POST":
         try:
             _guardar_configuracion(request.form)
-            flash("Parámetros guardados en analitica.configuracion.", "ok")
+            flash("Parámetros de configuración guardados correctamente.", "ok")
         except SQLAlchemyError as e:
             flash(sql_error(e), "error")
         return redirect(url_for("panel.configuracion"))
@@ -422,79 +416,16 @@ def _guardar_configuracion(form) -> None:
     )
 
 
-# ===========================================================================
-# EXPLORADOR MONGODB POLÍGLOTA
-# ===========================================================================
 @bp.route("/mongo")
 @login_required
-@requiere_vista("mongo_explorer")
 def mongo_explorer():
-    """Tablero interactivo para visualización de colecciones, pipelines e índices de MongoDB."""
-    db = doc_store.get_mongo_db()
-    estado = {}
-    if db is not None:
-        estado = {
-            "conectado": True,
-            "db_name": db.name,
-            "host": db.client.address[0] if db.client.address else "localhost",
-            "port": db.client.address[1] if db.client.address else 27017,
-            "colecciones": {
-                "avisos_asn": db.avisos_asn.count_documents({}),
-                "pronosticos_demanda": db.pronosticos_demanda.count_documents({}),
-                "alertas_operativas": db.alertas_operativas.count_documents({}),
-            },
-            "indices": {
-                "avisos_asn": [idx["name"] for idx in db.avisos_asn.list_indexes()],
-                "alertas_operativas": [idx["name"] for idx in db.alertas_operativas.list_indexes()],
-                "pronosticos_demanda": [idx["name"] for idx in db.pronosticos_demanda.list_indexes()],
-            },
-            "pipeline_alertas": doc_store.analitica_alertas_por_locacion(),
-            "pipeline_asn": doc_store.analitica_carga_asn_por_proveedor(),
-            "pipeline_pronosticos": doc_store.analitica_kpis_pronosticos(),
-        }
-    else:
-        # Sin Mongo la pantalla se muestra vacía en lugar de fallar con 500.
-        from app.config import Config
-
-        estado = {
-            "conectado": False,
-            "db_name": Config.MONGO_DB,
-            "host": Config.MONGO_HOST,
-            "port": Config.MONGO_PORT,
-            "colecciones": {},
-            "indices": {},
-        }
-
-    return render_template(
-        "panel/mongo_dashboard.html",
-        active="mongo_explorer",
-        estado=estado,
-    )
-
+    return redirect(url_for("panel.dashboard"))
 
 
 @bp.route("/microservicios")
 @login_required
-@requiere_vista("services")
 def microservicios():
-    """Estado en vivo de los 8 microservicios y validación del JWT de la sesión web en svc-auth."""
-    from flask import session
-
-    from app.services import clientes
-
-    servicios = clientes.estado_servicios()
-    token = session.get("token")
-    st_verif, verificacion = clientes.llamar("auth", "POST", "/api/v1/auth/verify", token=token)
-    st_cont, contadores = clientes.llamar("auth", "GET", "/api/v1/auth/counters", token=token)
-    return render_template(
-        "panel/microservicios.html",
-        active="services",
-        servicios=servicios,
-        sanos=sum(1 for s in servicios if s["estado"] == "HEALTHY"),
-        verificacion=verificacion if st_verif == 200 else None,
-        estado_verificacion=st_verif,
-        contadores=sorted(((contadores or {}).get("contadores") or {}).items()) if st_cont == 200 else [],
-    )
+    return redirect(url_for("panel.dashboard"))
 
 
 @bp.route("/svc/<clave>/<path:ruta>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

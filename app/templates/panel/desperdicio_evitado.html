@@ -1,25 +1,25 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block titulo %}Desperdicio Evitado{% endblock %}
-{% block breadcrumb %}Desperdicio › Desperdicio Evitado{% endblock %}
+{% block titulo %}Impacto y Sostenibilidad{% endblock %}
+{% block breadcrumb %}Impacto › Impacto y Sostenibilidad{% endblock %}
 
 {% block content %}
 {% set t = resumen.totales %}
 
 {{ ui.encabezado(
-  'Desperdicio',
-  'Desperdicio evitado',
-  'Unidades que se vendieron gracias a una intervención (descuento o transferencia) antes de su fecha de caducidad.'
+  'Impacto',
+  'Impacto económico, desperdicio evitado y sostenibilidad',
+  'Unidades rescatadas antes de caducar mediante traslados y descuentos preventivos, comparadas contra la línea base contrafactual y traducidas a ahorro y huella de carbono evitada.'
 ) }}
 
 {% if esg_api %}
 <div class="card" style="margin-bottom:20px;display:flex;gap:28px;flex-wrap:wrap;align-items:center;">
   <div style="flex:1;min-width:220px;">
-    <div class="card-title" style="margin-bottom:4px;">Reporte ESG de svc-alerts</div>
-    <div class="text-muted" style="font-size:13px;">Calculado por el microservicio de alertas y sostenibilidad.</div>
+    <div class="card-title" style="margin-bottom:4px;">Resumen Ejecutivo de Impacto y Sostenibilidad</div>
+    <div class="text-muted" style="font-size:13px;">Consolidación operativa de alimento recuperado, ahorro financiero y emisiones evitadas.</div>
   </div>
   <div><div class="kpi-label">Alimento recuperado</div><div class="cifra" style="font-size:20px;font-weight:700;">{{ esg_api.alimento_recuperado_kg | cantidad }} kg</div></div>
-  <div><div class="kpi-label">Ahorro</div><div class="cifra" style="font-size:20px;font-weight:700;">{{ ui.moneda(esg_api.ahorro_financiero_mxn) }}</div></div>
+  <div><div class="kpi-label">Ahorro financiero</div><div class="cifra" style="font-size:20px;font-weight:700;">{{ ui.moneda(esg_api.ahorro_financiero_mxn) }}</div></div>
   <div><div class="kpi-label">CO₂e evitado</div><div class="cifra" style="font-size:20px;font-weight:700;">{{ esg_api.co2e_evitado_kg | cantidad }} kg</div></div>
 </div>
 {% endif %}
@@ -119,7 +119,7 @@
   <div class="aviso-info" style="margin-top:16px;">
     <strong>Metodología de medición real y auditoría:</strong>
     <ul style="margin:6px 0 0 18px; line-height:1.6;">
-      <li><strong>1. Ejecución física requerida:</strong> Una transferencia en estado <code>APROBADA</code> aún no mueve inventario. Debe pulsar <strong>«Ejecutar y mover inventario»</strong> en la pantalla de transferencias para que se descuente del origen, ingrese al destino y se registre la intervención aquí.</li>
+      <li><strong>1. Ejecución física requerida:</strong> Una transferencia en estado <code>APROBADA</code> aún no mueve inventario. Debe pulsar <strong>«Ejecutar y mover inventario»</strong> en la pestaña <strong>Traslados</strong> dentro de <strong>Triaje y Acción Preventiva</strong> para que se descuente del origen, ingrese al destino y se registre la intervención aquí.</li>
       <li><strong>2. Medición por venta real:</strong> Las <em>unidades recuperadas</em> y el <em>valor recuperado</em> se calculan contra los tickets de venta reales del lote en la tienda destino entre la fecha de ejecución y la fecha de caducidad. Si el destino aún no vende el producto, el valor recuperado permanece en cero hasta que se registre la venta.</li>
       <li><strong>3. Merma residual:</strong> Cualquier unidad del lote intervenido que venza sin venderse se computa como merma residual para reflejar la eficiencia neta.</li>
     </ul>
@@ -184,9 +184,91 @@
           <td class="mono">{{ ui.moneda(d.valor_recuperado) }}</td>
         </tr>
       {% else %}
-        {{ ui.vacio('Todavía no hay intervenciones registradas. Ejecuta una transferencia aprobada o aprueba un descuento para generar el primer registro.', 13) }}
+        {{ ui.vacio('Todavía no hay intervenciones registradas. Ejecuta un traslado o aprueba un descuento en Triaje Preventivo para generar el primer registro.', 13) }}
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+{# ── Sección consolidada de Sostenibilidad y Evolución ── #}
+<div class="grid-2" style="margin:20px 0;">
+  <div class="card">
+    <div class="card-title">Tasa de aprovechamiento operativo</div>
+    <div class="cifra" style="font-size:32px;font-weight:700;color:var(--success);margin-bottom:8px;">
+      {{ (sostenibilidad.tasa_aprovechamiento) | cantidad(1) }}%
+    </div>
+    <div class="text-muted" style="font-size:12.5px;line-height:1.6;">
+      Proporción del inventario intervenido que se vendió antes de caducar frente al total intervenido + merma inevitable ({{ (sostenibilidad.unidades_recuperadas) | cantidad(2) }} u. recuperadas · valor {{ ui.moneda(sostenibilidad.valor_recuperado) }}).
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Tasa de merma sobre lo recibido (180 días)</div>
+    <div class="cifra" style="font-size:32px;font-weight:700;color:var(--danger);margin-bottom:8px;">
+      {{ (tasa.tasa_pct) | cantidad(2) }}%
+    </div>
+    <div class="progress-bar" style="height:8px;">
+      <div class="progress-fill" style="width: {{ [tasa.tasa_pct | float, 100] | min }}%; background: var(--danger);"></div>
+    </div>
+    <div class="text-muted" style="font-size:11.5px;margin-top:10px;">
+      {{ (tasa.mermado) | cantidad(2) }} unidades mermadas de {{ (tasa.recibido) | cantidad(2) }} recibidas.
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Evolución mensual: ventas vs. merma</div>
+  <div class="chart-wrap" style="height:250px;">
+    <canvas id="grafica-sostenibilidad"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Merma por categoría (180 días)</div>
+  <table>
+    <thead><tr><th>Categoría</th><th>Unidades</th><th>Valor</th></tr></thead>
+    <tbody>
+      {% for c in por_categoria %}
+        <tr>
+          <td style="font-weight:600;">{{ c.name }}</td>
+          <td class="mono">{{ (c.unidades) | cantidad(2) }}</td>
+          <td class="mono">{{ ui.moneda(c.valor) }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Sin mermas registradas en el periodo.', 3) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const serieSost = {{ serie | tojson }};
+const canvasSost = document.getElementById('grafica-sostenibilidad');
+if (canvasSost && window.Chart) {
+  new Chart(canvasSost, {
+    type: 'line',
+    data: {
+      labels: serieSost.map(f => f.mes),
+      datasets: [
+        { label: 'Unidades vendidas', data: serieSost.map(f => Number(f.ventas_unidades)),
+          borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.12)',
+          fill: true, tension: .3, pointRadius: 3 },
+        { label: 'Unidades mermadas', data: serieSost.map(f => Number(f.merma_unidades)),
+          borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.10)',
+          fill: true, tension: .3, pointRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#374151', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(17,24,39,.06)' } },
+        y: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(17,24,39,.06)' } }
+      }
+    }
+  });
+}
+</script>
 {% endblock %}

@@ -1,70 +1,95 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block titulo %}Ventas{% endblock %}
-{% block breadcrumb %}Operación › Ventas{% endblock %}
+{% block titulo %}Monitor de Ventas{% endblock %}
+{% block breadcrumb %}Operación › Monitor de Ventas{% endblock %}
 
 {% block content %}
-{{ ui.encabezado(
-  'Operación',
-  'Registro de ventas con FEFO',
-  'Cada venta consume primero el lote que vence antes. La asignación se hace en una sola transacción: o se descuenta todo el inventario involucrado, o no se registra nada.'
-) }}
-
-<div class="stat-grid-4">
-  {{ ui.kpi('Unidades vendidas', (resumen.unidades) | cantidad(2)) }}
-  {{ ui.kpi('Ingreso acumulado', ui.moneda(resumen.ingreso)) }}
-  {{ ui.kpi('Tickets', resumen.tickets) }}
-  {{ ui.kpi('Ticket promedio', ui.moneda(resumen.ticket_promedio)) }}
+<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:6px;">
+  {{ ui.encabezado(
+    'Operación',
+    'Monitor de ventas en tiempo real',
+    'Visualiza en vivo las transacciones recibidas desde las cajas y puntos de venta de cada tienda junto con el lote descontado automáticamente por prioridad FEFO.'
+  ) }}
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+    <span class="ft-live-pill" id="live-status-pill">
+      <span class="ft-live-dot" id="live-dot"></span>
+      <span id="live-status-text">En vivo · Actualizado ahora</span>
+    </span>
+    <button type="button" class="btn btn-ghost btn-sm" id="btn-toggle-live" onclick="toggleLivePoll()">Pausar</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="refrescarVentasEnVivo()">Actualizar ahora</button>
+  </div>
 </div>
 
-{% if current_role in ['admin', 'store_manager', 'warehouse'] %}
-<div class="form-card">
-  <div class="card-title">Registrar venta</div>
-  <form method="post" action="{{ url_for('operacion.ventas') }}" id="form-venta">
-    <div class="form-grid-3">
+<div class="stat-grid-4">
+  <div class="card kpi-card">
+    <div class="kpi-label">Unidades vendidas</div>
+    <div class="kpi-value cifra" id="kpi-v-unidades">{{ (resumen.unidades) | cantidad(2) }}</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Ingreso acumulado</div>
+    <div class="kpi-value cifra" id="kpi-v-ingreso">{{ ui.moneda(resumen.ingreso) }}</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Tickets recibidos</div>
+    <div class="kpi-value cifra" id="kpi-v-tickets">{{ resumen.tickets }}</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Ticket promedio</div>
+    <div class="kpi-value cifra" id="kpi-v-promedio">{{ ui.moneda(resumen.ticket_promedio) }}</div>
+  </div>
+</div>
+
+{# ── Mecanismo de demostración: emulador de caja POS externa (JSON / XML) ── #}
+<details class="plegable" style="margin-bottom:18px;">
+  <summary>Simulador de caja externa para demostración (JSON / XML)</summary>
+  <div class="plegable-cuerpo">
+    <div class="form-grid-4" style="display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px;margin-bottom:12px;">
       <div>
-        <label class="form-label">Tienda *</label>
-        <select class="input" name="id_locacion" id="venta-locacion" required>
-          <option value="">Selecciona…</option>
+        <label class="form-label" for="sim-loc">Tienda origen</label>
+        <select class="input" id="sim-loc">
+          <option value="">Aleatoria (tiendas activas)</option>
           {% for l in locaciones %}
             <option value="{{ l.id_locacion }}">{{ l.nombre }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label class="form-label">Producto *</label>
-        <select class="input" name="id_sku" id="venta-sku" required>
-          <option value="">Selecciona…</option>
+        <label class="form-label" for="sim-sku">Producto</label>
+        <select class="input" id="sim-sku">
+          <option value="">Aleatorio con existencia</option>
           {% for p in productos %}
             <option value="{{ p.id_sku }}">{{ p.nombre }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label class="form-label">Cantidad *</label>
-        <input class="input" name="cantidad" id="venta-cantidad" type="number"
-               step="0.01" min="0.01" required/>
+        <label class="form-label" for="sim-formato">Formato de mensaje</label>
+        <select class="input" id="sim-formato">
+          <option value="json">JSON</option>
+          <option value="xml">XML</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="sim-qty">Transacciones a emitir</label>
+        <select class="input" id="sim-qty">
+          <option value="1">1 venta</option>
+          <option value="3">Ráfaga de 3 ventas</option>
+          <option value="5">Ráfaga de 5 ventas</option>
+        </select>
       </div>
     </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" type="button" onclick="previsualizarFefo()">
-        Previsualizar reparto FEFO
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button type="button" class="btn btn-primary" id="btn-simular-pos" onclick="dispararSimuladorPOS()">
+        Emitir tráfico POS ahora
       </button>
-      <button class="btn btn-primary" type="submit">Registrar venta</button>
+      <span class="text-muted" style="font-size:12px;">
+        Envía tickets de venta hacia la caja central para ver el descuento FEFO reflejado en vivo abajo.
+      </span>
     </div>
-    <div class="form-note">
-      La previsualización consulta el inventario real y muestra cómo se repartiría la
-      cantidad entre lotes, sin escribir nada en la base.
-    </div>
-  </form>
-
-  <div id="fefo-preview" style="display:none;margin-top:16px;">
-    <div class="card-title" style="font-size:14px;">Reparto FEFO calculado</div>
-    <div id="fefo-contenido"></div>
+    <div id="sim-resultado" style="display:none;margin-top:14px;"></div>
   </div>
-</div>
+</details>
 
-{% endif %}
 <form class="filtros" method="get" action="{{ url_for('operacion.ventas') }}">
   <div class="campo campo-ancho">
     <label class="form-label" for="q">Buscar</label>
@@ -87,28 +112,30 @@
 
 <div class="table-wrap">
   <div class="table-header">
-    <div class="table-header-title">Movimientos de venta ({{ ventas | length }} líneas)</div>
+    <div class="table-header-title">Transacciones recibidas en vivo (<span id="ventas-count">{{ ventas | length }}</span> líneas recientes)</div>
   </div>
   <table>
     <thead>
       <tr>
         <th>Folio</th>
-        <th>Fecha</th>
+        <th>Fecha / Hora</th>
         <th>Tienda</th>
+        <th>Canal</th>
         <th>Producto</th>
-        <th>Lote consumido</th>
+        <th>Lote consumido (FEFO)</th>
         <th>Cantidad</th>
         <th>Precio</th>
         <th>Subtotal</th>
         <th>Margen vs caducidad</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="tbody-ventas-vivo">
       {% for v in ventas %}
-        <tr>
+        <tr data-folio="{{ v.folio }}">
           <td class="mono" style="font-size:11px;">{{ v.folio }}</td>
           <td class="mono" style="font-size:11px;">{{ v.fecha_venta | fecha_hora }}</td>
           <td>{{ v.locacion }}</td>
+          <td><span class="badge badge-neutral">{{ v.canal or 'TIENDA' }}</span></td>
           <td style="font-weight:600;">{{ v.producto }}</td>
           <td class="mono" style="font-size:11px;">{{ v.lote or '—' }}</td>
           <td class="mono">{{ (v.cantidad) | cantidad(2) }}</td>
@@ -123,7 +150,7 @@
           </td>
         </tr>
       {% else %}
-        {{ ui.vacio('Todavía no hay ventas registradas.', 9) }}
+        {{ ui.vacio('Todavía no hay ventas registradas.', 10) }}
       {% endfor %}
     </tbody>
   </table>
@@ -132,58 +159,107 @@
 
 {% block scripts %}
 <script>
-async function previsualizarFefo() {
-  const locacion = document.getElementById('venta-locacion').value;
-  const sku      = document.getElementById('venta-sku').value;
-  const cantidad = document.getElementById('venta-cantidad').value;
-  const caja     = document.getElementById('fefo-preview');
-  const destino  = document.getElementById('fefo-contenido');
+const URL_TIEMPO_REAL = {{ url_for('operacion.ventas_tiempo_real') | tojson }};
+const URL_SIMULAR_POS = {{ url_for('operacion.ventas_simular_pos') | tojson }};
+let liveActivo = true;
+let foliosConocidos = new Set([...document.querySelectorAll('#tbody-ventas-vivo tr[data-folio]')].map(r => r.dataset.folio));
 
-  if (!locacion || !sku || !cantidad) {
-    destino.innerHTML = '<div class="aviso-advertencia">Elige tienda, producto y cantidad para calcular el reparto.</div>';
-    caja.style.display = '';
-    return;
-  }
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtNum = (v) => Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const fmtMon = (v) => Number(v || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 
-  const respuesta = await fetch('{{ url_for("operacion.ventas_previsualizar") }}', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({id_locacion: locacion, id_sku: sku, cantidad: cantidad})
-  });
-  const datos = await respuesta.json();
-
-  if (datos.error) {
-    destino.innerHTML = '<div class="aviso-advertencia">' + datos.error + '</div>';
-    caja.style.display = '';
-    return;
-  }
-
-  let html = '<table><thead><tr>'
-    + '<th>Lote</th><th>Caducidad</th><th>Días</th>'
-    + '<th>Disponible antes</th><th>Se consume</th><th>Queda</th>'
-    + '</tr></thead><tbody>';
-  for (const c of datos.consumos) {
-    html += '<tr>'
-      + '<td class="mono" style="font-size:11px;">' + c.lote + '</td>'
-      + '<td class="mono" style="font-size:11px;">' + c.fecha_caducidad + '</td>'
-      + '<td class="mono">' + c.dias_restantes + '</td>'
-      + '<td class="mono">' + c.disponible_antes + '</td>'
-      + '<td class="mono text-success">' + c.consumido + '</td>'
-      + '<td class="mono">' + c.disponible_despues + '</td>'
-      + '</tr>';
-  }
-  html += '</tbody></table>';
-
-  if (datos.suficiente) {
-    html += '<div class="aviso-info">El inventario alcanza: se cubren '
-         + datos.cubierto + ' de ' + datos.solicitado + ' unidades solicitadas.</div>';
-  } else {
-    html += '<div class="aviso-advertencia">Inventario insuficiente: se cubrirían '
-         + datos.cubierto + ' de ' + datos.solicitado + ' unidades y faltarían '
-         + datos.faltante + '. La venta sería rechazada.</div>';
-  }
-  destino.innerHTML = html;
-  caja.style.display = '';
+function toggleLivePoll() {
+  liveActivo = !liveActivo;
+  document.getElementById('btn-toggle-live').textContent = liveActivo ? 'Pausar' : 'Reanudar';
+  document.getElementById('live-dot').style.animationPlayState = liveActivo ? 'running' : 'paused';
+  if (liveActivo) refrescarVentasEnVivo();
 }
+
+async function refrescarVentasEnVivo() {
+  const loc = document.getElementById('locacion')?.value || '';
+  const q = document.getElementById('q')?.value || '';
+  const params = new URLSearchParams();
+  if (loc) params.set('locacion', loc);
+  if (q) params.set('q', q);
+
+  try {
+    const resp = await fetch(`${URL_TIEMPO_REAL}?${params.toString()}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    const r = data.resumen || {};
+    document.getElementById('kpi-v-unidades').textContent = fmtNum(r.unidades);
+    document.getElementById('kpi-v-ingreso').textContent = fmtMon(r.ingreso);
+    document.getElementById('kpi-v-tickets').textContent = Number(r.tickets || 0).toLocaleString('es-MX');
+    document.getElementById('kpi-v-promedio').textContent = fmtMon(r.ticket_promedio);
+    document.getElementById('live-status-text').textContent = `En vivo · ${data.actualizado || 'ahora'}`;
+
+    const rows = data.ventas || [];
+    document.getElementById('ventas-count').textContent = rows.length;
+    const tbody = document.getElementById('tbody-ventas-vivo');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="tabla-vacia"><div class="tabla-vacia-titulo">Sin movimientos</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(v => {
+      const esNuevo = v.folio && !foliosConocidos.has(v.folio);
+      if (v.folio) foliosConocidos.add(v.folio);
+      const fecha = String(v.fecha_venta || '').replace('T', ' ').slice(0, 16);
+      const dm = v.dias_margen;
+      const claseDm = dm == null ? '' : (dm < 0 ? 'text-danger' : (dm <= 3 ? 'text-warning' : 'text-success'));
+      return `<tr data-folio="${esc(v.folio)}" class="${esNuevo ? 'ft-row-new' : ''}">
+        <td class="mono" style="font-size:11px;">${esc(v.folio)}</td>
+        <td class="mono" style="font-size:11px;">${esc(fecha)}</td>
+        <td>${esc(v.locacion)}</td>
+        <td><span class="badge badge-neutral">${esc(v.canal || 'TIENDA')}</span></td>
+        <td style="font-weight:600;">${esc(v.producto)}</td>
+        <td class="mono" style="font-size:11px;">${esc(v.lote || '—')}</td>
+        <td class="mono">${fmtNum(v.cantidad)}</td>
+        <td class="mono">${fmtMon(v.precio_unitario)}</td>
+        <td class="mono">${fmtMon(v.subtotal)}</td>
+        <td class="mono">${dm == null ? '—' : `<span class="${claseDm}">${dm} d</span>`}</td>
+      </tr>`;
+    }).join('');
+  } catch (_) {}
+}
+
+async function dispararSimuladorPOS() {
+  const btn = document.getElementById('btn-simular-pos');
+  const box = document.getElementById('sim-resultado');
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  try {
+    const resp = await fetch(URL_SIMULAR_POS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id_locacion: document.getElementById('sim-loc').value || null,
+        id_sku: document.getElementById('sim-sku').value || null,
+        formato: document.getElementById('sim-formato').value,
+        cantidad_tx: document.getElementById('sim-qty').value
+      })
+    });
+    const d = await resp.json();
+    box.style.display = '';
+    if (!resp.ok || d.error) {
+      box.innerHTML = `<div class="aviso-advertencia">${esc(d.error || 'No se pudo emitir la venta.')}</div>`;
+    } else {
+      const lista = (d.registradas || []).map(x => {
+        const lotes = (x.lotes || []).map(l => `${fmtNum(l.cantidad)} del lote ${esc(l.lote)}`).join(', ');
+        return `<li><strong>${esc(x.folio)}</strong> · ${esc(x.tienda)} · ${esc(x.producto)} (${fmtNum(x.cantidad)} u., ${fmtMon(x.total)}) · FEFO: ${lotes}</li>`;
+      }).join('');
+      box.innerHTML = `<div class="aviso-info"><strong>Tráfico emitido en formato ${esc(d.formato)}:</strong><ul style="margin:6px 0 0 18px;">${lista}</ul><div class="mono" style="margin-top:8px;font-size:11px;opacity:.85;">Payload enviado: ${esc(d.muestra_payload)}</div></div>`;
+      await refrescarVentasEnVivo();
+    }
+  } catch (err) {
+    box.style.display = '';
+    box.innerHTML = `<div class="aviso-advertencia">Error al simular venta: ${esc(err)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Emitir tráfico POS ahora';
+  }
+}
+
+setInterval(() => { if (liveActivo) refrescarVentasEnVivo(); }, 3000);
 </script>
 {% endblock %}

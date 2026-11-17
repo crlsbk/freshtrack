@@ -23,8 +23,8 @@
             'Lotes a 2 días o menos de vencer', '#dc2626') }}
   {{ ui.kpi('Unidades en vigilancia', (resumen.vigilancia) | cantidad(2),
             'Lotes que entran en la ventana de riesgo', '#d97706') }}
-  {{ ui.kpi('Unidades vencidas', (resumen.vencidas) | cantidad(2),
-            'Requieren baja inmediata', '#6b7280') }}
+  {{ ui.kpi('Lotes activos vigentes', resumen.lotes,
+            'Con existencia disponible y vida útil vigente', '#16a34a') }}
 </div>
 
 <form class="filtros" method="get" action="{{ url_for('operacion.inventario') }}">
@@ -83,6 +83,7 @@
     <table>
       <thead>
         <tr>
+          <th>Salida FEFO</th>
           <th>Lote</th>
           <th>Caducidad</th>
           <th>Días restantes</th>
@@ -97,13 +98,22 @@
       <tbody>
         {% for l in g.lotes %}
           <tr>
+            <td>
+              {% if l.orden_fefo == 1 %}
+                <span class="badge badge-success">#1 Próximo</span>
+              {% elif l.orden_fefo %}
+                <span class="badge badge-info">#{{ l.orden_fefo }}</span>
+              {% else %}
+                <span class="badge badge-warning">Retenido</span>
+              {% endif %}
+            </td>
             <td class="mono" style="font-size:11.5px;">{{ l.codigo_lote_prov }}</td>
             <td class="mono" style="font-size:11.5px;">{{ l.fecha_caducidad | fecha_hora }}</td>
             <td class="mono">{{ l.dias_restantes }}</td>
             <td style="min-width:100px;">
               <div class="medidor">
                 <div class="progress-bar">
-                  <div class="progress-fill {{ 'expiry-fill-ok' if l.clasificacion == 'NORMAL' else ('expiry-fill-warning' if l.clasificacion == 'VIGILANCIA' else ('expiry-fill-critical' if l.clasificacion == 'CRITICO' else 'expiry-fill-expired')) }}"
+                  <div class="progress-fill {{ 'expiry-fill-ok' if l.clasificacion == 'NORMAL' else ('expiry-fill-warning' if l.clasificacion == 'VIGILANCIA' else 'expiry-fill-critical') }}"
                        style="width: {{ [0, [l.vida_util_pct | float, 100] | min] | max }}%;"></div>
                 </div>
                 <span class="medidor-valor">{{ "%.0f" | format(l.vida_util_pct | float) }}%</span>
@@ -114,8 +124,8 @@
             <td class="mono">{{ ui.moneda(l.valor_inventario) }}</td>
             <td>{{ ui.riesgo(l.clasificacion) }}</td>
             <td>
-              <a class="btn btn-ghost btn-sm"
-                 href="{{ url_for('operacion.trazabilidad', lote=l.id_lote) }}">Ver</a>
+              <button class="btn btn-ghost btn-sm" type="button"
+                      onclick="abrirModalTrazabilidad('{{ l.id_lote }}')">Ver</button>
             </td>
           </tr>
         {% endfor %}
@@ -126,9 +136,10 @@
   <div class="table-wrap">
     <table>
       <tbody>
-        {{ ui.vacio('No hay inventario que coincida con el filtro.', 1) }}
+        {{ ui.vacio('No hay inventario activo que coincida con el filtro.', 1) }}
       </tbody>
     </table>
   </div>
 {% endfor %}
+{{ ui.modal_trazabilidad() }}
 {% endblock %}

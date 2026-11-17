@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block titulo %}Lotes y Recepción{% endblock %}
-{% block breadcrumb %}Operación › Lotes y Recepción{% endblock %}
+{% block titulo %}Lotes y Salida FEFO{% endblock %}
+{% block breadcrumb %}Operación › Lotes y Salida FEFO{% endblock %}
 
 {% block content %}
 {{ ui.encabezado(
   'Operación',
-  'Lotes y recepción',
-  'Registra cada entrega como un lote con proveedor, fechas, cantidad y costo. Su vida útil restante y riesgo se calculan al momento.'
+  'Lotes, recepción y prioridad de salida (FEFO)',
+  'Muestra únicamente lotes vigentes con existencia activa en piso, ordenados por fecha de caducidad para garantizar salida FEFO (First Expired, First Out).'
 ) }}
 
 <div class="filtros">
@@ -27,8 +27,8 @@
     <div class="campo">
       <label class="form-label" for="riesgo">Riesgo</label>
       <select class="input" id="riesgo" name="riesgo">
-        <option value="">Todos</option>
-        {% for c in ['NORMAL', 'VIGILANCIA', 'CRITICO', 'VENCIDO'] %}
+        <option value="">Todos vigentes</option>
+        {% for c in ['NORMAL', 'VIGILANCIA', 'CRITICO'] %}
           <option value="{{ c }}" {% if filtro_riesgo == c %}selected{% endif %}>{{ c }}</option>
         {% endfor %}
       </select>
@@ -130,28 +130,37 @@
 {# ── Listado de lotes ── #}
 <div class="table-wrap">
   <div class="table-header">
-    <div class="table-header-title">Lotes ({{ lotes | length }})</div>
+    <div class="table-header-title">Lotes activos y orden de salida FEFO ({{ lotes | length }})</div>
   </div>
   <table>
     <thead>
       <tr>
+        <th>Orden FEFO</th>
         <th>Lote</th>
         <th>Producto</th>
+        <th>Ubicación</th>
         <th>Proveedor</th>
-        <th>Recepción</th>
         <th>Caducidad</th>
         <th>Días</th>
         <th>Vida útil</th>
-        <th>Recibido</th>
         <th>Existencia</th>
         <th>Estado calidad</th>
         <th>Riesgo</th>
-        <th>Trazar</th>
+        <th>Trazabilidad</th>
       </tr>
     </thead>
     <tbody>
       {% for l in lotes %}
         <tr>
+          <td>
+            {% if l.orden_fefo == 1 %}
+              <span class="badge badge-success">#1 Próximo en salir</span>
+            {% elif l.orden_fefo %}
+              <span class="badge badge-info">#{{ l.orden_fefo }} en salida</span>
+            {% else %}
+              <span class="badge badge-warning">Retenido</span>
+            {% endif %}
+          </td>
           <td class="mono" style="font-size:11.5px;">{{ l.codigo_lote_prov }}</td>
           <td>
             <div style="font-weight:600;">{{ l.producto }}</div>
@@ -159,24 +168,23 @@
               SKU {{ l.id_sku }} · {{ l.categoria }}
             </div>
           </td>
+          <td style="font-size:12px;">{{ l.ubicaciones }}</td>
           <td style="font-size:12px;">{{ l.proveedor }}</td>
-          <td class="mono" style="font-size:11.5px;">{{ l.fecha_recepcion | fecha_hora }}</td>
           <td class="mono" style="font-size:11.5px;">{{ l.fecha_caducidad | fecha_hora }}</td>
           <td class="mono">
-            <span class="{% if l.dias_restantes < 0 %}text-danger{% elif l.dias_restantes <= 2 %}text-danger{% elif l.dias_restantes <= 5 %}text-warning{% endif %}">
+            <span class="{% if l.dias_restantes <= 2 %}text-danger{% elif l.dias_restantes <= 5 %}text-warning{% endif %}">
               {{ l.dias_restantes }}
             </span>
           </td>
           <td style="min-width:110px;">
             <div class="medidor">
               <div class="progress-bar">
-                <div class="progress-fill {{ 'expiry-fill-ok' if l.clasificacion == 'NORMAL' else ('expiry-fill-warning' if l.clasificacion == 'VIGILANCIA' else ('expiry-fill-critical' if l.clasificacion == 'CRITICO' else 'expiry-fill-expired')) }}"
+                <div class="progress-fill {{ 'expiry-fill-ok' if l.clasificacion == 'NORMAL' else ('expiry-fill-warning' if l.clasificacion == 'VIGILANCIA' else 'expiry-fill-critical') }}"
                      style="width: {{ [0, [l.vida_util_pct | float, 100] | min] | max }}%;"></div>
               </div>
               <span class="medidor-valor">{{ "%.0f" | format(l.vida_util_pct | float) }}%</span>
             </div>
           </td>
-          <td class="mono">{{ (l.cantidad_recibida) | cantidad(2) }}</td>
           <td class="mono">{{ (l.existencia_total) | cantidad(2) }}</td>
           <td>
             {{ ui.estado(l.estado) }}
@@ -192,14 +200,15 @@
           </td>
           <td>{{ ui.riesgo(l.clasificacion) }}</td>
           <td>
-            <a class="btn btn-ghost btn-sm"
-               href="{{ url_for('operacion.trazabilidad', lote=l.id_lote) }}">Ver</a>
+            <button class="btn btn-ghost btn-sm" type="button"
+                    onclick="abrirModalTrazabilidad('{{ l.id_lote }}')">Ver</button>
           </td>
         </tr>
       {% else %}
-        {{ ui.vacio('No hay lotes que coincidan con el filtro.', 12) }}
+        {{ ui.vacio('No hay lotes vigentes con existencia que coincidan con el filtro.', 12) }}
       {% endfor %}
     </tbody>
   </table>
 </div>
+{{ ui.modal_trazabilidad() }}
 {% endblock %}

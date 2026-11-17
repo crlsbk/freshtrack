@@ -248,5 +248,45 @@ details.plegable > .plegable-cuerpo > .card, details.plegable > .plegable-cuerpo
 .card .kpi-card .kpi-label { font-size: 12.5px; }
 .card .kpi-card .kpi-value { font-size: 22px; letter-spacing: -.4px; }
 .card .kpi-card .kpi-sub { font-size: 12px; margin-top: 4px; }
+
+/* ── Modal reutilizable (Trazabilidad y acciones en línea) ── */
+.ft-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, .58);
+  backdrop-filter: blur(3px); z-index: 1200;
+  display: none; align-items: center; justify-content: center; padding: 20px;
+}
+.ft-modal-backdrop.open { display: flex; }
+.ft-modal {
+  background: var(--card); color: var(--foreground);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); width: 100%; max-width: 920px;
+  max-height: 88vh; display: flex; flex-direction: column; overflow: hidden;
+}
+.ft-modal.ft-modal-sm { max-width: 520px; }
+.ft-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 22px; border-bottom: 1px solid var(--border);
+}
+.ft-modal-title { font-size: 17px; font-weight: 700; }
+.ft-modal-close {
+  background: transparent; border: 1px solid var(--border); color: var(--foreground);
+  width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 18px; line-height: 1;
+}
+.ft-modal-close:hover { background: var(--muted); }
+.ft-modal-body { padding: 20px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Indicador en vivo para Monitor de Ventas ── */
+.ft-live-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px; border-radius: 99px; font-size: 12px; font-weight: 600;
+  background: var(--success-bg); color: #15803d; border: 1px solid var(--success-border);
+}
+.ft-live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #16a34a;
+  animation: ftPulse 1.6s infinite ease-in-out;
+}
+@keyframes ftPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(1.25); } }
+.ft-row-new { animation: ftHighlight 2.5s ease-out; }
+@keyframes ftHighlight { 0% { background: var(--success-bg); } 100% { background: transparent; } }
 .card .stat-grid-3, .card .stat-grid-4 { gap: 12px; }
 .panel-pestanas .kpi-card .kpi-value { font-size: 24px; }

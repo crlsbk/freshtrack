@@ -78,6 +78,8 @@ def inventario_por_lote(
     params: dict = {"limite": limite}
     if solo_con_existencia:
         condiciones.append("cantidad_disponible > 0")
+        condiciones.append("dias_restantes >= 0")
+        condiciones.append("estado_lote NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')")
     if id_locacion:
         condiciones.append("id_locacion = :id_locacion")
         params["id_locacion"] = id_locacion
@@ -160,6 +162,13 @@ def inventario_agrupado(
 
     for grupo in grupos.values():
         grupo["lotes"].sort(key=lambda l: (l["fecha_caducidad"], l["codigo_lote_prov"]))
+        seq = 0
+        for lote_item in grupo["lotes"]:
+            if lote_item.get("estado_lote") == "DISPONIBLE" and a_int(lote_item.get("dias_restantes"), -1) >= 0:
+                seq += 1
+                lote_item["orden_fefo"] = seq
+            else:
+                lote_item["orden_fefo"] = None
         grupo["total"] = round(grupo["total"], 2)
         grupo["valor"] = round(grupo["valor"], 2)
         grupo["en_riesgo"] = round(grupo["en_riesgo"], 2)
@@ -240,29 +249,31 @@ def listar_lotes(
     condiciones = []
     params: dict = {"limite": limite}
     if solo_vigentes:
-        condiciones.append("dias_restantes >= -30")
+        condiciones.append("v.dias_restantes >= 0")
+        condiciones.append("v.existencia_total > 0")
+        condiciones.append("v.estado NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')")
     if clasificacion:
-        condiciones.append("clasificacion = :clasificacion")
+        condiciones.append("v.clasificacion = :clasificacion")
         params["clasificacion"] = clasificacion
     if texto:
         condiciones.append(
-            "(producto ILIKE :texto OR codigo_lote_prov ILIKE :texto "
-            "OR proveedor ILIKE :texto)"
+            "(v.producto ILIKE :texto OR v.codigo_lote_prov ILIKE :texto "
+            "OR v.proveedor ILIKE :texto)"
         )
         params["texto"] = f"%{texto}%"
 
-    filtro_loc = ""
     if id_locacion:
-        filtro_loc = """
-          AND EXISTS (
-              SELECT 1 FROM operacion.existencia e
-              WHERE e.id_lote = v.id_lote AND e.id_locacion = :id_locacion
-          )
-        """
+        condiciones.append(
+            """EXISTS (
+                SELECT 1 FROM operacion.existencia e
+                WHERE e.id_lote = v.id_lote AND e.id_locacion = :id_locacion
+                  AND e.cantidad_disponible > 0
+            )"""
+        )
         params["id_locacion"] = id_locacion
 
     where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
-    return query(
+    lotes = query(
         f"""
         SELECT v.id_lote::text, v.codigo_lote_prov, v.producto, v.id_sku, v.categoria,
                v.proveedor, v.fecha_produccion, v.fecha_recepcion, v.fecha_caducidad,
@@ -270,12 +281,61 @@ def listar_lotes(
                v.vida_util_pct, v.clasificacion, v.estado, v.existencia_total
         FROM operacion.v_lote_riesgo v
         {where}
-        {filtro_loc}
-        ORDER BY v.fecha_caducidad ASC
+        ORDER BY v.fecha_caducidad ASC, v.codigo_lote_prov ASC
         LIMIT :limite
         """,
         **params,
     )
+
+    if not lotes:
+        return lotes
+
+    # Enriquecer cada lote con ubicaciones activas y prioridad de salida FEFO por producto y tienda.
+    fefo_rows = query(
+        """
+        WITH cola AS (
+            SELECT id_lote::text AS id_lote,
+                   id_sku,
+                   id_locacion,
+                   locacion,
+                   cantidad_disponible,
+                   estado_lote,
+                   dias_restantes,
+                   CASE
+                       WHEN estado_lote = 'DISPONIBLE' AND dias_restantes >= 0 THEN
+                           ROW_NUMBER() OVER (
+                               PARTITION BY id_sku, id_locacion, (estado_lote = 'DISPONIBLE' AND dias_restantes >= 0)
+                               ORDER BY fecha_caducidad ASC, codigo_lote_prov ASC
+                           )
+                       ELSE NULL
+                   END AS orden_fefo
+            FROM operacion.v_inventario_lote
+            WHERE cantidad_disponible > 0
+              AND dias_restantes >= 0
+              AND estado_lote NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')
+        )
+        SELECT * FROM cola
+        """
+    )
+
+    por_lote: dict[str, list[dict]] = {}
+    for row in fefo_rows:
+        por_lote.setdefault(row["id_lote"], []).append(row)
+
+    for lote in lotes:
+        exs = por_lote.get(lote["id_lote"], [])
+        if id_locacion:
+            exs_filtradas = [x for x in exs if x["id_locacion"] == id_locacion]
+        else:
+            exs_filtradas = exs
+        exs_ordenadas = sorted(exs_filtradas, key=lambda x: a_float(x["cantidad_disponible"]), reverse=True)
+        lote["ubicaciones"] = ", ".join(x["locacion"] for x in exs_ordenadas) or "—"
+        lote["id_locacion_principal"] = exs_ordenadas[0]["id_locacion"] if exs_ordenadas else None
+        lote["existencias_activas"] = exs_ordenadas
+        ranks = [int(x["orden_fefo"]) for x in exs_ordenadas if x.get("orden_fefo") is not None]
+        lote["orden_fefo"] = min(ranks) if ranks else None
+
+    return lotes
 
 
 def obtener_lote(id_lote: str) -> dict | None:
@@ -672,6 +732,8 @@ def resumen_inventario() -> dict:
                COUNT(DISTINCT id_locacion)                              AS locaciones
         FROM operacion.v_inventario_lote
         WHERE cantidad_disponible > 0
+          AND dias_restantes >= 0
+          AND estado_lote NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')
         """
     ) or {}
     return fila

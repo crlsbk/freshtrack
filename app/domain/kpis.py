@@ -749,7 +749,7 @@ def indicadores_desperdicio_completo(dias: int = 30) -> dict:
             "cambio_puntos_pct": reduccion_pts,
             "merma_reciente_unidades": a_float(tasa_reciente.get("mermado")),
             "ventana_dias": dias,
-            "definicion": "Cambio empírico comprobado en las mermas registradas en PostgreSQL frente al histórico base.",
+            "definicion": "Cambio empírico comprobado en las mermas registradas frente al histórico base.",
         },
         "co2e_evitado_estimado": {
             "kg_co2e": co2_evitado,

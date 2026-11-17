@@ -1,133 +1,515 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block titulo %}Triaje preventivo{% endblock %}
-{% block breadcrumb %}Analítica › Triaje preventivo (Descuento ↔ Traslado ↔ Merma){% endblock %}
+{% block titulo %}Triaje y Acción Preventiva{% endblock %}
+{% block breadcrumb %}Analítica › Triaje y Acción Preventiva{% endblock %}
 
 {% block content %}
 {{ ui.encabezado(
-  'Analítica preventiva',
+  'Centro preventivo unificado',
   'Triaje automático: Descuento ↔ Traslado ↔ Merma',
-  'Evalúa automáticamente cada lote con riesgo de caducidad y selecciona la única ruta que recupera mayor valor neto sin contradicciones entre tiendas y precios.'
+  'Evalúa los lotes con riesgo de caducidad, compara la recuperación económica entre traslado y descuento, y ejecuta la decisión elegida o registra mermas desde una sola pantalla.'
 ) }}
 
 {% set r = evaluacion.resumen %}
 <div class="stat-grid-4">
-  {{ ui.kpi('Traslados elegidos', r.get('TRASLADO', 0), 'Venta a precio lleno en tienda con déficit', '#0284c7',
-            href=url_for('analitica.triaje', accion='TRASLADO', locacion=id_locacion), icono='camion') }}
-  {{ ui.kpi('Descuentos elegidos', r.get('DESCUENTO', 0), 'Rebaja preventiva respetando margen piso', '#d97706',
-            href=url_for('analitica.triaje', accion='DESCUENTO', locacion=id_locacion), icono='flechas') }}
-  {{ ui.kpi('Mermas / bloqueos', r.get('MERMA', 0), 'Caducados o no aptos excluidos de FEFO', '#dc2626',
-            href=url_for('analitica.triaje', accion='MERMA', locacion=id_locacion), icono='basura') }}
-  {{ ui.kpi('Valor rescatable estimado', ui.moneda(evaluacion.valor_rescatable_estimado), 'Comparando traslado vs descuento', '#16a34a', icono='dinero') }}
+  {{ ui.kpi('Traslados elegidos', r.get('TRASLADO', 0),
+            resumen_tr.sugeridas ~ ' sugeridas · ' ~ resumen_tr.aprobadas ~ ' aprobadas', '#0284c7',
+            href=url_for('analitica.triaje', tab='traslados'), icono='camion') }}
+  {{ ui.kpi('Descuentos elegidos', r.get('DESCUENTO', 0),
+            resumen_desc.sugeridos ~ ' sugeridos · ' ~ resumen_desc.aprobados ~ ' aprobados', '#d97706',
+            href=url_for('analitica.triaje', tab='descuentos'), icono='flechas') }}
+  {{ ui.kpi('Mermas (180 d)', (resumen_mermas.totales.unidades) | cantidad(2),
+            ui.moneda(resumen_mermas.totales.valor) ~ ' · ' ~ resumen_mermas.totales.eventos ~ ' eventos', '#dc2626',
+            href=url_for('analitica.triaje', tab='mermas'), icono='basura') }}
+  {{ ui.kpi('Valor rescatable estimado', ui.moneda(evaluacion.valor_rescatable_estimado), 'Comparando traslado vs. descuento', '#16a34a', icono='dinero') }}
 </div>
 
-<div class="card" style="margin-bottom:18px;">
-  <div class="card-title">Cómo decide automáticamente el motor</div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:12.5px;color:var(--muted-foreground);">
-    <div>
-      <strong style="color:#dc2626;">1. Merma / Inmovilización</strong><br/>
-      Si el lote ya venció o está en <code>BLOQUEADO</code>, <code>CUARENTENA</code> o <code>DAÑADO</code>, se excluye de FEFO y se marca para baja o inspección.
-    </div>
-    <div>
-      <strong style="color:#0284c7;">2. Traslado entre tiendas</strong><br/>
-      Si otra tienda tiene déficit proyectado y el lote llega a tiempo ($d > 1$ día), se compara su ingreso neto descontando logística ($P_{\text{venta}} - C_{\text{log}}$).
-    </div>
-    <div>
-      <strong style="color:#d97706;">3. Descuento preventivo</strong><br/>
-      Si no hay tienda destino apta o vence pronto, se evalúa rebaja (15%–30%) respetando margen piso y se elige la opción de mayor recuperación.
-    </div>
+<div class="panel-pestanas" data-pestanas>
+  <div class="tabs" role="tablist">
+    <button class="tab {% if tab_activa == 'triaje' %}active{% endif %}" type="button" data-pestana="triaje">
+      Decisiones por Lote ({{ decisiones | length }})
+    </button>
+    <button class="tab {% if tab_activa == 'traslados' %}active{% endif %}" type="button" data-pestana="traslados">
+      Traslados entre Tiendas ({{ transferencias | length }})
+    </button>
+    <button class="tab {% if tab_activa == 'descuentos' %}active{% endif %}" type="button" data-pestana="descuentos">
+      Descuentos Preventivos ({{ descuentos | length }})
+    </button>
+    <button class="tab {% if tab_activa == 'mermas' %}active{% endif %}" type="button" data-pestana="mermas">
+      Mermas y Bajas ({{ mermas | length }})
+    </button>
   </div>
-</div>
 
-<div class="filtros">
-  <form method="post" action="{{ url_for('analitica.triaje_ejecutar') }}" style="display:flex;gap:10px;align-items:center;">
-    {% if id_locacion %}<input type="hidden" name="id_locacion" value="{{ id_locacion }}"/>{% endif %}
-    <button class="btn btn-primary" type="submit">Ejecutar triaje y materializar propuestas</button>
-  </form>
-  <form method="get" action="{{ url_for('analitica.triaje') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
-    <div class="campo">
-      <label class="form-label">Tienda</label>
-      <select class="input" name="locacion">
-        <option value="">Todas</option>
-        {% for l in locaciones %}
-          <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
-        {% endfor %}
-      </select>
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {# PESTAÑA 1: MATRIZ DE TRIAJE CON ACCIONES EN 1 CLIC                     #}
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  <div class="pestana-contenido" data-pestana-id="triaje" {% if tab_activa != 'triaje' %}hidden{% endif %}>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;font-size:12.5px;color:var(--muted-foreground);margin-bottom:16px;padding:12px 14px;background:var(--muted);border-radius:10px;">
+      <div>
+        <strong style="color:#dc2626;">1. Merma / Inmovilización</strong><br/>
+        Si el lote ya venció o está bloqueado / en cuarentena / dañado, se excluye de salida FEFO y pasa a baja o inspección.
+      </div>
+      <div>
+        <strong style="color:#0284c7;">2. Traslado entre tiendas</strong><br/>
+        Si otra tienda tiene déficit proyectado y llega con más de 1 día útil, compara ingreso neto descontando logística (Precio venta − Costo logístico).
+      </div>
+      <div>
+        <strong style="color:#d97706;">3. Descuento preventivo</strong><br/>
+        Si el traslado no conviene o caduca pronto, calcula rebaja (15%–30%) sobre margen piso para acelerar venta en tienda.
+      </div>
     </div>
-    <div class="campo">
-      <label class="form-label">Decisión</label>
-      <select class="input" name="accion">
-        <option value="">Todas ({{ evaluacion.total_evaluados }})</option>
-        {% for a in ['TRASLADO', 'DESCUENTO', 'MERMA', 'NORMAL'] %}
-          <option value="{{ a }}" {% if filtro_accion == a %}selected{% endif %}>{{ a }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <button class="btn btn-ghost" type="submit">Filtrar</button>
-    <a class="btn btn-ghost" href="{{ url_for('analitica.transferencias') }}">Ver Transferencias →</a>
-    <a class="btn btn-ghost" href="{{ url_for('analitica.descuentos') }}">Ver Descuentos →</a>
-  </form>
-</div>
 
-<div class="table-wrap">
-  <div class="table-header">
-    <div class="table-header-title">Lotes evaluados en el flujo preventivo ({{ decisiones | length }})</div>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Producto / Lote</th>
-        <th>Tienda</th>
-        <th>Stock / Días</th>
-        <th>En riesgo</th>
-        <th>Valor Traslado</th>
-        <th>Valor Descuento</th>
-        <th>Costo en Riesgo</th>
-        <th>Decisión Elegida</th>
-        <th>Justificación económica</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for d in decisiones %}
+    <div class="filtros">
+      {% if current_role in ['admin', 'planner', 'store_manager'] %}
+        <form method="post" action="{{ url_for('analitica.triaje_ejecutar') }}" style="display:flex;gap:10px;align-items:center;">
+          {% if id_locacion %}<input type="hidden" name="id_locacion" value="{{ id_locacion }}"/>{% endif %}
+          <button class="btn btn-primary" type="submit">Ejecutar triaje automático y crear propuestas</button>
+        </form>
+      {% endif %}
+      <form method="get" action="{{ url_for('analitica.triaje') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <input type="hidden" name="tab" value="triaje"/>
+        <div class="campo">
+          <label class="form-label">Tienda</label>
+          <select class="input" name="locacion">
+            <option value="">Todas</option>
+            {% for l in locaciones %}
+              <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="campo">
+          <label class="form-label">Decisión sugerida</label>
+          <select class="input" name="accion">
+            <option value="">Todas ({{ evaluacion.total_evaluados }})</option>
+            {% for a in ['TRASLADO', 'DESCUENTO', 'MERMA', 'NORMAL'] %}
+              <option value="{{ a }}" {% if filtro_accion == a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-ghost" type="submit">Filtrar</button>
+      </form>
+    </div>
+
+    <table>
+      <thead>
         <tr>
-          <td>
-            <div style="font-weight:600;">{{ d.producto }}</div>
-            <div class="mono text-muted" style="font-size:11px;">
-              {{ d.codigo_lote_prov }} · {{ ui.estado(d.estado_lote) }}
-            </div>
-          </td>
-          <td>{{ d.locacion }}</td>
-          <td class="mono">
-            {{ (d.cantidad_disponible) | cantidad(2) }} {{ d.unidad_medida }}<br/>
-            <span class="{% if d.dias_restantes <= 2 %}text-danger{% elif d.dias_restantes <= 5 %}text-warning{% endif %}" style="font-size:11px;">
-              {{ d.dias_restantes }} d restantes
-            </span>
-          </td>
-          <td class="mono">{{ (d.unidades_en_riesgo) | cantidad(2) }}</td>
-          <td class="mono {% if d.accion == 'TRASLADO' %}text-success{% endif %}" style="font-weight:{% if d.accion == 'TRASLADO' %}700{% else %}400{% endif %};">
-            {{ ui.moneda(d.valor_traslado_neto) }}
-          </td>
-          <td class="mono {% if d.accion == 'DESCUENTO' %}text-warning{% endif %}" style="font-weight:{% if d.accion == 'DESCUENTO' %}700{% else %}400{% endif %};">
-            {{ ui.moneda(d.valor_descuento_neto) }}
-          </td>
-          <td class="mono text-danger">{{ ui.moneda(d.costo_merma_potencial) }}</td>
-          <td>
-            {% if d.accion == 'TRASLADO' %}
-              <span class="badge badge-info">TRASLADO</span>
-            {% elif d.accion == 'DESCUENTO' %}
-              <span class="badge badge-warning">DESCUENTO</span>
-            {% elif d.accion == 'MERMA' %}
-              <span class="badge badge-danger">MERMA</span>
-            {% else %}
-              <span class="badge badge-success">NORMAL FEFO</span>
-            {% endif %}
-          </td>
-          <td style="font-size:12px;max-width:340px;">{{ d.explicacion }}</td>
+          <th>Producto / Lote</th>
+          <th>Tienda</th>
+          <th>Stock / Días</th>
+          <th>En riesgo</th>
+          <th>Valor Traslado</th>
+          <th>Valor Descuento</th>
+          <th>Recomendación</th>
+          <th>Acción directa (1 clic)</th>
         </tr>
-      {% else %}
-        {{ ui.vacio('No hay lotes en ventana de riesgo con los filtros seleccionados.', 9) }}
-      {% endfor %}
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        {% for d in decisiones %}
+          <tr>
+            <td>
+              <div style="font-weight:600;">{{ d.producto }}</div>
+              <div class="mono text-muted" style="font-size:11px;">
+                {{ d.codigo_lote_prov }} · {{ ui.estado(d.estado_lote) }}
+              </div>
+              <div class="text-muted" style="font-size:11.5px;margin-top:3px;max-width:260px;">{{ d.explicacion }}</div>
+            </td>
+            <td>{{ d.locacion }}</td>
+            <td class="mono">
+              {{ (d.cantidad_disponible) | cantidad(2) }} {{ d.unidad_medida }}<br/>
+              <span class="{% if d.dias_restantes <= 2 %}text-danger{% elif d.dias_restantes <= 5 %}text-warning{% endif %}" style="font-size:11px;">
+                {{ d.dias_restantes }} d restantes
+              </span>
+            </td>
+            <td class="mono">{{ (d.unidades_en_riesgo) | cantidad(2) }}</td>
+            <td class="mono {% if d.accion == 'TRASLADO' %}text-success{% endif %}" style="font-weight:{% if d.accion == 'TRASLADO' %}700{% else %}400{% endif %};">
+              {{ ui.moneda(d.valor_traslado_neto) }}
+            </td>
+            <td class="mono {% if d.accion == 'DESCUENTO' %}text-warning{% endif %}" style="font-weight:{% if d.accion == 'DESCUENTO' %}700{% else %}400{% endif %};">
+              {{ ui.moneda(d.valor_descuento_neto) }}
+            </td>
+            <td>
+              {% if d.accion == 'TRASLADO' %}
+                <span class="badge badge-info">TRASLADO</span>
+              {% elif d.accion == 'DESCUENTO' %}
+                <span class="badge badge-warning">DESCUENTO</span>
+              {% elif d.accion == 'MERMA' %}
+                <span class="badge badge-danger">MERMA</span>
+              {% else %}
+                <span class="badge badge-success">NORMAL FEFO</span>
+              {% endif %}
+              {% if d.transferencia_activa %}
+                <div style="margin-top:4px;"><span class="badge badge-neutral" style="font-size:10px;">Traslado {{ d.transferencia_activa.estado }}</span></div>
+              {% endif %}
+              {% if d.descuento_activo %}
+                <div style="margin-top:4px;"><span class="badge badge-neutral" style="font-size:10px;">Descuento {{ d.descuento_activo.estado }} (-{{ d.descuento_activo.descuento_pct | cantidad(0) }}%)</span></div>
+              {% endif %}
+            </td>
+            <td style="min-width:190px;">
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                {% if d.transferencia_activa and d.transferencia_activa.estado == 'APROBADA' and current_role in ['admin', 'planner', 'store_manager', 'warehouse'] %}
+                  <form method="post" action="{{ url_for('analitica.triaje_accion_lote') }}">
+                    <input type="hidden" name="id_lote" value="{{ d.id_lote }}"/>
+                    <input type="hidden" name="id_locacion" value="{{ d.id_locacion }}"/>
+                    <input type="hidden" name="tipo_accion" value="TRASLADO"/>
+                    <input type="hidden" name="ejecutar_fisico" value="1"/>
+                    <button class="btn btn-primary btn-sm" type="submit" style="width:100%;">
+                      Ejecutar traslado → {{ d.transferencia_activa.destino }}
+                    </button>
+                  </form>
+                {% elif d.detalle and d.detalle.id_locacion_destino and current_role in ['admin', 'planner', 'store_manager'] %}
+                  <form method="post" action="{{ url_for('analitica.triaje_accion_lote') }}">
+                    <input type="hidden" name="id_lote" value="{{ d.id_lote }}"/>
+                    <input type="hidden" name="id_locacion" value="{{ d.id_locacion }}"/>
+                    <input type="hidden" name="id_locacion_destino" value="{{ d.detalle.id_locacion_destino }}"/>
+                    <input type="hidden" name="cantidad" value="{{ d.detalle.cantidad or d.cantidad_propuesta }}"/>
+                    <input type="hidden" name="tipo_accion" value="TRASLADO"/>
+                    <button class="btn {% if d.accion == 'TRASLADO' %}btn-primary{% else %}btn-ghost{% endif %} btn-sm" type="submit" style="width:100%;">
+                      Aprobar traslado → {{ d.detalle.destino }}
+                    </button>
+                  </form>
+                {% endif %}
+
+                {% if not (d.descuento_activo and d.descuento_activo.estado == 'APROBADO') and d.dias_restantes >= 0 and current_role in ['admin', 'planner', 'store_manager'] %}
+                  <form method="post" action="{{ url_for('analitica.triaje_accion_lote') }}">
+                    <input type="hidden" name="id_lote" value="{{ d.id_lote }}"/>
+                    <input type="hidden" name="id_locacion" value="{{ d.id_locacion }}"/>
+                    <input type="hidden" name="tipo_accion" value="DESCUENTO"/>
+                    {% if d.detalle and d.detalle.descuento_pct %}
+                      <input type="hidden" name="descuento_pct" value="{{ d.detalle.descuento_pct }}"/>
+                    {% endif %}
+                    <button class="btn {% if d.accion == 'DESCUENTO' %}btn-primary{% else %}btn-ghost{% endif %} btn-sm" type="submit" style="width:100%;">
+                      {% if d.detalle and d.detalle.descuento_pct %}
+                        Aplicar descuento -{{ d.detalle.descuento_pct | cantidad(0) }}%
+                      {% else %}
+                        Aplicar descuento preventivo
+                      {% endif %}
+                    </button>
+                  </form>
+                {% endif %}
+
+                {% if current_role in ['admin', 'store_manager', 'warehouse'] %}
+                  <button type="button"
+                          class="btn {% if d.accion == 'MERMA' %}btn-danger{% else %}btn-ghost{% endif %} btn-sm"
+                          style="width:100%;"
+                          onclick="abrirModalMerma('{{ d.id_lote }}', '{{ d.id_locacion }}', {{ d.producto | tojson }}, {{ d.codigo_lote_prov | tojson }}, '{{ d.cantidad_disponible }}', {{ d.unidad_medida | tojson }})">
+                    Registrar merma
+                  </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('No hay lotes en ventana de riesgo con los filtros seleccionados.', 8) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {# PESTAÑA 2: TRASLADOS ENTRE TIENDAS                                     #}
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  <div class="pestana-contenido" data-pestana-id="traslados" {% if tab_activa != 'traslados' %}hidden{% endif %}>
+    <div class="stat-grid-4" style="margin-bottom:16px;">
+      {{ ui.kpi('Sugeridas', resumen_tr.sugeridas, 'Esperan decisión', '#0284c7') }}
+      {{ ui.kpi('Aprobadas', resumen_tr.aprobadas, 'Listas para ejecutar', '#d97706') }}
+      {{ ui.kpi('Ejecutadas', resumen_tr.ejecutadas, 'Inventario ya movido', '#16a34a') }}
+      {{ ui.kpi('Unidades movidas', (resumen_tr.unidades_movidas) | cantidad(2)) }}
+    </div>
+
+    <div class="filtros">
+      {% if current_role in ['admin', 'planner', 'store_manager'] %}
+        <form method="post" action="{{ url_for('analitica.transferencias_detectar') }}">
+          <button class="btn btn-primary" type="submit">Detectar oportunidades de traslado</button>
+        </form>
+      {% endif %}
+      <form method="get" action="{{ url_for('analitica.triaje') }}" style="display:flex;gap:12px;align-items:flex-end;">
+        <input type="hidden" name="tab" value="traslados"/>
+        <div class="campo">
+          <label class="form-label">Estado</label>
+          <select class="input" name="estado_tr">
+            {% for e in ['SUGERIDA', 'APROBADA', 'EJECUTADA', 'RECHAZADA', 'TODAS'] %}
+              <option value="{{ e }}" {% if estado_tr == e %}selected{% endif %}>{{ e }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-ghost" type="submit">Filtrar</button>
+      </form>
+    </div>
+
+    {% for t in transferencias %}
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:15.5px;font-weight:600;">
+              {{ t.origen }} <span style="color:var(--role-accent);">→</span> {{ t.destino }}
+            </div>
+            <div class="text-muted" style="font-size:11.5px;margin-top:3px;">
+              {{ t.producto }} · lote {{ t.codigo_lote_prov or '—' }} · vence {{ t.fecha_caducidad | fecha_hora }} ({{ t.dias_para_vencer }} d)
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="badge badge-info">{{ (t.cantidad) | cantidad(2) }} {{ t.unidad_medida }}</span>
+            {{ ui.estado(t.estado) }}
+          </div>
+        </div>
+        {% if t.motivo %}<div class="text-muted" style="font-size:12.5px;margin-top:8px;">{{ t.motivo }}</div>{% endif %}
+        <div class="acciones" style="margin-top:12px;">
+          {% if t.estado == 'SUGERIDA' and current_role in ['admin', 'planner', 'store_manager'] %}
+            <form method="post" action="{{ url_for('analitica.transferencias_decidir', id_transferencia=t.id_transferencia) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input class="input" name="cantidad" type="number" step="0.01" min="0" value="{{ '%.2f' | format(t.cantidad | float) }}" style="width:110px;"/>
+              <button class="btn btn-primary btn-sm" type="submit" name="decision" value="aprobar">Aprobar</button>
+              <button class="btn btn-danger btn-sm" type="submit" name="decision" value="rechazar">Rechazar</button>
+            </form>
+          {% elif t.estado == 'APROBADA' and current_role in ['admin', 'planner', 'store_manager', 'warehouse'] %}
+            <form method="post" action="{{ url_for('analitica.transferencias_ejecutar', id_transferencia=t.id_transferencia) }}">
+              <button class="btn btn-primary btn-sm" type="submit">Ejecutar y mover inventario</button>
+            </form>
+          {% elif t.estado == 'EJECUTADA' %}
+            <span class="text-muted" style="font-size:12px;">✓ Movimiento físico ejecutado. El recupero se mide en Impacto y Sostenibilidad.</span>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="tabla-vacia"><div class="tabla-vacia-titulo">Sin traslados en estado {{ estado_tr }}</div></div>
+    {% endfor %}
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {# PESTAÑA 3: DESCUENTOS PREVENTIVOS                                      #}
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  <div class="pestana-contenido" data-pestana-id="descuentos" {% if tab_activa != 'descuentos' %}hidden{% endif %}>
+    <div class="stat-grid-4" style="margin-bottom:16px;">
+      {{ ui.kpi('Sugeridos', resumen_desc.sugeridos, 'Esperan aprobación', '#0284c7') }}
+      {{ ui.kpi('Aprobados', resumen_desc.aprobados) }}
+      {{ ui.kpi('Unidades en promoción', (resumen_desc.unidades) | cantidad(2)) }}
+      {{ ui.kpi('Ingreso potencial', ui.moneda(resumen_desc.ingreso_potencial), 'Estimado por descuento', '#16a34a') }}
+    </div>
+
+    <div class="filtros">
+      {% if current_role in ['admin', 'planner', 'store_manager'] %}
+        <form method="post" action="{{ url_for('analitica.descuentos_generar') }}">
+          <button class="btn btn-primary" type="submit">Generar sugerencias de descuento</button>
+        </form>
+      {% endif %}
+      <form method="get" action="{{ url_for('analitica.triaje') }}" style="display:flex;gap:12px;align-items:flex-end;">
+        <input type="hidden" name="tab" value="descuentos"/>
+        <div class="campo">
+          <label class="form-label">Estado</label>
+          <select class="input" name="estado_desc">
+            {% for e in ['SUGERIDO', 'APROBADO', 'RECHAZADO', 'TODAS'] %}
+              <option value="{{ e }}" {% if estado_desc == e %}selected{% endif %}>{{ e }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-ghost" type="submit">Filtrar</button>
+      </form>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Producto</th><th>Tienda</th><th>Lote</th><th>Caducidad</th><th>Días</th>
+          <th>Unidades</th><th>Regular</th><th>Desc.</th><th>Nuevo</th><th>Estado</th><th>Decisión</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in descuentos %}
+          <tr>
+            <td style="font-weight:600;">{{ d.producto }}</td>
+            <td>{{ d.locacion }}</td>
+            <td class="mono" style="font-size:11px;">{{ d.codigo_lote_prov }}</td>
+            <td class="mono" style="font-size:11px;">{{ d.fecha_caducidad | fecha_hora }}</td>
+            <td class="mono">{{ d.dias_restantes }}</td>
+            <td class="mono">{{ (d.cantidad) | cantidad(2) }} {{ d.unidad_medida }}</td>
+            <td class="mono">{{ ui.moneda(d.precio_normal) }}</td>
+            <td><span class="badge badge-warning">-{{ d.descuento_pct }}%</span></td>
+            <td class="mono" style="font-weight:600;">{{ ui.moneda(d.precio_nuevo) }}</td>
+            <td>{{ ui.estado(d.estado) }}</td>
+            <td>
+              {% if d.estado == 'SUGERIDO' and current_role in ['admin', 'planner', 'store_manager'] %}
+                <div class="acciones">
+                  <form class="inline-form" method="post" action="{{ url_for('analitica.descuentos_decidir', id_descuento=d.id_descuento) }}">
+                    <button class="btn btn-primary btn-sm" type="submit" name="decision" value="aprobar">Aprobar</button>
+                  </form>
+                  <form class="inline-form" method="post" action="{{ url_for('analitica.descuentos_decidir', id_descuento=d.id_descuento) }}">
+                    <button class="btn btn-danger btn-sm" type="submit" name="decision" value="rechazar">Rechazar</button>
+                  </form>
+                </div>
+              {% else %}
+                <span class="text-muted" style="font-size:11.5px;">{% if d.aprueba %}por {{ d.aprueba }}{% else %}—{% endif %}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('No hay descuentos en este estado.', 11) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {# PESTAÑA 4: MERMAS Y BAJAS                                              #}
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  <div class="pestana-contenido" data-pestana-id="mermas" {% if tab_activa != 'mermas' %}hidden{% endif %}>
+    <div class="stat-grid-4" style="margin-bottom:16px;">
+      {{ ui.kpi('Unidades mermadas (180 d)', (resumen_mermas.totales.unidades) | cantidad(2)) }}
+      {{ ui.kpi('Valor de la merma', ui.moneda(resumen_mermas.totales.valor), None, '#dc2626') }}
+      {{ ui.kpi('Eventos registrados', resumen_mermas.totales.eventos) }}
+      {{ ui.kpi('Merma por caducidad', (resumen_mermas.por_caducidad.unidades_caducidad) | cantidad(2), ui.moneda(resumen_mermas.por_caducidad.valor_caducidad)) }}
+    </div>
+
+    {% if current_role in ['admin', 'store_manager', 'warehouse'] %}
+    <details class="plegable" style="margin-bottom:16px;">
+      <summary>Registrar baja o merma imprevista (daño físico, cadena de frío, manipulación)</summary>
+      <div class="plegable-cuerpo">
+        <form method="post" action="{{ url_for('operacion.mermas') }}">
+          <div class="form-grid-3">
+            <div>
+              <label class="form-label">Tienda / CEDIS *</label>
+              <select class="input" name="id_locacion" required>
+                <option value="">Selecciona…</option>
+                {% for l in locaciones_todas %}
+                  <option value="{{ l.id_locacion }}">{{ l.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Lote *</label>
+              <select class="input" name="id_lote" required>
+                <option value="">Selecciona…</option>
+                {% for l in lotes_merma %}
+                  <option value="{{ l.id_lote }}">{{ l.codigo_lote_prov }} — {{ l.producto }} ({{ (l.cantidad_disponible) | cantidad(2) }} {{ l.unidad_medida }} · {{ l.locacion }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Cantidad *</label>
+              <input class="input" name="cantidad" type="number" step="0.01" min="0.01" required/>
+            </div>
+            <div>
+              <label class="form-label">Causa *</label>
+              <select class="input" name="causa_merma" required>
+                {% for c in causas_merma %}
+                  <option value="{{ c.codigo }}">{{ c.etiqueta }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div style="grid-column: span 2;">
+              <label class="form-label">Observación</label>
+              <input class="input" name="observacion" placeholder="Detalle del incidente"/>
+            </div>
+          </div>
+          <div class="form-actions"><button class="btn btn-primary" type="submit">Registrar merma</button></div>
+        </form>
+      </div>
+    </details>
+    {% endif %}
+
+    <div class="grid-2" style="margin-bottom:16px;">
+      <div class="card">
+        <div class="card-title">Merma por causa</div>
+        <table>
+          <thead><tr><th>Causa</th><th>Unidades</th><th>Valor</th><th>%</th></tr></thead>
+          <tbody>
+            {% for c in resumen_mermas.por_causa %}
+              <tr><td style="font-weight:600;">{{ c.etiqueta }}</td><td class="mono">{{ (c.unidades) | cantidad(2) }}</td><td class="mono">{{ ui.moneda(c.valor) }}</td><td class="mono">{{ c.porcentaje }}%</td></tr>
+            {% else %}{{ ui.vacio('Sin mermas.', 4) }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Merma por tienda</div>
+        <table>
+          <thead><tr><th>Tienda</th><th>Unidades</th><th>Valor</th></tr></thead>
+          <tbody>
+            {% for t in resumen_mermas.por_tienda %}
+              <tr><td style="font-weight:600;">{{ t.locacion }}</td><td class="mono">{{ (t.unidades) | cantidad(2) }}</td><td class="mono">{{ ui.moneda(t.valor) }}</td></tr>
+            {% else %}{{ ui.vacio('Sin mermas.', 3) }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>Fecha</th><th>Tienda</th><th>Producto</th><th>Lote</th><th>Cantidad</th><th>Causa</th><th>Valor</th><th>Responsable</th></tr></thead>
+      <tbody>
+        {% for m in mermas %}
+          <tr>
+            <td class="mono" style="font-size:11px;">{{ m.fecha_registro | fecha_hora }}</td>
+            <td>{{ m.locacion }}</td>
+            <td style="font-weight:600;">{{ m.producto }}</td>
+            <td class="mono" style="font-size:11px;">{{ m.codigo_lote_prov }}</td>
+            <td class="mono">{{ (m.cantidad) | cantidad(2) }} {{ m.unidad_medida }}</td>
+            <td><span class="badge badge-warning">{{ m.causa_merma }}</span></td>
+            <td class="mono">{{ ui.moneda(m.valor_merma) }}</td>
+            <td style="font-size:12px;">{{ m.responsable }}</td>
+          </tr>
+        {% else %}{{ ui.vacio('No hay mermas recientes.', 8) }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+
+{# ── Modal rápido de Merma prellenado desde una fila de Triaje ── #}
+<div class="ft-modal-backdrop" id="modal-merma-triaje" role="dialog" aria-modal="true">
+  <div class="ft-modal ft-modal-sm">
+    <div class="ft-modal-head">
+      <div>
+        <div class="ft-modal-title">Registrar merma de lote</div>
+        <div class="text-muted" id="mm-sub" style="font-size:12px;"></div>
+      </div>
+      <button type="button" class="ft-modal-close" onclick="cerrarModalMerma()">×</button>
+    </div>
+    <form class="ft-modal-body" method="post" action="{{ url_for('analitica.triaje_accion_lote') }}">
+      <input type="hidden" name="tipo_accion" value="MERMA"/>
+      <input type="hidden" name="tab_origen" value="triaje"/>
+      <input type="hidden" name="id_lote" id="mm-id-lote"/>
+      <input type="hidden" name="id_locacion" id="mm-id-locacion"/>
+      <div>
+        <label class="form-label">Cantidad a dar de baja (<span id="mm-unidad">u.</span>) *</label>
+        <input class="input" name="cantidad" id="mm-cantidad" type="number" step="0.01" min="0.01" required/>
+      </div>
+      <div>
+        <label class="form-label">Causa *</label>
+        <select class="input" name="causa_merma" required>
+          {% for c in causas_merma %}
+            <option value="{{ c.codigo }}">{{ c.etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Observación</label>
+        <input class="input" name="observacion" placeholder="Motivo operativo de la baja"/>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost" onclick="cerrarModalMerma()">Cancelar</button>
+        <button type="submit" class="btn btn-danger">Confirmar merma</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function abrirModalMerma(idLote, idLoc, producto, codigo, disponible, unidad) {
+  document.getElementById('mm-id-lote').value = idLote;
+  document.getElementById('mm-id-locacion').value = idLoc;
+  document.getElementById('mm-sub').textContent = `${producto} · Lote ${codigo}`;
+  document.getElementById('mm-cantidad').value = Number(disponible || 0).toFixed(2);
+  document.getElementById('mm-cantidad').max = Number(disponible || 0);
+  document.getElementById('mm-unidad').textContent = unidad || 'u.';
+  document.getElementById('modal-merma-triaje').classList.add('open');
+}
+function cerrarModalMerma() {
+  document.getElementById('modal-merma-triaje').classList.remove('open');
+}
+document.addEventListener('click', (e) => {
+  const m = document.getElementById('modal-merma-triaje');
+  if (e.target === m) cerrarModalMerma();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') cerrarModalMerma();
+});
+</script>
 {% endblock %}

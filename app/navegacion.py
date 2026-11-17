@@ -61,11 +61,9 @@ SECCIONES = [
     {
         "label": "Operación",
         "items": [
-            {"id": "batches", "label": "Lotes y Recepción", "endpoint": "operacion.lotes"},
+            {"id": "batches", "label": "Lotes y Salida FEFO", "endpoint": "operacion.lotes"},
             {"id": "inventory", "label": "Inventario", "endpoint": "operacion.inventario"},
-            {"id": "sales", "label": "Ventas", "endpoint": "operacion.ventas"},
-            {"id": "fefo", "label": "Orden de salida (FEFO)", "endpoint": "operacion.fefo"},
-            {"id": "traceability", "label": "Trazabilidad", "endpoint": "operacion.trazabilidad"},
+            {"id": "sales", "label": "Monitor de Ventas", "endpoint": "operacion.ventas"},
         ],
     },
     {
@@ -73,18 +71,13 @@ SECCIONES = [
         "items": [
             {"id": "forecast", "label": "Pronósticos", "endpoint": "analitica.pronostico"},
             {"id": "replenishment", "label": "Reabastecimiento", "endpoint": "analitica.reabastecimiento"},
-            {"id": "triage", "label": "Triaje preventivo", "endpoint": "analitica.triaje"},
-            {"id": "transfers", "label": "Transferencias", "endpoint": "analitica.transferencias"},
-            {"id": "discounts", "label": "Descuentos", "endpoint": "analitica.descuentos"},
-            {"id": "mongo_explorer", "label": "Documentos (MongoDB)", "endpoint": "panel.mongo_explorer"},
+            {"id": "triage", "label": "Triaje y Acción Preventiva", "endpoint": "analitica.triaje"},
         ],
     },
     {
-        "label": "Desperdicio",
+        "label": "Impacto",
         "items": [
-            {"id": "shrinkage", "label": "Mermas", "endpoint": "operacion.mermas"},
-            {"id": "savings", "label": "Desperdicio evitado", "endpoint": "panel.desperdicio_evitado"},
-            {"id": "sustainability", "label": "Sostenibilidad", "endpoint": "panel.sostenibilidad"},
+            {"id": "savings", "label": "Impacto y Sostenibilidad", "endpoint": "panel.desperdicio_evitado"},
         ],
     },
     {
@@ -93,7 +86,6 @@ SECCIONES = [
             {"id": "users", "label": "Usuarios y Roles", "endpoint": "panel.usuarios"},
             {"id": "audit", "label": "Bitácora", "endpoint": "panel.auditoria_bitacora"},
             {"id": "settings", "label": "Configuración", "endpoint": "panel.configuracion"},
-            {"id": "services", "label": "Microservicios", "endpoint": "panel.microservicios"},
         ],
     },
 ]
@@ -104,36 +96,29 @@ SECCIONES = [
 VISTAS_POR_ROL: dict[str, list[str]] = {
     "admin": [
         "dashboard", "alerts", "map", "products", "stores", "suppliers", "batches",
-        "inventory", "sales", "fefo", "traceability", "forecast",
-        "replenishment", "triage", "transfers", "discounts", "shrinkage", "savings",
-        "sustainability", "users", "audit", "settings", "mongo_explorer",
-        "services",
+        "inventory", "sales", "forecast", "replenishment", "triage", "savings",
+        "users", "audit", "settings",
     ],
     "buyer": [
         "dashboard", "alerts", "map", "products", "suppliers", "batches", "inventory",
-        "replenishment", "triage", "traceability", "forecast", "mongo_explorer",
+        "replenishment", "triage", "forecast",
     ],
     "planner": [
         "dashboard", "alerts", "map", "products", "inventory", "sales", "forecast",
-        "replenishment", "triage", "transfers", "discounts", "savings", "sustainability",
-        "traceability", "batches", "mongo_explorer",
+        "replenishment", "triage", "savings", "batches",
     ],
     "store_manager": [
-        # El gerente de tienda es quien aprueba o rechaza lo que el sistema
-        # recomienda (reabastecimiento, transferencias y descuentos), así que
-        # necesita ver esas pantallas además de la operación de su tienda.
-        "dashboard", "alerts", "map", "batches", "inventory", "sales", "fefo",
-        "shrinkage", "discounts", "transfers", "triage", "replenishment", "traceability",
-        "mongo_explorer",
+        # El gerente de tienda aprueba o ejecuta las recomendaciones del sistema
+        # (reabastecimiento, traslados, descuentos y mermas) desde el centro de triaje.
+        "dashboard", "alerts", "map", "batches", "inventory", "sales",
+        "triage", "replenishment", "savings",
     ],
     "warehouse": [
-        "dashboard", "alerts", "map", "batches", "inventory", "fefo", "shrinkage",
-        "transfers", "traceability", "mongo_explorer",
+        "dashboard", "alerts", "map", "batches", "inventory", "triage",
     ],
     "supplier": ["dashboard", "products", "batches", "replenishment"],
     "auditor": [
-        "dashboard", "map", "sales", "shrinkage", "sustainability", "audit",
-        "traceability", "savings", "mongo_explorer",
+        "dashboard", "map", "sales", "triage", "audit", "savings",
     ],
 }
 
@@ -142,7 +127,7 @@ VISTA_INICIAL: dict[str, str] = {
     "buyer": "replenishment",
     "planner": "forecast",
     "store_manager": "dashboard",
-    "warehouse": "fefo",
+    "warehouse": "batches",
     "supplier": "replenishment",
     "auditor": "audit",
 }

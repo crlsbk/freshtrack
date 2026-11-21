@@ -70,8 +70,8 @@ SECCIONES = [
         "label": "Analítica",
         "items": [
             {"id": "forecast", "label": "Pronósticos", "endpoint": "analitica.pronostico"},
-            {"id": "replenishment", "label": "Reabastecimiento", "endpoint": "analitica.reabastecimiento"},
             {"id": "triage", "label": "Triaje y Acción Preventiva", "endpoint": "analitica.triaje"},
+            {"id": "replenishment", "label": "Reabastecimiento", "endpoint": "analitica.reabastecimiento"},
         ],
     },
     {

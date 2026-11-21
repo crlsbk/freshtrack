@@ -245,7 +245,7 @@ def api_pronostico_ejecutar():
     try:
         resultado = motor_pron.ejecutar_pronostico(
             usuario=_usuario(),
-            metodo=datos.get("metodo", "SUAVIZACION_EXPONENCIAL"),
+            metodo=datos.get("metodo", "AUTO"),
             horizonte=a_int(datos.get("horizonte"), 7),
             ventana=a_int(datos.get("ventana"), 28),
             alpha=float(datos.get("alpha", 0.30) or 0.30),

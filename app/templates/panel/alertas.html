@@ -15,7 +15,7 @@
   {{ ui.kpi('Críticas', resumen.por_severidad.get('CRITICA', 0), 'Requieren acción inmediata', '#dc2626') }}
   {{ ui.kpi('Altas', resumen.por_severidad.get('ALTA', 0), None, '#ea580c') }}
   {{ ui.kpi('Tipos con actividad',
-            resumen.por_tipo | length, 'De los 7 tipos definidos') }}
+            resumen.por_tipo | length, 'De los ' ~ (tipos | length) ~ ' tipos definidos') }}
 </div>
 
 {# ── Conteo por tipo ── #}

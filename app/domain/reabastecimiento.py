@@ -171,8 +171,8 @@ def demanda_proyectada(id_sku: int, id_locacion: int, dias: int) -> tuple[float,
     """
     Demanda esperada para los próximos `dias`.
 
-    Usa el pronóstico vigente si existe; si no, cae al promedio diario de los
-    últimos 28 días. Devuelve (cantidad, origen) para poder explicarlo.
+    Usa el pronóstico vigente del modelo propio de la tienda si existe; si no,
+    cae al promedio diario de los últimos 28 días. Devuelve (cantidad, origen).
     """
     fila = one(
         """
@@ -180,8 +180,17 @@ def demanda_proyectada(id_sku: int, id_locacion: int, dias: int) -> tuple[float,
         FROM analitica.forecast_result
         WHERE id_sku = :sku AND id_locacion = :loc
           AND id_run = (
-              SELECT id_run FROM analitica.forecast_run
-              WHERE estado = 'COMPLETADO' ORDER BY fecha_ejecucion DESC LIMIT 1
+              SELECT r.id_run
+              FROM analitica.forecast_run r
+              WHERE r.estado = 'COMPLETADO'
+                AND (r.id_locacion = :loc OR r.id_locacion IS NULL)
+                AND EXISTS (
+                    SELECT 1 FROM analitica.forecast_result fr2
+                    WHERE fr2.id_run = r.id_run AND fr2.id_sku = :sku AND fr2.id_locacion = :loc
+                )
+              ORDER BY (CASE WHEN r.id_locacion = :loc THEN 0 ELSE 1 END),
+                       r.fecha_ejecucion DESC
+              LIMIT 1
           )
           AND horizonte_dia <= :dias
         """,
@@ -190,7 +199,11 @@ def demanda_proyectada(id_sku: int, id_locacion: int, dias: int) -> tuple[float,
         dias=dias,
     )
     if fila and fila["dias"]:
-        return a_float(fila["total"]), "pronostico"
+        total = a_float(fila["total"])
+        dias_cubiertos = a_int(fila["dias"], 0)
+        if dias_cubiertos < dias and dias_cubiertos > 0:
+            total = round(total / dias_cubiertos * dias, 2)
+        return total, "pronostico"
     promedio = pronostico.demanda_diaria_promedio(id_sku, id_locacion, 28)
     return round(promedio * dias, 2), "promedio_28d"
 
@@ -254,7 +267,11 @@ def riesgo_por_lote(
 # Análisis de un par producto + tienda
 # ---------------------------------------------------------------------------
 def analizar_sku_locacion(
-    id_sku: int, id_locacion: int, horizonte: int | None = None
+    id_sku: int,
+    id_locacion: int,
+    horizonte: int | None = None,
+    *,
+    excluir_orden_id: str | None = None,
 ) -> dict:
     """
     Calcula la situación completa de un producto en una tienda y, si hace
@@ -302,18 +319,74 @@ def analizar_sku_locacion(
 
     stock_seguridad = a_float(producto["stock_seguridad"])
 
-    # --- Entradas confirmadas (órdenes aprobadas y todavía no recibidas)
-    entradas = a_float(
-        one(
-            """
-            SELECT COALESCE(SUM(COALESCE(cantidad_aprobada, cantidad_sugerida)), 0) AS total
-            FROM analitica.orden_reabastecimiento
-            WHERE id_sku = :sku AND id_locacion = :loc
-              AND estado IN ('PENDIENTE', 'APROBADA')
-            """,
-            sku=id_sku,
-            loc=id_locacion,
-        )["total"]
+    # --- Entradas confirmadas (órdenes pendientes/aprobadas + traslados entrantes de triaje)
+    filtro_excl = "AND id_orden <> CAST(:excl AS uuid)" if excluir_orden_id else ""
+    params_oc: dict = {"sku": id_sku, "loc": id_locacion}
+    if excluir_orden_id:
+        params_oc["excl"] = excluir_orden_id
+    entradas_oc = a_float(
+        (
+            one(
+                f"""
+                SELECT COALESCE(SUM(COALESCE(cantidad_aprobada, cantidad_sugerida)), 0) AS total
+                FROM analitica.orden_reabastecimiento
+                WHERE id_sku = :sku AND id_locacion = :loc
+                  AND estado IN ('PENDIENTE', 'APROBADA')
+                  {filtro_excl}
+                """,
+                **params_oc,
+            )
+            or {}
+        ).get("total")
+    )
+    entradas_traslados = a_float(
+        (
+            one(
+                """
+                SELECT COALESCE(SUM(cantidad), 0) AS total
+                FROM analitica.transferencia
+                WHERE id_sku = :sku AND id_locacion_destino = :loc
+                  AND estado IN ('SUGERIDA', 'APROBADA')
+                """,
+                sku=id_sku,
+                loc=id_locacion,
+            )
+            or {}
+        ).get("total")
+    )
+    entradas = round(entradas_oc + entradas_traslados, 2)
+
+    # Acciones preventivas locales vigentes (descuentos activos o traslados salientes)
+    descuentos_activos = a_float(
+        (
+            one(
+                """
+                SELECT COALESCE(SUM(d.cantidad), 0) AS total
+                FROM analitica.descuento d
+                JOIN operacion.lote l ON l.id_lote = d.id_lote
+                WHERE l.id_sku = :sku AND d.id_locacion = :loc
+                  AND d.estado IN ('SUGERIDO', 'APROBADO')
+                """,
+                sku=id_sku,
+                loc=id_locacion,
+            )
+            or {}
+        ).get("total")
+    )
+    traslados_salientes = a_float(
+        (
+            one(
+                """
+                SELECT COALESCE(SUM(cantidad), 0) AS total
+                FROM analitica.transferencia
+                WHERE id_sku = :sku AND id_locacion_origen = :loc
+                  AND estado IN ('SUGERIDA', 'APROBADA')
+                """,
+                sku=id_sku,
+                loc=id_locacion,
+            )
+            or {}
+        ).get("total")
     )
 
     necesidad_simple = round(
@@ -401,6 +474,31 @@ def analizar_sku_locacion(
                     f"producto dura {vida_util} días. Parte del pedido podría caducar."
                 )
 
+    if entradas_traslados > 0:
+        advertencias.append(
+            f"Triaje integrado: se descontaron {entradas_traslados:g} unidades en traslado entrante "
+            f"desde otra tienda antes de calcular la compra."
+        )
+
+    if descuentos_activos > 0 or traslados_salientes > 0:
+        acciones_prev: list[str] = []
+        if descuentos_activos > 0:
+            acciones_prev.append(f"{descuentos_activos:g} u. con descuento preventivo vigente")
+        if traslados_salientes > 0:
+            acciones_prev.append(f"{traslados_salientes:g} u. en traslado saliente")
+        cobertura_util = (inventario_util / demanda_diaria) if demanda_diaria > 0 else 999.0
+        if cantidad_sugerida > 0 and (demanda_diaria <= 0 or cobertura_util >= lead_time):
+            cantidad_sugerida = 0.0
+            advertencias.append(
+                f"Compra detenida por triaje local ({' y '.join(acciones_prev)}): "
+                f"la tienda cubre el tiempo de entrega mientras liquida o reubica su excedente."
+            )
+        else:
+            advertencias.append(
+                f"Triaje activo en esta tienda ({' y '.join(acciones_prev)}): "
+                f"valida la reposición antes de autorizar la compra."
+            )
+
     if inventario_riesgo > 0:
         advertencias.append(
             f"{inventario_riesgo:g} unidades del inventario actual están en riesgo de "
@@ -439,6 +537,10 @@ def analizar_sku_locacion(
         "inventario_riesgo": inventario_riesgo,
         "inventario_util": inventario_util,
         "entradas_confirmadas": round(entradas, 2),
+        "entradas_oc": round(entradas_oc, 2),
+        "entradas_traslados": round(entradas_traslados, 2),
+        "descuentos_activos": round(descuentos_activos, 2),
+        "traslados_salientes": round(traslados_salientes, 2),
         "stock_seguridad": stock_seguridad,
         "necesidad_neta": necesidad,
         "necesidad_politica_simple": necesidad_simple,
@@ -465,7 +567,9 @@ def explicar(analisis: dict) -> str:
         f"Inventario próximo a vencer        {analisis['inventario_riesgo']:>10,.2f}",
         f"Inventario útil                    {analisis['inventario_util']:>10,.2f}",
         f"Stock de seguridad                 {analisis['stock_seguridad']:>10,.2f}",
-        f"Entradas confirmadas               {analisis['entradas_confirmadas']:>10,.2f}",
+        f"Entradas confirmadas (total)       {analisis['entradas_confirmadas']:>10,.2f}",
+        f"  · Órdenes en curso               {analisis.get('entradas_oc', analisis['entradas_confirmadas']):>10,.2f}",
+        f"  · Traslados entrantes (triaje)   {analisis.get('entradas_traslados', 0.0):>10,.2f}",
         f"Lead time                          {analisis['lead_time_dias']:>10} días",
         f"MOQ                                {analisis['moq']:>10,.2f}",
         "",
@@ -499,12 +603,16 @@ def explicar(analisis: dict) -> str:
 # Generación de órdenes
 # ---------------------------------------------------------------------------
 def generar_recomendaciones(
-    *, usuario: dict, horizonte: int | None = None, solo_con_necesidad: bool = True
+    *,
+    usuario: dict,
+    horizonte: int | None = None,
+    solo_con_necesidad: bool = True,
+    id_locacion: int | None = None,
 ) -> dict:
     """
     Recorre todos los pares producto + tienda con historia y genera órdenes
-    de reabastecimiento para los que lo necesitan. Evita duplicar órdenes
-    que ya están pendientes.
+    de reabastecimiento netas (descontando traslados entrantes de triaje).
+    Evita duplicar órdenes que ya están pendientes.
     """
     from app.domain.ventas import pares_con_historia
 
@@ -512,30 +620,118 @@ def generar_recomendaciones(
         horizonte = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
 
     pares = pares_con_historia(min_dias=14)
+    if id_locacion:
+        pares = [p for p in pares if p["id_locacion"] == id_locacion]
     generadas = []
+    actualizadas = 0
     revisadas = 0
 
     for par in pares:
-        id_sku, id_locacion = par["id_sku"], par["id_locacion"]
-        try:
-            analisis = analizar_sku_locacion(id_sku, id_locacion, horizonte)
-        except ValueError:
-            continue
-        revisadas += 1
-
-        if solo_con_necesidad and analisis["cantidad_sugerida"] <= 0:
-            continue
-
+        id_sku, id_loc = par["id_sku"], par["id_locacion"]
         pendiente = one(
             """
-            SELECT id_orden::text FROM analitica.orden_reabastecimiento
+            SELECT id_orden::text, entradas_traslados, cantidad_sugerida
+            FROM analitica.orden_reabastecimiento
             WHERE id_sku = :sku AND id_locacion = :loc AND estado = 'PENDIENTE'
             LIMIT 1
             """,
             sku=id_sku,
-            loc=id_locacion,
+            loc=id_loc,
         )
+        try:
+            analisis = analizar_sku_locacion(
+                id_sku,
+                id_loc,
+                horizonte,
+                excluir_orden_id=pendiente["id_orden"] if pendiente else None,
+            )
+        except ValueError:
+            continue
+        revisadas += 1
+
         if pendiente:
+            if abs(analisis["entradas_traslados"] - a_float(pendiente["entradas_traslados"])) > 1e-6:
+                with transaccion(
+                    id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
+                ) as conn:
+                    if analisis["cantidad_sugerida"] <= 0:
+                        conn.execute(
+                            text(
+                                """
+                                UPDATE analitica.orden_reabastecimiento
+                                   SET estado = 'CANCELADA',
+                                       entradas_confirmadas = :entradas,
+                                       entradas_traslados = :traslados,
+                                       necesidad_neta = :necesidad,
+                                       cantidad_sugerida = 0,
+                                       explicacion = :explicacion,
+                                       advertencias = CAST(:advertencias AS jsonb),
+                                       fecha_decision = now()
+                                 WHERE id_orden = CAST(:id AS uuid)
+                                """
+                            ),
+                            {
+                                "entradas": analisis["entradas_confirmadas"],
+                                "traslados": analisis["entradas_traslados"],
+                                "necesidad": analisis["necesidad_neta"],
+                                "explicacion": explicar(analisis),
+                                "advertencias": _json(analisis["advertencias"]),
+                                "id": pendiente["id_orden"],
+                            },
+                        )
+                    else:
+                        conn.execute(
+                            text(
+                                """
+                                UPDATE analitica.orden_reabastecimiento
+                                   SET id_run = (
+                                           SELECT r.id_run FROM analitica.forecast_run r
+                                           WHERE r.estado = 'COMPLETADO'
+                                             AND (r.id_locacion = :loc OR r.id_locacion IS NULL)
+                                           ORDER BY (CASE WHEN r.id_locacion = :loc THEN 0 ELSE 1 END),
+                                                    r.fecha_ejecucion DESC
+                                           LIMIT 1
+                                       ),
+                                       demanda_pronosticada = :demanda,
+                                       inventario_fisico = :fisico,
+                                       inventario_riesgo = :riesgo,
+                                       inventario_util = :util,
+                                       entradas_confirmadas = :entradas,
+                                       entradas_traslados = :traslados,
+                                       necesidad_neta = :necesidad,
+                                       cantidad_sugerida = :sugerida,
+                                       cantidad_newsvendor = :cant_nv,
+                                       cantidad_politica_simple = :cant_simple,
+                                       ahorro_esperado = :ahorro_esp,
+                                       prioridad = :prioridad,
+                                       explicacion = :explicacion,
+                                       advertencias = CAST(:advertencias AS jsonb)
+                                 WHERE id_orden = CAST(:id AS uuid)
+                                """
+                            ),
+                            {
+                                "loc": id_loc,
+                                "demanda": analisis["demanda_horizonte"],
+                                "fisico": analisis["inventario_fisico"],
+                                "riesgo": analisis["inventario_riesgo"],
+                                "util": analisis["inventario_util"],
+                                "entradas": analisis["entradas_confirmadas"],
+                                "traslados": analisis["entradas_traslados"],
+                                "necesidad": analisis["necesidad_neta"],
+                                "sugerida": analisis["cantidad_sugerida"],
+                                "cant_nv": analisis["newsvendor"]["cantidad_newsvendor"],
+                                "cant_simple": analisis["newsvendor"]["cantidad_politica_simple"],
+                                "ahorro_esp": analisis["newsvendor"]["ahorro_esperado"],
+                                "prioridad": analisis["prioridad"],
+                                "explicacion": explicar(analisis),
+                                "advertencias": _json(analisis["advertencias"]),
+                                "id": pendiente["id_orden"],
+                            },
+                        )
+                actualizadas += 1
+            continue
+
+        if solo_con_necesidad and analisis["cantidad_sugerida"] <= 0:
             continue
 
         with transaccion(
@@ -547,8 +743,8 @@ def generar_recomendaciones(
                     INSERT INTO analitica.orden_reabastecimiento
                         (id_sku, id_locacion, id_proveedor, id_run,
                          demanda_pronosticada, inventario_fisico, inventario_riesgo,
-                         inventario_util, entradas_confirmadas, stock_seguridad,
-                         lead_time_dias, moq,
+                         inventario_util, entradas_confirmadas, entradas_traslados,
+                         stock_seguridad, lead_time_dias, moq,
                          necesidad_neta, cantidad_sugerida,
                          costo_faltante, costo_excedente, fractil_critico,
                          cantidad_newsvendor, cantidad_politica_simple, ahorro_esperado,
@@ -556,10 +752,14 @@ def generar_recomendaciones(
                          explicacion, advertencias, id_usuario_solicita)
                     VALUES
                         (:sku, :loc, :prov,
-                         (SELECT id_run FROM analitica.forecast_run
-                          WHERE estado='COMPLETADO' ORDER BY fecha_ejecucion DESC LIMIT 1),
-                         :demanda, :fisico, :riesgo, :util, :entradas, :seguridad,
-                         :lead, :moq,
+                         (SELECT r.id_run FROM analitica.forecast_run r
+                          WHERE r.estado = 'COMPLETADO'
+                            AND (r.id_locacion = :loc OR r.id_locacion IS NULL)
+                          ORDER BY (CASE WHEN r.id_locacion = :loc THEN 0 ELSE 1 END),
+                                   r.fecha_ejecucion DESC
+                          LIMIT 1),
+                         :demanda, :fisico, :riesgo, :util, :entradas, :traslados,
+                         :seguridad, :lead, :moq,
                          :necesidad, :sugerida,
                          :cu, :co, :fractil, :cant_nv, :cant_simple, :ahorro_esp,
                          :prioridad, 'PENDIENTE',
@@ -569,13 +769,14 @@ def generar_recomendaciones(
                 ),
                 {
                     "sku": id_sku,
-                    "loc": id_locacion,
+                    "loc": id_loc,
                     "prov": analisis["producto"]["id_proveedor"],
                     "demanda": analisis["demanda_horizonte"],
                     "fisico": analisis["inventario_fisico"],
                     "riesgo": analisis["inventario_riesgo"],
                     "util": analisis["inventario_util"],
                     "entradas": analisis["entradas_confirmadas"],
+                    "traslados": analisis["entradas_traslados"],
                     "seguridad": analisis["stock_seguridad"],
                     "lead": analisis["lead_time_dias"],
                     "moq": analisis["moq"],
@@ -625,7 +826,12 @@ def generar_recomendaciones(
             usuario_email=usuario["email"],
         )
 
-    return {"generadas": generadas, "total": len(generadas), "revisadas": revisadas}
+    return {
+        "generadas": generadas,
+        "actualizadas": actualizadas,
+        "total": len(generadas),
+        "revisadas": revisadas,
+    }
 
 
 def _json(valor) -> str:
@@ -644,7 +850,7 @@ def listar_ordenes(estado: str | None = None, limite: int = 100) -> list[dict]:
         f"""
         SELECT o.id_orden::text, o.estado, o.prioridad, o.fecha_creacion, o.fecha_decision,
                o.demanda_pronosticada, o.inventario_fisico, o.inventario_riesgo,
-               o.inventario_util, o.entradas_confirmadas, o.stock_seguridad,
+               o.inventario_util, o.entradas_confirmadas, o.entradas_traslados, o.stock_seguridad,
                o.lead_time_dias, o.moq,
                o.necesidad_neta, o.cantidad_sugerida, o.cantidad_aprobada,
                o.costo_faltante, o.costo_excedente, o.fractil_critico,

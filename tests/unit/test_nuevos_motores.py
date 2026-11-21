@@ -103,3 +103,105 @@ def test_seguridad_fail_closed_sin_redis_ni_postgres(monkeypatch):
 
     monkeypatch.setattr(security, "one", _bd_caida)
     assert security.verificar_sesion_respaldo_bd("jti-cualquiera") is False
+
+
+def test_pronostico_auto_selecciona_mejor_estrategia():
+    base = date(2026, 9, 1)
+    # Serie semanal clara + cambio gradual en nivel
+    serie = [(base + timedelta(days=i), float(12 + (i % 7) * 2 + i * 0.15)) for i in range(60)]
+    auto_res = p.pronosticar_serie(
+        serie, "AUTO", horizonte=7, ventana=28, alpha=0.3, fecha_base=serie[-1][0]
+    )
+    assert auto_res["metodo_ganador"] in p.METODOS_BASE
+    assert len(auto_res["pronostico"]) == 7
+    assert all(pt["valor"] >= 0 for pt in auto_res["pronostico"])
+
+    # Ningún algoritmo base con hiperparámetros por defecto debe vencer al seleccionado por WMAPE
+    maes_fijos = [
+        p.pronosticar_serie(serie, m, horizonte=7, ventana=28, alpha=0.3, fecha_base=serie[-1][0])["metricas"]["wmape"]
+        for m in p.METODOS_BASE
+    ]
+    assert auto_res["metricas"]["wmape"] <= max(maes_fijos) + 1e-6
+
+
+def test_detectar_drift_serie_estable_vigilancia_y_anomalia():
+    base = date(2026, 8, 1)
+    # 1. Serie estable -> CONFIABLE
+    serie_estable = [(base + timedelta(days=i), float(15 + (i % 7))) for i in range(70)]
+    d_ok = p.detectar_drift_serie(
+        serie_estable,
+        metricas_modelo={"wmape": 8.0, "mae": 1.1, "sesgo": 0.1},
+        metricas_naive={"mae": 2.0},
+    )
+    assert d_ok["estado"] == "CONFIABLE"
+    assert d_ok["requiere_reemplazo"] is False
+
+    # 2. Serie con caída abrupta / exceso de ceros en últimos 14 días -> NO_CONFIABLE
+    serie_drift = [(base + timedelta(days=i), float(22 + (i % 5))) for i in range(50)] + [
+        (base + timedelta(days=50 + j), 0.0 if j % 2 == 0 else 1.0) for j in range(14)
+    ]
+    d_bad = p.detectar_drift_serie(serie_drift)
+    assert d_bad["estado"] == "NO_CONFIABLE"
+    assert d_bad["requiere_reemplazo"] is True
+    assert d_bad["psi"] >= 0.25 or abs(d_bad["z_nivel"]) >= 2.8
+
+    # 3. Degradación severa del modelo frente a Naive -> NO_CONFIABLE
+    d_deg = p.detectar_drift_serie(
+        serie_estable,
+        metricas_modelo={"wmape": 55.0, "mae": 6.0, "sesgo": 0.2},
+        metricas_naive={"mae": 2.0},
+    )
+    assert d_deg["estado"] == "NO_CONFIABLE"
+    assert d_deg["requiere_reemplazo"] is True
+    assert d_deg["mejora_vs_naive_pct"] is not None and d_deg["mejora_vs_naive_pct"] < -10.0
+
+
+def test_newsvendor_descuenta_traslados_entrantes(monkeypatch):
+    from app.domain import reabastecimiento as reab
+
+    estado_mock = {"traslados_in": 0.0, "descuentos": 0.0}
+
+    def fake_config(clave, defecto=""):
+        return {"horizonte_pronostico_dias": "7", "umbral_sobreinventario_dias": "21", "dias_ventana_riesgo_lote": "5"}.get(clave, defecto)
+
+    def fake_one(sql, **params):
+        if "FROM operacion.producto" in sql:
+            return {
+                "id_sku": 1, "nombre": "Fresa Orgánica", "categoria": "Fruta",
+                "unidad_medida": "kg", "precio_costo": 20.0, "precio_venta": 60.0,
+                "stock_seguridad": 5.0, "punto_reorden": 10.0, "vida_util_estandar": 15,
+                "id_proveedor": 1, "proveedor": "Prov Demo", "lead_time_dias": 2, "moq": 1.0,
+            }
+        if "FROM operacion.locacion" in sql:
+            return {"id_locacion": 4, "nombre": "Tienda Cumbres", "tipo_locacion": "Tienda"}
+        if "FROM analitica.orden_reabastecimiento" in sql:
+            return {"total": 0.0}
+        if "id_locacion_destino" in sql:
+            return {"total": estado_mock["traslados_in"]}
+        if "FROM analitica.descuento" in sql:
+            return {"total": estado_mock["descuentos"]}
+        if "id_locacion_origen" in sql:
+            return {"total": 0.0}
+        return {"total": 0.0}
+
+    monkeypatch.setattr(reab, "config_valor", fake_config)
+    monkeypatch.setattr(reab, "one", fake_one)
+    monkeypatch.setattr(reab, "riesgo_por_lote", lambda sku, loc, d: [{"cantidad_disponible": 20.0, "unidades_en_riesgo": 0.0}])
+    monkeypatch.setattr(reab, "demanda_proyectada", lambda sku, loc, d: (70.0 if d == 7 else 20.0, "pronostico"))
+    monkeypatch.setattr(reab, "_desviacion_diaria", lambda sku, loc, d=28: 3.0)
+
+    sin_traslado = reab.analizar_sku_locacion(1, 4, horizonte=7)
+    estado_mock["traslados_in"] = 25.0
+    con_traslado = reab.analizar_sku_locacion(1, 4, horizonte=7)
+
+    assert con_traslado["entradas_traslados"] == 25.0
+    assert con_traslado["entradas_confirmadas"] == 25.0
+    assert round(sin_traslado["necesidad_neta"] - con_traslado["necesidad_neta"], 2) == 25.0
+    assert con_traslado["cantidad_sugerida"] < sin_traslado["cantidad_sugerida"]
+
+    # Descuento activo en tienda con cobertura >= lead_time (20 / 10 = 2 días >= 2 días) frena compra
+    estado_mock["traslados_in"] = 0.0
+    estado_mock["descuentos"] = 10.0
+    con_descuento = reab.analizar_sku_locacion(1, 4, horizonte=7)
+    assert con_descuento["cantidad_sugerida"] == 0.0
+    assert any("Compra detenida por triaje local" in a for a in con_descuento["advertencias"])

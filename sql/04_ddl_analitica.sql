@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS analitica.configuracion (
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS analitica.forecast_run (
     id_run           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_locacion      integer REFERENCES operacion.locacion(id_locacion),
     metodo           varchar(40) NOT NULL,
     parametros       jsonb NOT NULL DEFAULT '{}'::jsonb,
     periodo_inicio   date NOT NULL,
@@ -45,18 +46,20 @@ CREATE TABLE IF NOT EXISTS analitica.forecast_run (
     naive_wmape      numeric(8,4),
     observaciones    text,
     CONSTRAINT chk_fc_metodo CHECK (metodo IN (
-        'MEDIA_MOVIL', 'MEDIA_MOVIL_PONDERADA', 'SUAVIZACION_EXPONENCIAL'
+        'AUTO', 'MEDIA_MOVIL', 'MEDIA_MOVIL_PONDERADA', 'SUAVIZACION_EXPONENCIAL'
     )),
     CONSTRAINT chk_fc_horizonte CHECK (horizonte_dias BETWEEN 1 AND 90),
     CONSTRAINT chk_fc_estado CHECK (estado IN ('COMPLETADO', 'ERROR', 'PARCIAL'))
 );
 
 ALTER TABLE analitica.forecast_run
+    ADD COLUMN IF NOT EXISTS id_locacion integer REFERENCES operacion.locacion(id_locacion),
     ADD COLUMN IF NOT EXISTS sesgo       numeric(12,4),
     ADD COLUMN IF NOT EXISTS naive_mae   numeric(12,4),
     ADD COLUMN IF NOT EXISTS naive_wmape numeric(8,4);
 
 CREATE INDEX IF NOT EXISTS idx_fcrun_fecha ON analitica.forecast_run (fecha_ejecucion DESC);
+CREATE INDEX IF NOT EXISTS idx_fcrun_loc_fecha ON analitica.forecast_run (id_locacion, fecha_ejecucion DESC);
 
 -- -----------------------------------------------------------------------------
 -- Resultados del pronóstico: Producto + Tienda + Fecha → Demanda pronosticada
@@ -91,6 +94,7 @@ CREATE TABLE IF NOT EXISTS analitica.orden_reabastecimiento (
     inventario_riesgo     numeric(12,2) NOT NULL DEFAULT 0,
     inventario_util       numeric(12,2) NOT NULL DEFAULT 0,
     entradas_confirmadas  numeric(12,2) NOT NULL DEFAULT 0,
+    entradas_traslados    numeric(12,2) NOT NULL DEFAULT 0,
     stock_seguridad       numeric(12,2) NOT NULL DEFAULT 0,
     lead_time_dias        integer NOT NULL DEFAULT 0,
     moq                   numeric(12,2) NOT NULL DEFAULT 1,
@@ -118,6 +122,7 @@ CREATE TABLE IF NOT EXISTS analitica.orden_reabastecimiento (
 );
 
 ALTER TABLE analitica.orden_reabastecimiento
+    ADD COLUMN IF NOT EXISTS entradas_traslados numeric(12,2) NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS costo_faltante numeric(12,2),
     ADD COLUMN IF NOT EXISTS costo_excedente numeric(12,2),
     ADD COLUMN IF NOT EXISTS fractil_critico numeric(6,4),
@@ -179,7 +184,8 @@ CREATE TABLE IF NOT EXISTS analitica.alerta (
     fecha_cierre     timestamptz,
     CONSTRAINT chk_al_tipo CHECK (tipo IN (
         'LOTE_POR_VENCER', 'LOTE_VENCIDO', 'RIESGO_DE_MERMA', 'SOBREINVENTARIO',
-        'RIESGO_DE_FALTANTE', 'REABASTECIMIENTO_REQUERIDO', 'TRANSFERENCIA_SUGERIDA'
+        'RIESGO_DE_FALTANTE', 'REABASTECIMIENTO_REQUERIDO', 'TRANSFERENCIA_SUGERIDA',
+        'DERIVA_DEMANDA'
     )),
     CONSTRAINT chk_al_severidad CHECK (severidad IN ('CRITICA', 'ALTA', 'MEDIA', 'BAJA')),
     CONSTRAINT chk_al_estado CHECK (estado IN ('ABIERTA', 'ATENDIDA', 'DESCARTADA'))

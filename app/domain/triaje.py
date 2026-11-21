@@ -21,7 +21,7 @@ from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, a_int, config_valor, one, query, transaccion
-from app.domain import descuentos, inventario, mermas, pronostico, transferencias
+from app.domain import descuentos, inventario, mermas, pronostico, reabastecimiento, transferencias
 
 DIAS_TRANSITO = transferencias.DIAS_TRANSITO
 
@@ -291,7 +291,7 @@ def evaluar_triaje_lotes(
     for l in lotes:
         sku = l["id_sku"]
         loc_orig = l["id_locacion"]
-        dem_orig = pronostico.demanda_diaria_promedio(sku, loc_orig, 28)
+        dem_orig = pronostico.demanda_diaria_vigente(sku, loc_orig)
 
         mejor_dest = None
         if l["estado_lote"] == "DISPONIBLE" and a_int(l["dias_restantes"], 0) > DIAS_TRANSITO:
@@ -507,6 +507,75 @@ def ejecutar_triaje_automatico(
             "descuentos_creados": descuentos_creados,
             "lotes_vencidos_bloqueados": lotes_bloqueados,
         },
+    }
+
+
+def ejecutar_ciclo_planeacion(
+    *,
+    usuario: dict,
+    id_locacion: int | None = None,
+    horizonte: int | None = None,
+) -> dict:
+    """
+    Ejecuta en un solo flujo el ciclo operativo completo para perecederos:
+      1. Asegura pronóstico automático vigente por tienda (recalibrando si venció o hay deriva crítica)
+      2. Ejecuta Triaje Preventivo (Merma → Traslados entre tiendas → Descuentos)
+      3. Calcula Reabastecimiento Neto (Newsvendor descontando traslados entrantes)
+      4. Evalúa la salud / deriva actual de los modelos por tienda
+    """
+    if horizonte is None:
+        horizonte = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
+
+    res_pron = pronostico.asegurar_pronostico_vigente(
+        usuario=usuario,
+        id_locacion=id_locacion,
+        max_edad_horas=24,
+        horizonte=horizonte,
+    )
+    res_triaje = ejecutar_triaje_automatico(
+        usuario=usuario,
+        id_locacion=id_locacion,
+        horizonte=horizonte,
+    )
+    res_reab = reabastecimiento.generar_recomendaciones(
+        usuario=usuario,
+        horizonte=horizonte,
+        id_locacion=id_locacion,
+    )
+    salud = pronostico.evaluar_salud_modelos(id_locacion=id_locacion)
+
+    auditoria.registrar(
+        "RUN_PLANNING_CYCLE",
+        tabla="orden_reabastecimiento",
+        descripcion=(
+            f"Ciclo integrado ({horizonte} d): {res_pron['total_recalibradas']} modelos recalibrados · "
+            f"{res_triaje['aplicados']['traslados_creados']} traslados y "
+            f"{res_triaje['aplicados']['descuentos_creados']} descuentos · "
+            f"{res_reab['total']} órdenes netas sugeridas."
+        ),
+        estado_nuevo={
+            "horizonte": horizonte,
+            "id_locacion": id_locacion,
+            "modelos_recalibrados": res_pron["total_recalibradas"],
+            "triaje": res_triaje["aplicados"],
+            "ordenes_generadas": res_reab["total"],
+        },
+        id_usuario=usuario["id_usuario"],
+        usuario_email=usuario["email"],
+    )
+
+    return {
+        "horizonte": horizonte,
+        "id_locacion": id_locacion,
+        "pronostico": res_pron,
+        "triaje": {
+            "total_evaluados": res_triaje["total_evaluados"],
+            "resumen": res_triaje["resumen"],
+            "valor_rescatable_estimado": res_triaje["valor_rescatable_estimado"],
+            "aplicados": res_triaje["aplicados"],
+        },
+        "reabastecimiento": res_reab,
+        "salud_modelos": salud["resumen"],
     }
 
 

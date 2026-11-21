@@ -21,7 +21,7 @@ from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as motor_reab
 from app.domain import transferencias as motor_tr
 from app.domain import triaje as dom_triaje
-from app.security import login_required, requiere_vista, usuario_actual
+from app.security import login_required, requiere_rol, requiere_vista, usuario_actual
 from app.services import clientes
 
 bp = Blueprint("analitica", __name__)
@@ -34,36 +34,40 @@ bp = Blueprint("analitica", __name__)
 @login_required
 @requiere_vista("forecast")
 def pronostico():
-    corrida = motor_pron.ultima_corrida()
-    id_run = request.args.get("run") or (corrida["id_run"] if corrida else None)
+    id_loc = int(request.args["locacion"]) if request.args.get("locacion") else None
+    corrida = motor_pron.ultima_corrida(id_locacion=id_loc)
+    id_run = request.args.get("run")
 
-    series = motor_pron.pronostico_por_serie(id_run) if id_run else []
-    precision = motor_pron.precision_global()
-    backtest = None
+    series = (
+        motor_pron.pronostico_por_serie(id_run)
+        if id_run
+        else motor_pron.pronostico_vigente_por_tienda(id_locacion=id_loc)
+    )
+
+    salud = None
     try:
         if clientes.activo():
-            st, resp = clientes.como_usuario("planning", "GET", "/api/v1/planning/forecast/backtest", timeout=5)
-            if st == 200 and isinstance(resp, dict):
-                backtest = resp
-        if backtest is None:
-            backtest = motor_pron.evaluar_backtest_comparativo(horizonte=7)
+            ruta = "/api/v1/planning/forecast/drift" + (f"?id_locacion={id_loc}" if id_loc else "")
+            st, resp = clientes.como_usuario("planning", "GET", ruta, timeout=10)
+            if st == 200 and isinstance(resp, dict) and "tiendas" in resp:
+                salud = resp
+        if salud is None:
+            salud = motor_pron.evaluar_salud_modelos(id_locacion=id_loc)
     except Exception:
-        backtest = None
+        salud = {"resumen": {"total_tiendas": 0, "confiables": 0, "vigilancia": 0, "no_confiables": 0, "sin_datos": 0, "total_anomalias_sku": 0}, "tiendas": [], "anomalias_sku": []}
 
     return render_template(
         "analitica/pronostico.html",
         active="forecast",
         corrida=corrida,
-        corridas=motor_pron.corridas(10),
+        corridas=motor_pron.corridas(15, id_locacion=id_loc),
         series=series,
-        precision=precision,
-        backtest=backtest,
+        salud=salud,
         id_run=id_run,
+        id_locacion=id_loc,
         metodos=motor_pron.METODOS,
         horizonte_defecto=a_int(config_valor("horizonte_pronostico_dias", "7"), 7),
-        ventana_defecto=a_int(config_valor("ventana_media_movil", "28"), 28),
-        alpha_defecto=config_valor("alpha_suavizacion", "0.30"),
-        locaciones=dom_inv.locaciones_activas(),
+        locaciones=dom_inv.locaciones_activas("Tienda"),
     )
 
 
@@ -71,61 +75,58 @@ def pronostico():
 @login_required
 @requiere_vista("forecast")
 def pronostico_ejecutar():
+    metodo = (request.form.get("metodo") or "AUTO").upper()
+    horizonte = a_int(request.form.get("horizonte"), 0) or a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
+    id_loc = int(request.form["id_locacion"]) if request.form.get("id_locacion") else None
+    destino = url_for("analitica.pronostico", locacion=id_loc) if id_loc else url_for("analitica.pronostico")
+
     if clientes.activo():
-        # El cálculo lo hace svc-planning: guarda la corrida en PostgreSQL y la serie en MongoDB.
         cuerpo = {
-            "metodo": request.form.get("metodo", "SUAVIZACION_EXPONENCIAL"),
-            "horizonte": request.form.get("horizonte") or 7,
-            "ventana": request.form.get("ventana") or 28,
-            "alpha": request.form.get("alpha") or 0.30,
-            "dias_historia": request.form.get("dias_historia") or 120,
+            "metodo": metodo,
+            "horizonte": horizonte,
         }
-        if request.form.get("id_locacion"):
-            cuerpo["id_locacion"] = request.form["id_locacion"]
+        if id_loc:
+            cuerpo["id_locacion"] = id_loc
         status, r = clientes.como_usuario("planning", "POST", "/api/v1/planning/forecast/run", cuerpo, timeout=120)
         if status == 201 and r.get("series", 0) == 0:
-            flash("No hay series con historia suficiente para pronosticar. Carga datos con el ETL o registra ventas primero.", "error")
+            flash("Aún no hay historia suficiente de ventas para generar el pronóstico en la selección.", "error")
         elif status == 201:
+            wmape_txt = f" · Error promedio {r['wmape']}%" if r.get("wmape") is not None else ""
             flash(
-                f"Pronóstico ejecutado ({r.get('metodo_etiqueta', r.get('metodo'))}): "
-                f"{r['series']} series de producto y tienda, horizonte {r['horizonte']} días. "
-                f"Error medido — MAE {r['mae']}, RMSE {r['rmse']}, WMAPE {r['wmape']}%.",
+                f"Modelos por tienda actualizados: {r.get('tiendas_procesadas', 1)} tienda(s), "
+                f"{r.get('series', 0)} series de producto, horizonte {r.get('horizonte', horizonte)} días{wmape_txt}.",
                 "ok",
             )
+            motor_alertas.generar_alertas(usuario_actual())
         else:
             flash(f"El pronóstico no se ejecutó: {clientes.mensaje_error('planning', status, r)}", "error")
-        return redirect(url_for("analitica.pronostico"))
+        return redirect(destino)
     try:
         resultado = motor_pron.ejecutar_pronostico(
             usuario=usuario_actual(),
-            metodo=request.form.get("metodo", "SUAVIZACION_EXPONENCIAL"),
-            horizonte=a_int(request.form.get("horizonte"), 7),
-            ventana=a_int(request.form.get("ventana"), 28),
-            alpha=float(request.form.get("alpha", 0.30) or 0.30),
-            dias_historia=a_int(request.form.get("dias_historia"), 120),
-            id_locacion=int(request.form["id_locacion"]) if request.form.get("id_locacion") else None,
+            metodo=metodo,
+            horizonte=horizonte,
+            id_locacion=id_loc,
         )
         if resultado["series"] == 0:
             flash(
-                "No hay series con historia suficiente para pronosticar. "
-                "Carga datos con el ETL o registra ventas primero.",
+                "Aún no hay historia suficiente de ventas para generar el pronóstico en la selección.",
                 "error",
             )
         else:
+            wmape_txt = f" · Error promedio {resultado['wmape']}%" if resultado.get("wmape") is not None else ""
             flash(
-                f"Pronóstico ejecutado ({resultado['metodo_etiqueta']}): "
-                f"{resultado['series']} series de producto + tienda, horizonte "
-                f"{resultado['horizonte']} días. Error medido — "
-                f"MAE {resultado['mae']}, RMSE {resultado['rmse']}, "
-                f"WMAPE {resultado['wmape']}%. Corrida guardada con su trazabilidad.",
+                f"Modelos por tienda actualizados: {resultado.get('tiendas_procesadas', 1)} tienda(s), "
+                f"{resultado['series']} series de producto, horizonte {resultado['horizonte']} días{wmape_txt}.",
                 "ok",
             )
+            motor_alertas.generar_alertas(usuario_actual())
     except (ValueError, SQLAlchemyError) as e:
         flash(
             sql_error(e) if isinstance(e, SQLAlchemyError) else str(e),
             "error",
         )
-    return redirect(url_for("analitica.pronostico"))
+    return redirect(destino)
 
 
 # ===========================================================================
@@ -557,3 +558,74 @@ def triaje_accion_lote():
     except (ValueError, KeyError, SQLAlchemyError) as e:
         flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
     return redirect(url_for("analitica.triaje", tab=tab_origen))
+
+
+# ===========================================================================
+# CICLO OPERATIVO INTEGRADO (MODELOS POR TIENDA → TRIAJE → REABASTECIMIENTO NETO)
+# ===========================================================================
+@bp.post("/planeacion/ciclo")
+@login_required
+@requiere_rol("admin", "planner", "buyer", "store_manager")
+def planeacion_ciclo():
+    origen = request.form.get("origen")
+    destino = (
+        url_for("analitica.reabastecimiento")
+        if origen == "reabastecimiento"
+        else url_for("analitica.triaje")
+    )
+    id_loc = int(request.form["id_locacion"]) if request.form.get("id_locacion") else None
+    horizonte = a_int(request.form.get("horizonte"), 0) or None
+
+    if clientes.activo():
+        cuerpo = {}
+        if id_loc:
+            cuerpo["id_locacion"] = id_loc
+        if horizonte:
+            cuerpo["horizonte"] = horizonte
+        status, r = clientes.como_usuario("planning", "POST", "/api/v1/planning/cycle/run", cuerpo, timeout=120)
+        if status == 201:
+            p_res = r.get("pronostico", {})
+            t_ap = (r.get("triaje") or {}).get("aplicados", {})
+            r_res = r.get("reabastecimiento", {})
+            act_txt = (
+                f" y {r_res['actualizadas']} ajustada(s) por traslados entrantes"
+                if r_res.get("actualizadas")
+                else ""
+            )
+            flash(
+                f"Plan del día actualizado ({r.get('horizonte', 7)} d): "
+                f"{p_res.get('total_recalibradas', 0)} tienda(s) recalibradas ({p_res.get('total_reutilizadas', 0)} vigentes) → "
+                f"Triaje ({t_ap.get('traslados_creados', 0)} traslados, {t_ap.get('descuentos_creados', 0)} descuentos, {t_ap.get('lotes_vencidos_bloqueados', 0)} bloqueos) → "
+                f"Reabastecimiento neto: {r_res.get('total', 0)} orden(es) nuevas sugeridas{act_txt}.",
+                "ok",
+            )
+            motor_alertas.generar_alertas(usuario_actual())
+        else:
+            flash(f"No se pudo actualizar el plan del día: {clientes.mensaje_error('planning', status, r)}", "error")
+        return redirect(destino)
+
+    try:
+        res = dom_triaje.ejecutar_ciclo_planeacion(
+            usuario=usuario_actual(),
+            id_locacion=id_loc,
+            horizonte=horizonte,
+        )
+        p_res = res["pronostico"]
+        t_ap = res["triaje"]["aplicados"]
+        r_res = res["reabastecimiento"]
+        act_txt = (
+            f" y {r_res['actualizadas']} ajustada(s) por traslados entrantes"
+            if r_res.get("actualizadas")
+            else ""
+        )
+        flash(
+            f"Plan del día actualizado ({res['horizonte']} d): "
+            f"{p_res['total_recalibradas']} tienda(s) recalibradas ({p_res['total_reutilizadas']} vigentes) → "
+            f"Triaje ({t_ap['traslados_creados']} traslados, {t_ap['descuentos_creados']} descuentos, {t_ap['lotes_vencidos_bloqueados']} bloqueos) → "
+            f"Reabastecimiento neto: {r_res['total']} orden(es) nuevas sugeridas{act_txt}.",
+            "ok",
+        )
+        motor_alertas.generar_alertas(usuario_actual())
+    except (ValueError, SQLAlchemyError) as e:
+        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
+    return redirect(destino)

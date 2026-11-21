@@ -53,8 +53,8 @@ ESTADOS_ORDEN = {"PENDIENTE", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA"}
 
 @app.post("/api/v1/planning/forecast/run")
 @documentar(
-    "Ejecuta una corrida de pronóstico",
-    cuerpo={"metodo": "SUAVIZACION_EXPONENCIAL", "horizonte": 7, "ventana": 28, "alpha": 0.3, "dias_historia": 120, "id_locacion": 2},
+    "Ejecuta una corrida de pronóstico por tienda (AUTO por defecto)",
+    cuerpo={"metodo": "AUTO", "horizonte": 7, "id_locacion": 3},
     raiz_xml="forecast_request",
     contrato_xsd="forecast_request",
     raiz_respuesta="forecast_run_result",
@@ -62,9 +62,9 @@ ESTADOS_ORDEN = {"PENDIENTE", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA"}
 )
 @requiere_auth("planner", "buyer")
 def ejecutar_pronostico():
-    """Calcula el pronóstico por SKU y tienda; guarda la corrida en PostgreSQL y la serie en MongoDB."""
+    """Calcula un modelo independiente por tienda; guarda la corrida relacional y la serie detallada."""
     datos = leer_cuerpo("forecast_request")
-    metodo = str(datos.get("metodo") or "SUAVIZACION_EXPONENCIAL").upper()
+    metodo = str(datos.get("metodo") or "AUTO").upper()
     if metodo not in motor_pron.METODOS:
         raise ErrorApi(400, "parametro_invalido", f"Método no soportado. Valores: {sorted(motor_pron.METODOS)}")
     alpha = decimal_pos(datos, "alpha", defecto=0.30)
@@ -312,6 +312,21 @@ def backtest_comparativo():
     return render_response(res, status=200, root_tag="forecast_backtest")
 
 
+@app.get("/api/v1/planning/forecast/drift")
+@documentar(
+    "Observabilidad de deriva de datos (data drift) y confiabilidad por tienda y producto",
+    consulta=[("id_locacion", "integer", "Tienda opcional"), ("ventana_reciente", "integer", "Días recientes (defecto 14)")],
+    raiz_respuesta="forecast_drift",
+)
+@requiere_auth("planner", "buyer", "store_manager", "auditor")
+def salud_y_drift_modelos():
+    """Evalúa deriva de ventas recientes, días atípicos y degradación de cada modelo por tienda."""
+    id_locacion = g.contexto.get("location_id") or entero(request.args, "id_locacion", minimo=1)
+    ventana = entero(request.args, "ventana_reciente", minimo=7, defecto=14) or 14
+    res = motor_pron.evaluar_salud_modelos(id_locacion=id_locacion, ventana_reciente=ventana)
+    return render_response(res, status=200, root_tag="forecast_drift")
+
+
 # =============================================================================
 # Transferencias entre tiendas (REST JSON/XML)
 # =============================================================================
@@ -554,6 +569,42 @@ def ejecutar_triaje_api():
     )
     publicar_evento("TRIAJE_PREVENTIVO_EJECUTADO", res["aplicados"])
     return render_response(res, status=201, root_tag="triage_run_result")
+
+
+@app.post("/api/v1/planning/cycle/run")
+@documentar(
+    "Ejecuta el ciclo integrado: Auto-Pronóstico por tienda → Triaje → Reabastecimiento Neto",
+    cuerpo={"horizonte": 7},
+    raiz_xml="planning_cycle_request",
+    raiz_respuesta="planning_cycle_result",
+    errores=("400", "403"),
+    exito="201",
+)
+@requiere_auth("planner", "buyer", "store_manager")
+def ejecutar_ciclo_planeacion_api():
+    """Actualiza modelos por tienda si vencieron, ejecuta triaje preventivo y genera compras netas."""
+    datos = leer_cuerpo()
+    id_locacion = g.contexto.get("location_id") or entero(datos, "id_locacion", minimo=1)
+    validar_alcance_locacion(id_locacion)
+    horizonte = entero(datos, "horizonte", minimo=1)
+    try:
+        res = dom_triaje.ejecutar_ciclo_planeacion(
+            usuario=usuario_desde_token(),
+            id_locacion=id_locacion,
+            horizonte=horizonte,
+        )
+    except ValueError as err:
+        return error_response(400, "regla_negocio", str(err))
+    publicar_evento(
+        "CICLO_PLANEACION_EJECUTADO",
+        {
+            "horizonte": res["horizonte"],
+            "id_locacion": id_locacion,
+            "modelos_recalibrados": res["pronostico"]["total_recalibradas"],
+            "ordenes": res["reabastecimiento"]["total"],
+        },
+    )
+    return render_response(res, status=201, root_tag="planning_cycle_result")
 
 
 if __name__ == "__main__":

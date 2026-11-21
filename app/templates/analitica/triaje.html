@@ -10,6 +10,25 @@
   'Evalúa los lotes con riesgo de caducidad, compara la recuperación económica entre traslado y descuento, y ejecuta la decisión elegida o registra mermas desde una sola pantalla.'
 ) }}
 
+<div class="card" style="margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-left:4px solid var(--role-accent);">
+  <div style="flex:1;min-width:260px;">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px;">
+      Flujo diario integrado: 1. Triaje preventivo → 2. Reabastecimiento neto
+    </div>
+    <div class="text-muted" style="font-size:12.5px;">
+      <strong>Paso 1 (esta vista):</strong> retira merma vencida, mueve excedentes entre tiendas y liquida lotes por vencer.
+      <strong>Paso 2 (<a href="{{ url_for('analitica.reabastecimiento') }}">Reabastecimiento</a>):</strong> calcula compras al proveedor descontando automáticamente los traslados entrantes.
+    </div>
+  </div>
+  {% if current_role in ['admin', 'planner', 'buyer', 'store_manager'] %}
+    <form method="post" action="{{ url_for('analitica.planeacion_ciclo') }}" style="display:flex;gap:8px;align-items:center;">
+      <input type="hidden" name="origen" value="triaje"/>
+      {% if id_locacion %}<input type="hidden" name="id_locacion" value="{{ id_locacion }}"/>{% endif %}
+      <button class="btn btn-primary" type="submit">Actualizar plan del día</button>
+    </form>
+  {% endif %}
+</div>
+
 {% set r = evaluacion.resumen %}
 <div class="stat-grid-4">
   {{ ui.kpi('Traslados elegidos', r.get('TRASLADO', 0),

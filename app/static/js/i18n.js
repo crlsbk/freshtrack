@@ -972,12 +972,15 @@
     "vencido": "expired", "en curso": "in progress", "inactivo": "inactive",
     "abierta": "open", "atendida": "handled", "descartada": "dismissed",
     "SUAVIZACION_EXPONENCIAL": "EXPONENTIAL_SMOOTHING", "MEDIA_MOVIL": "MOVING_AVERAGE",
-    "MEDIA_MOVIL_PONDERADA": "WEIGHTED_MOVING_AVERAGE",
+    "MEDIA_MOVIL_PONDERADA": "WEIGHTED_MOVING_AVERAGE", "AUTO": "AUTO_PER_STORE",
+    "Automático por tienda": "Automatic per store",
     "Suavización exponencial": "Exponential smoothing", "Media móvil": "Moving average",
     "Media móvil ponderada": "Weighted moving average",
+    "CONFIABLE": "RELIABLE", "NO_CONFIABLE": "UNRELIABLE", "SIN_DATOS": "NO_DATA",
     "LOTE_POR_VENCER": "BATCH_ABOUT_TO_EXPIRE", "LOTE_VENCIDO": "BATCH_EXPIRED",
     "RIESGO_DE_MERMA": "SHRINKAGE_RISK", "SOBREINVENTARIO": "OVERSTOCK", "RIESGO_DE_FALTANTE": "STOCKOUT_RISK",
     "REABASTECIMIENTO_REQUERIDO": "REPLENISHMENT_REQUIRED", "TRANSFERENCIA_SUGERIDA": "TRANSFER_SUGGESTED",
+    "DERIVA_DEMANDA": "DEMAND_DRIFT",
   };
 
   const MESES = { ene: "Jan", feb: "Feb", mar: "Mar", abr: "Apr", may: "May", jun: "Jun",

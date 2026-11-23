@@ -286,6 +286,7 @@ def test_actividad_page_muestra_tail_y_sincroniza(ctx, qtbot, fake_http):
     from freshtrack_desktop.ui.pages.actividad import ActividadPage
 
     _con_sesion(ctx)
+    ctx.log.set_user("planner@freshtrack.mx")  # como hace LoginDialog al entrar
     ctx.log.record("LOGIN", "entrada")
     ctx.log.record("APROBAR_ORDEN", "orden 5", ok=False)
     fake_http.add("POST", "/api/v1/audit/log", status=201,
@@ -514,3 +515,15 @@ def test_gc_corre_en_el_hilo_de_ui(qtbot):
     finally:
         if estaba:
             gc.enable()
+
+
+def test_show_error_401_sin_sesion_ni_ventana_no_muestra_dialogo(ctx, qtbot):
+    """Una página con on_error propio que recibe el 401 tras volver al login no deja un diálogo huérfano."""
+    ctx.api.session = None
+    ctx.window = None
+    assert ctx.show_error(ApiError(401, "token_revocado", "Token revocado"), None) is None
+    assert not [w for w in QApplication.topLevelWidgets() if w.isVisible() and w.windowTitle() == "FreshTrack: error"]
+    _con_sesion(ctx)
+    dlg = ctx.show_error(ApiError(401, "token_revocado", "Token revocado"), None)
+    assert dlg is not None
+    dlg.close()

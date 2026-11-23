@@ -135,10 +135,16 @@ class AppContext(QObject):
         sig.deleteLater()
 
     # ------------------------------------------------------------------ mensajes
-    def show_error(self, exc: BaseException, parent: QWidget | None = None) -> QMessageBox:
-        """Diálogo de error (no bloqueante) con HTTP y correlation_id copiables; lo registra."""
-        mensaje = error_message(exc)
+    def show_error(self, exc: BaseException, parent: QWidget | None = None) -> QMessageBox | None:
+        """Diálogo de error (no bloqueante) con HTTP y correlation_id copiables; lo registra.
+
+        Un 401 que llega cuando ya no hay sesión ni ventana (la app volvió al login) no muestra
+        nada: el aviso «Tu sesión terminó o fue revocada» ya está en el login.
+        """
         status = getattr(exc, "status", 0)
+        if status == 401 and self.api.session is None and (self.window is None or not _vivo(self.window)):
+            return None
+        mensaje = error_message(exc)
         cid = getattr(exc, "correlation_id", "") or "-"
         http = f"HTTP {status}" if status else "sin respuesta HTTP"
         if parent is not None and not _vivo(parent):

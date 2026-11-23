@@ -47,6 +47,10 @@ En el login, el botón **«Servidores…»** abre el diálogo de conexión; se g
 También por variables de entorno (tienen prioridad): `FRESHTRACK_HOST`, `FRESHTRACK_GATEWAY_URL`,
 `FRESHTRACK_XSD_DIR` (carpeta de XSD alterna). El pie de la ventana muestra el último servicio llamado.
 
+En modo gateway, **Estado de servicios** mide el `/health` del gateway (una sola URL para los 8), no el de
+cada contenedor; si el proxy manda `/health` a la web, los 8 salen «fuera de contrato». Para la demo de
+servicio caído usa el modo local (puertos 5001..5008).
+
 ## 3. Cuentas demo
 
 | Rol | Correo | Contraseña | Pantallas |
@@ -67,8 +71,8 @@ Capturas reales de ambos roles en [`docs/capturas/`](docs/capturas/) (se regener
 | Importar ventas | Página **Importar ventas**: CSV → vista previa con validación por fila → XML → `POST /commercial/sales/import` en bloques de 500 (idempotente) |
 | Ejecutar pronósticos | **Pronósticos** → pestaña Pronóstico (método, horizonte, ventana, alpha) → «Generar pronóstico» |
 | Revisar recomendaciones | **Reabastecimiento** (órdenes sugeridas) y **Newsvendor** (cantidad óptima vs. política simple) |
-| Ajustar parámetros | Parámetros de Pronósticos (horizonte, ventana, alpha, historia) y de Newsvendor (costos de faltante y excedente) |
-| Aprobar órdenes | **Reabastecimiento**: aprobar / rechazar con motivo (planner y buyer) |
+| Ajustar parámetros | Parámetros de Pronósticos (método, horizonte, ventana, alpha, historia) y de Newsvendor (SKU, tienda y horizonte; los costos de faltante y excedente no se capturan: el servidor los deriva del catálogo y la app los muestra) |
+| Aprobar órdenes | **Reabastecimiento**: aprobar / rechazar con motivo (planner y buyer). El motivo queda en la bitácora local y en svc-audit; el backend de planning no lo guarda (el diálogo lo avisa) |
 | Planear transferencias | **Transferencias**: detectar, aprobar, rechazar, ejecutar (planner) |
 | Comparar modelos | **Pronósticos** → «Comparar modelos» (backtest contra el ingenuo) y «Drift» |
 | Analizar mermas | **Mermas y desperdicio**: producto en riesgo, desperdicio proyectado/recuperado/evitado, CO₂e; **Descuentos** para lotes por caducar |
@@ -80,33 +84,76 @@ Capturas reales de ambos roles en [`docs/capturas/`](docs/capturas/) (se regener
 |---|---|
 | JWT | `core/api_client.py`: `Authorization: Bearer`, token solo en memoria (`core/session.py`) |
 | Sesión validada con Redis | La valida cada microservicio en cada llamada; la app lo evidencia: un token revocado devuelve 401 y la app vuelve al login (refresh una vez antes) |
-| Permisos | `BasePage.roles` + `session`: la barra lateral solo muestra lo que el rol permite; un 403 del servicio se muestra como aviso de permisos |
-| Conversión y validación XML | `core/xml_codec.py`: XML ↔ dict/list, validación `lxml` contra `contracts/xsd/*.xsd` en peticiones y respuestas |
+| Permisos | `BasePage.roles` + `session`: la barra lateral solo muestra lo que el rol permite; el servidor tiene la última palabra (p. ej. buyer → «Ejecutar ciclo de planeación» → 403 «No tienes permiso para esta acción») |
+| Conversión y validación XML | `core/xml_codec.py`: XML ↔ dict/list, validación `lxml` contra `contracts/xsd/*.xsd`: toda petición contra `<raíz>.xsd` antes de enviarla y toda respuesta cuya raíz tenga contrato |
 | Manejo de errores | `core/errors.py`: `<error_response>` → excepción con error, mensaje, status y correlation id; sin conexión/timeout → «servicio no disponible», sin crash |
 | Reportes | PDF de órdenes de compra; vistas de Tablero, Pronósticos y Mermas |
 | Exportación | CSV de órdenes de compra; PDF descargable |
 | Impresión | **Órdenes de compra** → «Imprimir PDF» (diálogo de impresión de Qt) |
-| Registro de actividades | `core/activity_log.py`: archivo rotativo local + `POST /audit/log` (mejor esfuerzo); página **Actividad** |
+| Registro de actividades | `core/activity_log.py`: archivo rotativo local + `POST /audit/log` (mejor esfuerzo, solo las acciones del usuario de la sesión vigente, porque svc-audit toma el usuario del JWT); página **Actividad** |
 | Operación desacoplada | Solo HTTP+XML contra los servicios; sin imports de `app/` ni acceso a bases de datos (el spec excluye `app` del bundle) |
 
 ## 5. Guion de la demo de fallas
 
-1. **Token revocado.** Inicia sesión como planner y entra a Pronósticos. Revoca la sesión desde otra
-   terminal (`POST /api/v1/auth/logout` con ese token, o inicia sesión en la web con la misma cuenta
-   si cierra sesiones previas) y pulsa «Actualizar» (Ctrl+R). Resultado: 401, la app intenta refrescar
-   una vez, falla y regresa al login con el mensaje «sesión expirada». Se aprecia en **Actividad**.
-2. **Rol sin permisos.** Entra como buyer: no aparecen Transferencias ni Descuentos en la barra
-   lateral; las acciones no permitidas devuelven 403 y la app muestra un aviso de permisos, no un error.
-3. **Servicio caído.** `docker stop freshtrack_svc_planning`; abre Pronósticos o Tablero. Muestra
-   «servicio no disponible» sin cerrar la app; **Estado de servicios** marca planning en rojo. Recupera con
-   `docker start freshtrack_svc_planning`.
-4. **XML inválido.** En **Importar ventas** carga un CSV con filas malas (cantidad negativa o texto, falta
-   `id_sku`): la vista previa las marca y no se envían. Con `FRESHTRACK_XSD_DIR` apuntando a una carpeta
-   sin XSD, el cliente reporta «No existe el contrato XSD …» en vez de enviar. Una respuesta que no cumple
-   su XSD se rechaza con la lista de motivos (hasta 10).
-5. **Inspector XML (F12).** En cualquier momento, F12 (Ver → Inspector XML) abre el panel con la última
-   petición y respuesta en XML crudo, estado, servicio, duración y `X-Correlation-Id`. Útil para
-   enseñar que no hay JSON y cruzar el id con los logs del servicio.
+Probado el 2026-11-23 contra el stack local (puertos 5001..5008). Usa dos terminales: una con la app y otra
+para provocar la falla. El Inspector XML (F12) puede quedar abierto todo el tiempo.
+
+1. **Token revocado (sesión validada en Redis).**
+   1. Inicia sesión como planner (`planner@freshtrack.mx` / `Plan2026!`) y abre **Reabastecimiento**
+      (o quédate en **Tablero**: ambas páginas llaman endpoints autenticados de planning y alerts).
+   2. En otra terminal, revoca todas las sesiones del planner con la revocación administrativa
+      (`DELETE /api/v1/auth/sessions/<id_usuario>`, solo admin). El token no se puede copiar del inspector
+      porque sale enmascarado, por eso se usa la cuenta admin:
+      ```bash
+      ADMIN=$(curl -s -X POST http://localhost:5001/api/v1/auth/login -H 'Content-Type: application/xml' \
+        -H 'Accept: application/xml' \
+        -d '<login_request><email>admin@freshtrack.mx</email><password>Admin2026!</password></login_request>' \
+        | sed -n 's:.*<token>\([^<]*\)</token>.*:\1:p')
+      ID=$(curl -s "http://localhost:5001/api/v1/auth/users?q=planner@freshtrack.mx" -H "Authorization: Bearer $ADMIN" \
+        -H 'Accept: application/xml' | sed -n 's:.*<id_usuario>\([^<]*\)</id_usuario>.*:\1:p')
+      curl -s -X DELETE "http://localhost:5001/api/v1/auth/sessions/$ID" -H "Authorization: Bearer $ADMIN" \
+        -H 'Accept: application/xml'      # → <sessions_revoked>…<sesiones_cerradas>N</sesiones_cerradas>
+      ```
+   3. En la app pulsa «Actualizar» (o Ver → Actualizar página, **Ctrl+R**).
+   Resultado: el servicio responde 401, la app intenta un refresh (también 401) y vuelve al login con
+   «**Tu sesión terminó o fue revocada**». En el inspector se ven los 401 de planning y de `/auth/refresh`.
+2. **Sin permisos (403 decidido por el servidor).** Entra como buyer (`buyer@freshtrack.mx` / `Compras2026!`):
+   no aparecen Transferencias ni Descuentos. Abre **Reabastecimiento** y pulsa «**Ejecutar ciclo de
+   planeación**» (el botón está habilitado a propósito; su tooltip dice «Requiere rol planificador») y
+   confirma. svc-planning responde 403 y la app muestra «**No tienes permiso para esta acción**» con
+   `HTTP 403 · correlation_id: …` (seleccionable; cruzarlo con `docker logs freshtrack_svc_planning`).
+   No se crea nada.
+3. **Servicio caído.** `docker stop freshtrack_svc_planning`. En **Reabastecimiento** pulsa «Actualizar»:
+   diálogo «**El servicio planning no está disponible**» (sin respuesta HTTP), la app sigue viva. **Estado de
+   servicios** marca planning como **CAÍDO** y el resto OK (en Tablero aparece «Bloques sin datos:
+   Pronósticos (…)»). Recupera con `docker start freshtrack_svc_planning`, espera a que esté *healthy*
+   (`docker ps`) y pulsa «Actualizar»: vuelven las órdenes y planning sale OK.
+4. **XML inválido.**
+   - *Cliente (petición)*: toda petición se valida antes de enviarse contra `contracts/xsd/<raíz>.xsd`.
+     Copia los contratos y endurece uno, por ejemplo el horizonte de `replenishment_request.xsd`:
+     ```bash
+     cp -r contracts/xsd /tmp/xsd_demo
+     sed -i 's/<xs:maxInclusive value="90"\/>/<xs:maxInclusive value="3"\/>/' /tmp/xsd_demo/replenishment_request.xsd
+     FRESHTRACK_XSD_DIR=/tmp/xsd_demo python desktop/run_desktop.py
+     ```
+     Como planner, en **Reabastecimiento** deja el horizonte en 7 y pulsa «Generar órdenes»: «**El XML enviado
+     no cumple su contrato: El XML no cumple el contrato replenishment_request.xsd.**» y en «Detalles» el
+     motivo (`maxInclusive … '7' … ('3')`). La petición no sale a la red (no aparece en el inspector).
+   - *Cliente (CSV)*: en **Importar ventas** un CSV con filas malas (cantidad negativa o texto, sin `id_sku`)
+     marca esas filas en la vista previa y no las envía.
+   - *Servidor*: svc-commercial valida contra `sales_import_request.xsd` y responde 400
+     `xml_no_cumple_contrato` con los motivos:
+     ```bash
+     curl -s -X POST http://localhost:5004/api/v1/commercial/sales/import -H "Authorization: Bearer <token buyer>" \
+       -H 'Content-Type: application/xml' -H 'Accept: application/xml' \
+       -d '<sales_import_request><id_locacion>tres</id_locacion><tickets/></sales_import_request>'
+     ```
+     (el token del buyer se obtiene con el mismo `curl … /auth/login` del paso 1 usando su cuenta).
+   - Una *respuesta* que no cumple su XSD se rechaza con «La respuesta no cumple el contrato XML» y hasta
+     10 motivos en «Detalles».
+5. **Inspector XML (F12).** Ver → Inspector XML abre el panel con cada petición y respuesta en XML crudo,
+   estado, servicio, duración y `X-Correlation-Id`. La contraseña del login y el `<token>` de las respuestas
+   de login/refresh se muestran como `***`. Sirve para enseñar que no hay JSON y cruzar el id con los logs.
 
 ## 6. Arquitectura
 

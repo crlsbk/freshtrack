@@ -10,6 +10,7 @@ from pathlib import Path
 from lxml import etree
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMessageBox
 
+from ...core.errors import ApiError, ServiceUnavailable
 from ...core.xml_codec import as_list
 from .. import theme
 from ..widgets import ROW_ROLE, DataTable, KpiCard, confirm, secondary_label
@@ -20,7 +21,7 @@ CANALES = ("TIENDA", "ONLINE", "MAYOREO")
 BLOQUE = 500          # máximo de tickets por petición (XSD)
 MAX_LINEAS = 100      # máximo de líneas por ticket (XSD)
 MAX_FOLIO = 60
-_RE_ENTERO = re.compile(r"^\d+$")
+_RE_ENTERO = re.compile(r"^[0-9]+$")
 PLANTILLA = (
     "folio_externo,id_locacion,id_sku,cantidad,canal\n"
     "POS-0001,3,1,2,TIENDA\n"
@@ -63,6 +64,8 @@ def parsear_csv(path: str | Path) -> tuple[list[dict], list[dict]]:
 
     filas: list[dict] = []
     tickets: dict[tuple[int, str], dict] = {}
+    malos: dict[tuple[int, str], int] = {}   # ticket -> primera fila con error
+    claves: list[tuple[int, str] | None] = []
     for n, reg in enumerate(registros, start=2):  # la fila 1 es el encabezado
         folio = (reg.get("folio_externo") or "").strip()
         loc_txt, sku_txt = (reg.get("id_locacion") or "").strip(), (reg.get("id_sku") or "").strip()
@@ -81,22 +84,32 @@ def parsear_csv(path: str | Path) -> tuple[list[dict], list[dict]]:
             errores.append("cantidad debe ser un número mayor que 0")
         if canal and canal not in CANALES:
             errores.append("canal debe ser " + "/".join(CANALES))
-        ticket = None
-        if not errores:
-            ticket = tickets.get((loc, folio))
+        clave = (loc, folio) if (loc is not None and folio) else None
+        ticket = tickets.get(clave) if clave else None
+        if not errores and clave:
             if ticket is not None and canal and ticket["canal"] and canal != ticket["canal"]:
                 errores.append(f"El folio ya se usó con otro canal ({ticket['canal']})")
             elif ticket is not None and len(ticket["lineas"]) >= MAX_LINEAS:
                 errores.append(f"El ticket excede {MAX_LINEAS} líneas")
+        if errores and clave:
+            malos.setdefault(clave, n)
         if not errores:
             if ticket is None:
-                ticket = tickets[(loc, folio)] = {"folio_externo": folio, "id_locacion": loc, "canal": canal, "lineas": []}
+                ticket = tickets[clave] = {"folio_externo": folio, "id_locacion": loc, "canal": canal, "lineas": []}
             elif canal and not ticket["canal"]:
                 ticket["canal"] = canal
             ticket["lineas"].append({"id_sku": sku, "cantidad": format(cant, "f")})
+        claves.append(clave)
         filas.append({"fila": n, "folio_externo": folio, "id_locacion": loc_txt, "id_sku": sku_txt,
                       "cantidad": cant_txt, "canal": canal, "estado": "ERROR" if errores else "OK",
                       "mensaje": "; ".join(errores)})
+    # Un ticket con cualquier fila inválida no se envía completo (el folio quedaría reservado con una venta incompleta).
+    for fila, clave in zip(filas, claves):
+        if clave in malos and fila["estado"] == "OK":
+            fila["estado"] = "ERROR"
+            fila["mensaje"] = f"ticket excluido: la fila {malos[clave]} tiene errores"
+    for clave in malos:
+        tickets.pop(clave, None)
     return filas, list(tickets.values())
 
 
@@ -231,18 +244,31 @@ class ImportarVentasPage(BasePage):
             return
         self.ctx.run(self._enviar, lotes, on_ok=self._mostrar, busy=self.btn_importar)
 
-    def _enviar(self, lotes: list[tuple[int, list[dict]]]) -> list[dict]:
-        """Un POST por bloque (hilo de trabajo). Un bloque que falla marca sus tickets como ERROR."""
+    def _enviar(self, lotes: list[tuple[int, list[dict]]]) -> dict:
+        """Un POST por bloque (hilo de trabajo).
+
+        Un error de negocio/contrato marca los tickets del bloque como ERROR y sigue. Un 401/403/429 o un
+        servicio caído detiene el envío: los tickets restantes quedan "NO ENVIADO" y se devuelve el error.
+        """
         resultados: list[dict] = []
-        for loc, tickets in lotes:
+        fatal: BaseException | None = None
+        for i, (loc, tickets) in enumerate(lotes):
             try:
                 resp = self.ctx.api.call(
                     "commercial", "POST", "/api/v1/commercial/sales/import",
                     body=construir_xml(loc, tickets), body_xsd="sales_import_request",
                     expect_root="sales_import_result")
+            except (ServiceUnavailable, ApiError) as exc:
+                if isinstance(exc, ServiceUnavailable) or exc.status in (401, 403, 429):
+                    fatal = exc
+                    for l2, t2 in lotes[i:]:
+                        resultados += [{"folio_externo": t["folio_externo"], "id_locacion": l2, "estado": "NO ENVIADO",
+                                        "folio": "", "mensaje": "Envío detenido"} for t in t2]
+                    break
+                resultados += self._errores_de_bloque(loc, tickets, exc)
+                continue
             except Exception as exc:  # noqa: BLE001 - el resto de bloques sigue
-                resultados += [{"folio_externo": t["folio_externo"], "id_locacion": loc, "estado": "ERROR",
-                                "folio": "", "mensaje": str(exc) or type(exc).__name__} for t in tickets]
+                resultados += self._errores_de_bloque(loc, tickets, exc)
                 continue
             items = as_list((resp or {}).get("resultados")) if isinstance(resp, dict) else []
             for it in items:
@@ -250,13 +276,21 @@ class ImportarVentasPage(BasePage):
                     resultados.append({"folio_externo": it.get("folio_externo", ""), "id_locacion": loc,
                                        "estado": str(it.get("estado", "")).upper(), "folio": it.get("folio", ""),
                                        "mensaje": it.get("mensaje", "")})
-        return resultados
+        return {"resultados": resultados, "fatal": fatal}
 
-    def _mostrar(self, resultados: list[dict]) -> None:
+    @staticmethod
+    def _errores_de_bloque(loc: int, tickets: list[dict], exc: BaseException) -> list[dict]:
+        return [{"folio_externo": t["folio_externo"], "id_locacion": loc, "estado": "ERROR",
+                 "folio": "", "mensaje": str(exc) or type(exc).__name__} for t in tickets]
+
+    def _mostrar(self, salida: dict) -> None:
+        resultados, fatal = salida["resultados"], salida["fatal"]
         self.table_resultados.set_rows(resultados)
-        cuenta = {e: sum(r["estado"] == e for r in resultados) for e in ("IMPORTADO", "DUPLICADO", "ERROR")}
+        cuenta = {e: sum(r["estado"] == e for r in resultados) for e in ("IMPORTADO", "DUPLICADO", "ERROR", "NO ENVIADO")}
         texto = (f"Importados: {cuenta['IMPORTADO']} · Duplicados: {cuenta['DUPLICADO']} · "
-                 f"Errores: {cuenta['ERROR']}")
+                 f"Errores: {cuenta['ERROR']}" + (f" · No enviados: {cuenta['NO ENVIADO']}" if cuenta["NO ENVIADO"] else ""))
         self.resumen_label.setText(texto)
-        self.ctx.log.record("IMPORTAR_VENTAS", f"{Path(self._archivo).name}: {texto}", ok=cuenta["ERROR"] == 0)
+        self.ctx.log.record("IMPORTAR_VENTAS", f"{Path(self._archivo).name}: {texto}", ok=cuenta["ERROR"] == 0 and fatal is None)
         self.ctx.notify(texto)
+        if fatal is not None:
+            self.ctx.show_error(fatal, self)

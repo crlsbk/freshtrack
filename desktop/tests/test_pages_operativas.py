@@ -6,7 +6,7 @@ import csv
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication, QFileDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from freshtrack_desktop.core.activity_log import ActivityLog
 from freshtrack_desktop.core.api_client import ApiClient
@@ -82,7 +82,7 @@ def test_mermas_muestra_indicadores_carbono_y_triage(ctx, qtbot, fake_http, monk
     # exportar e imprimir quedan en la bitácora
     destino = ctx.settings.data_dir / "mermas.csv"
     monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(destino), ""))
-    monkeypatch.setattr(mermas.QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     page.exportar()
     assert destino.exists() and "Producto en riesgo" in destino.read_text(encoding="utf-8-sig")
     monkeypatch.setattr(type(page.table_indicadores), "print_table", lambda self, *a, **k: True)
@@ -386,3 +386,45 @@ def test_oc_nueva_orden_sin_lotes_no_envia(ctx, qtbot, fake_http, monkeypatch):
     qtbot.waitUntil(lambda: dlg.tabla.rowCount() > 0, timeout=WAIT)
     dlg.accept()
     assert avisos and not fake_http.calls_to("POST", "/api/v1/planning/purchase-orders")
+
+
+def test_ticket_con_una_fila_invalida_se_excluye_completo(ctx, qtbot, fake_http, tmp_path, monkeypatch):
+    from freshtrack_desktop.ui.pages import importar_ventas
+    from freshtrack_desktop.ui.pages.importar_ventas import ImportarVentasPage, parsear_csv
+
+    p = tmp_path / "v.csv"
+    p.write_text("folio_externo,id_locacion,id_sku,cantidad\nA-1,3,1,2\nA-1,3,x,1\nA-2,3,1,1\n", encoding="utf-8")
+    filas, tickets = parsear_csv(p)
+    assert [t["folio_externo"] for t in tickets] == ["A-2"]
+    assert filas[0]["estado"] == "ERROR" and "ticket excluido: la fila 3 tiene errores" in filas[0]["mensaje"]
+    monkeypatch.setattr(importar_ventas, "confirm", lambda *a, **k: True)
+    fake_http.add("POST", "/api/v1/commercial/sales/import", body=_resultado(
+        "<item><folio_externo>A-2</folio_externo><estado>IMPORTADO</estado></item>", imp=1))
+    page = ImportarVentasPage(ctx)
+    qtbot.addWidget(page)
+    page.cargar_csv(p)
+    page.importar()
+    qtbot.waitUntil(lambda: not page.table_resultados.is_empty(), timeout=WAIT)
+    cuerpo = fake_http.calls_to("POST", "/api/v1/commercial/sales/import")[0].text
+    assert "A-2" in cuerpo and "A-1" not in cuerpo
+
+
+def test_error_429_detiene_el_envio_y_marca_no_enviado(ctx, qtbot, fake_http, tmp_path, monkeypatch):
+    from freshtrack_desktop.ui.pages import importar_ventas
+    from freshtrack_desktop.ui.pages.importar_ventas import ImportarVentasPage
+
+    monkeypatch.setattr(importar_ventas, "confirm", lambda *a, **k: True)
+    errores = []
+    monkeypatch.setattr(ctx, "show_error", lambda exc, parent=None: errores.append(exc))
+    fake_http.add("POST", "/api/v1/commercial/sales/import", status=429, body=(
+        "<error_response><error>limite</error><mensaje>Demasiadas</mensaje><status>429</status></error_response>"))
+    p = tmp_path / "v.csv"
+    p.write_text("folio_externo,id_locacion,id_sku,cantidad\nA-1,3,1,1\nB-1,4,1,1\n", encoding="utf-8")
+    page = ImportarVentasPage(ctx)
+    qtbot.addWidget(page)
+    page.cargar_csv(p)
+    page.importar()
+    qtbot.waitUntil(lambda: not page.table_resultados.is_empty(), timeout=WAIT)
+    assert {r["estado"] for r in page.table_resultados.rows()} == {"NO ENVIADO"}
+    assert len(fake_http.calls_to("POST", "/api/v1/commercial/sales/import")) == 1
+    assert len(errores) == 1

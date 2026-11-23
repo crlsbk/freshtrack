@@ -6,7 +6,7 @@ import csv
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtCore import QSize, Qt, QTemporaryDir, QUrl
 from PySide6.QtGui import QDesktopServices, QPainter
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
@@ -216,6 +216,7 @@ class OrdenesCompraPage(BasePage):
         super().__init__(ctx, parent)
         self._dialogo: NuevaOCDialog | None = None
         self._detalle_id = ""
+        self._tmp: QTemporaryDir | None = None
         self.btn_actualizar = self.actions.add_button("Actualizar", self.refresh, icon="SP_BrowserReload")
         self.btn_nueva = self.actions.add_button("Nueva OC…", self.nueva_oc, variant="primary", icon="SP_FileDialogNewFolder")
         self.btn_pdf = self.actions.add_button("Descargar PDF", self.descargar_pdf, icon="SP_ArrowDown")
@@ -356,12 +357,16 @@ class OrdenesCompraPage(BasePage):
 
     def _imprimir(self, resultado: tuple[str, str, bytes]) -> None:
         folio, _id, datos = resultado
-        carpeta = self.ctx.settings.data_dir / "tmp"
-        carpeta.mkdir(parents=True, exist_ok=True)
-        ruta = carpeta / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', folio)}.pdf"
+        if self._tmp is None:  # se borra sola al destruirse la página
+            self._tmp = QTemporaryDir()
+        ruta = Path(self._tmp.path()) / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', folio)}.pdf"
         ruta.write_bytes(datos)
         if QPDF_DISPONIBLE:
-            if not self._imprimir_con_qpdf(ruta):
+            try:
+                impreso = self._imprimir_con_qpdf(ruta)
+            finally:
+                ruta.unlink(missing_ok=True)
+            if not impreso:
                 return
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(ruta)))

@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QMessageBox, QTabWidget  # noqa: F401 (QMessageBox: pruebas)
+from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QTabWidget
 
 from ...core.xml_codec import num
 from .. import theme
@@ -69,14 +69,15 @@ def _grafica(titulo: str, categorias: list[str], serie: str, valores: list[float
     eje_y = QValueAxis()
     eje_y.setLabelFormat("%.0f")
     eje_y.setLabelsColor(theme.color("text2"))
-    eje_y.setRange(0, max([float(v) for v in valores] + [1.0]) * 1.15)
+    eje_y.setRange(0, max([float(v) for v in valores] + [1.0]) * 1.3)
     chart.addAxis(eje_x, Qt.AlignmentFlag.AlignBottom)
     chart.addAxis(eje_y, Qt.AlignmentFlag.AlignLeft)
     series.attachAxis(eje_x)
     series.attachAxis(eje_y)
     vista = QChartView(chart)
     vista.setRenderHint(QPainter.RenderHint.Antialiasing)
-    vista.setMinimumHeight(220)
+    vista.setMinimumHeight(240)
+    vista.setMinimumWidth(380)
     vista.setStyleSheet("background: transparent;")
     return vista
 
@@ -173,16 +174,16 @@ class MermasPage(BasePage):
             f"ahorro financiero ${num(carbon.get('ahorro_financiero_mxn')):,.2f} · "
             f"CO₂e evitado {num(carbon.get('co2e_evitado_kg')):,.1f} kg · {carbon.get('factor_conversion', '')}")
 
-        self._reemplazar_grafica("chart_view", 0, "Indicadores de desperdicio (unidades)",
-                                 ["En riesgo", "Proyectado", "Recuperado", "Evitado est."], "Unidades",
+        self._reemplazar_grafica("chart_view", "Indicadores de desperdicio (unidades)",
+                                 ["Riesgo", "Proyect.", "Recup.", "Evitado"], "Unidades",
                                  [f["cantidad"] for f in filas[:4]], "primary")
         resumen = _d(triage.get("resumen"))
-        self._reemplazar_grafica("chart_triage", 1, "Triage: lotes por acción", list(_ACCIONES_TRIAGE), "Lotes",
+        self._reemplazar_grafica("chart_triage", "Triage: lotes por acción", [a.capitalize() for a in _ACCIONES_TRIAGE], "Lotes",
                                  [num(resumen.get(a)) for a in _ACCIONES_TRIAGE], "info")
         decisiones = triage.get("decisiones")
         self.table_triage.set_rows([d for d in (decisiones if isinstance(decisiones, list) else []) if isinstance(d, dict)])
 
-    def _reemplazar_grafica(self, atributo: str, posicion: int, titulo, categorias, serie, valores, tono) -> None:
+    def _reemplazar_grafica(self, atributo: str, titulo, categorias, serie, valores, tono) -> None:
         viejo = getattr(self, atributo)
         nuevo = _grafica(titulo, categorias, serie, valores, tono)
         self.graficas.replaceWidget(viejo, nuevo)

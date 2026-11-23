@@ -26,7 +26,7 @@ from app.domain import reabastecimiento as dom_reab
 from app.domain import transferencias as dom_tr
 from app.domain import triaje as dom_triaje
 from app.events.dispatcher import publicar_evento
-from app.services import cache_service, doc_store
+from app.services import cache_service, doc_store, mailer
 from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
 from app.services.common.response import (
     ErrorApi,
@@ -764,6 +764,8 @@ def enviar_orden_compra_correo_api(id_oc: str):
             usuario=usuario_desde_token(),
             mensaje_extra=datos.get("mensaje"),
         )
+    except mailer.ErrorCorreo as err:
+        return error_response(502, "correo_no_enviado", str(err))
     except ValueError as err:
         msg = str(err)
         codigo = 404 if "no existe" in msg.lower() else 400

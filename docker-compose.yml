@@ -32,6 +32,15 @@ x-entorno-servicio: &entorno-servicio
   OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-freshtrack-reportes}
   OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
   LOG_LEVEL: INFO
+  # Correo saliente: los servicios entregan siempre a Mailpit (servicio "mail"), que guarda
+  # una copia visible en http://localhost:8025 y la reenvía al destinatario real si hay
+  # credenciales MAIL_RELAY_* en .env. Para mandar directo a otro SMTP, define SMTP_HOST, etc.
+  SMTP_HOST: ${SMTP_HOST:-mail}
+  SMTP_PORT: ${SMTP_PORT:-1025}
+  SMTP_TLS: ${SMTP_TLS:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-FreshTrack <no-reply@freshtrack.mx>}
 
 x-microservicio: &microservicio
   restart: unless-stopped
@@ -121,6 +130,37 @@ services:
       - freshtrack
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Servidor de correo (SMTP) -------------------------------------------------
+  # Mailpit: SMTP en :1025 (red interna) + bandeja web en http://localhost:8025.
+  # Sin MAIL_RELAY_HOST solo captura (ideal para la demo). Con MAIL_RELAY_* y
+  # MAIL_RELAY_ALL=true reenvía cada correo al destinatario real vía tu cuenta.
+  mail:
+    image: axllent/mailpit:v1.27
+    container_name: freshtrack_mail
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      MP_SMTP_RELAY_HOST: ${MAIL_RELAY_HOST:-}
+      MP_SMTP_RELAY_PORT: ${MAIL_RELAY_PORT:-587}
+      MP_SMTP_RELAY_STARTTLS: ${MAIL_RELAY_STARTTLS:-true}
+      MP_SMTP_RELAY_AUTH: ${MAIL_RELAY_AUTH:-plain}
+      MP_SMTP_RELAY_USERNAME: ${MAIL_RELAY_USERNAME:-}
+      MP_SMTP_RELAY_PASSWORD: ${MAIL_RELAY_PASSWORD:-}
+      MP_SMTP_RELAY_OVERRIDE_FROM: ${MAIL_RELAY_USERNAME:-}
+      MP_SMTP_RELAY_ALL: ${MAIL_RELAY_ALL:-false}
+    networks:
+      - freshtrack
+    ports:
+      - "127.0.0.1:${MAIL_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${MAIL_SMTP_PORT:-1025}:1025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
       timeout: 5s
       retries: 10

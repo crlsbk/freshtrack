@@ -39,6 +39,21 @@
       </div>
     </div>
 
+    <form method="post" action="{{ url_for('operacion.despacho_enviar_correo', folio_asn=asn_sel.folio_asn) }}"
+          style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;">
+      <div class="field" style="flex:1 1 240px;">
+        <label for="correo_hoja">Enviar la Hoja QR por correo</label>
+        <input class="input" id="correo_hoja" type="email" name="correo" required maxlength="254"
+               placeholder="correo@ejemplo.com" value="{{ asn_sel.contacto_email or '' }}">
+      </div>
+      <div class="field" style="flex:2 1 320px;">
+        <label for="mensaje_hoja">Nota (opcional)</label>
+        <input class="input" id="mensaje_hoja" type="text" name="mensaje" maxlength="2000"
+               placeholder="Ej. Imprimir y pegar una etiqueta por lote">
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">Enviar PDF por correo</button>
+    </form>
+
     {% if asn_sel.etiquetas_svg %}
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;">
         {% for etq in asn_sel.etiquetas_svg %}

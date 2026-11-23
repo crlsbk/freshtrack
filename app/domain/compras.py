@@ -15,20 +15,16 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import re
-import smtplib
 from datetime import date, datetime, timedelta
-from email.message import EmailMessage
 
 from sqlalchemy import text
 
 from app import auditoria
-from app.config import Config
 from app.db import a_float, a_int, config_valor, one, query, transaccion
 from app.domain import pdf_oc, reabastecimiento
 from app.events.dispatcher import publicar_evento
-from app.services import object_storage
+from app.services import mailer, object_storage
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -715,13 +711,6 @@ def enviar_orden_compra_correo(
     folio = orden["folio"]
     nombre_archivo = (orden.get("documento_pdf") or {}).get("nombre_archivo") or f"{folio}.pdf"
 
-    smtp_host = os.getenv("SMTP_HOST", Config.SMTP_HOST).strip()
-    smtp_port = int(os.getenv("SMTP_PORT", str(Config.SMTP_PORT)) or 587)
-    smtp_user = os.getenv("SMTP_USER", Config.SMTP_USER).strip()
-    smtp_pass = os.getenv("SMTP_PASSWORD", Config.SMTP_PASSWORD)
-    smtp_from = os.getenv("SMTP_FROM", Config.SMTP_FROM).strip() or "compras@freshtrack.mx"
-    smtp_tls = os.getenv("SMTP_TLS", str(Config.SMTP_TLS)).lower() not in ("0", "false", "no")
-
     cuerpo = (
         f"Estimado equipo de {orden['proveedor']},\n\n"
         f"Adjuntamos la Orden de Compra {folio} por {orden['total_lotes']} lote(s) "
@@ -732,28 +721,12 @@ def enviar_orden_compra_correo(
         cuerpo += f"\nNota adicional del comprador:\n{mensaje_extra.strip()}\n"
     cuerpo += "\nSaludos,\nFreshTrack Compras"
 
-    if smtp_host:
-        msg = EmailMessage()
-        msg["Subject"] = f"Orden de Compra {folio} - FreshTrack"
-        msg["From"] = smtp_from
-        msg["To"] = destino
-        msg.set_content(cuerpo)
-        msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=nombre_archivo)
-        if smtp_port == 465:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as srv:
-                if smtp_user and smtp_pass:
-                    srv.login(smtp_user, smtp_pass)
-                srv.send_message(msg)
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
-                if smtp_tls:
-                    srv.starttls()
-                if smtp_user and smtp_pass:
-                    srv.login(smtp_user, smtp_pass)
-                srv.send_message(msg)
-        estado_correo = "ENVIADO_SMTP"
-    else:
-        estado_correo = "REGISTRADO_SIN_SMTP"
+    estado_correo = mailer.enviar_correo(
+        destino,
+        f"Orden de Compra {folio} - FreshTrack",
+        cuerpo,
+        [(pdf_bytes, nombre_archivo, "application/pdf")],
+    )
 
     with transaccion(id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]) as conn:
         conn.execute(

@@ -670,6 +670,45 @@ def despacho_pdf(folio_asn: str):
     )
 
 
+
+@bp.post("/despachos/<folio_asn>/enviar-correo")
+@login_required
+@requiere_vista("dispatches")
+def despacho_enviar_correo(folio_asn: str):
+    """Envía la Hoja QR (PDF) por correo: vía svc-asn si está activo; si no, con el dominio local."""
+    correo = (request.form.get("correo") or "").strip()
+    mensaje = (request.form.get("mensaje") or "").strip()
+    volver = url_for("operacion.despachos", folio=folio_asn)
+
+    if clientes.activo():
+        st, r = clientes.como_usuario(
+            "asn", "POST", f"/api/v1/asn/{folio_asn}/send-email",
+            {"correo": correo, "mensaje": mensaje}, timeout=30,
+        )
+        if st == 200 and isinstance(r, dict):
+            _flash_envio_hoja(r)
+        else:
+            flash(f"No se pudo enviar el correo: {clientes.mensaje_error('asn', st, r)}", "error")
+        return redirect(volver)
+
+    try:
+        _flash_envio_hoja(dom_recepcion.enviar_hoja_asn_correo(folio_asn, correo, usuario_actual(), mensaje))
+    except ValueError as e:
+        flash(str(e), "error")
+    return redirect(volver)
+
+
+def _flash_envio_hoja(r: dict) -> None:
+    if r.get("enviado_real") in (True, "true"):
+        flash(f"Hoja QR {r.get('folio_asn')} enviada con su PDF adjunto a {r.get('correo_envio')}.", "ok")
+    else:
+        flash(
+            f"Envío registrado para {r.get('correo_envio')}, pero no hay servidor de correo configurado "
+            "(SMTP_HOST vacío). Descarga el PDF o configura el SMTP.",
+            "ok",
+        )
+
+
 @bp.get("/lotes/qr-consultar")
 @login_required
 @requiere_vista("batches")

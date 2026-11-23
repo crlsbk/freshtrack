@@ -18,7 +18,7 @@ from app.db import a_float, a_int, one, query, transaccion
 from app.domain import compras as dom_compras
 from app.domain import etiquetas_qr
 from app.events.dispatcher import publicar_evento
-from app.services import doc_store, object_storage
+from app.services import doc_store, mailer, object_storage
 
 logger = logging.getLogger("freshtrack.recepcion")
 
@@ -356,6 +356,82 @@ def obtener_pdf_hoja_asn(folio_asn: str, usuario: dict | None = None) -> tuple[b
     u_fallback = usuario or {"id_usuario": None, "email": "sistema@freshtrack.mx"}
     pdf_info = _generar_y_guardar_pdf_asn(asn_doc, orden_compra=orden, usuario=u_fallback)
     return pdf_info["pdf_bytes"], asn_doc
+
+
+def enviar_hoja_asn_correo(
+    folio_asn: str,
+    correo_destino: str,
+    usuario: dict,
+    mensaje_extra: str | None = None,
+) -> dict:
+    """
+    Envía por correo la Hoja de Empaque con las etiquetas QR del despacho (PDF adjunto).
+
+    Usa el SMTP configurado (Mailpit en Docker). Sin SMTP_HOST el envío queda solo
+    registrado en bitácora (modo demostración), igual que las Órdenes de Compra.
+    """
+    destino = (correo_destino or "").strip()
+    if not mailer.correo_valido(destino):
+        raise ErrorRecepcion("Ingresa un correo electrónico válido.", codigo="parametro_invalido")
+
+    pdf_bytes, asn_doc = obtener_pdf_hoja_asn(folio_asn, usuario=usuario)
+    asn_doc = asn_doc or {}
+    folio_oc = asn_doc.get("folio_oc") or "-"
+    etiquetas = asn_doc.get("etiquetas") or asn_doc.get("items") or []
+    cuerpo = (
+        f"Hola,\n\n"
+        f"Adjuntamos la Hoja de Empaque del despacho {folio_asn} (Orden de Compra {folio_oc}) "
+        f"con {len(etiquetas) if isinstance(etiquetas, list) else 0} etiqueta(s) QR.\n"
+        f"Imprime las etiquetas y pégalas en cada lote: en el CEDIS se escanean para registrar la recepción.\n"
+    )
+    if mensaje_extra and mensaje_extra.strip():
+        cuerpo += f"\nNota:\n{mensaje_extra.strip()[:2000]}\n"
+    cuerpo += "\nSaludos,\nFreshTrack"
+
+    try:
+        estado = mailer.enviar_correo(
+            destino,
+            f"Hoja de Empaque y etiquetas QR {folio_asn} - FreshTrack",
+            cuerpo,
+            [(pdf_bytes, f"{folio_asn}_etiquetas.pdf", "application/pdf")],
+        )
+    except mailer.ErrorCorreo as exc:
+        raise ErrorRecepcion(str(exc), codigo="correo_no_enviado", http_status=502) from exc
+
+    db = doc_store.get_mongo_db()
+    if db is not None:
+        try:
+            db.avisos_asn.update_one(
+                {"folio_asn": folio_asn},
+                {"$push": {"envios_correo": {
+                    "correo": destino, "estado": estado,
+                    "fecha": datetime.now(timezone.utc).isoformat(), "usuario": usuario.get("email"),
+                }}},
+            )
+        except Exception:  # noqa: BLE001 - el historial en Mongo no debe impedir el envío
+            logger.warning("No se pudo guardar el envío de %s en Mongo", folio_asn, exc_info=True)
+
+    auditoria.registrar(
+        "SEND_ASN_LABELS_EMAIL",
+        tabla="avisos_asn",
+        id_registro=folio_asn,
+        descripcion=f"Envío de la Hoja QR {folio_asn} al correo {destino} ({estado})",
+        estado_nuevo={"correo_envio": destino, "estado_envio_correo": estado},
+        id_usuario=usuario.get("id_usuario"),
+        usuario_email=usuario.get("email"),
+    )
+    publicar_evento(
+        "HOJA_ASN_ENVIADA",
+        {"folio_asn": folio_asn, "correo_envio": destino, "modo": estado},
+        contexto={"user_id": usuario.get("id_usuario"), "correlation_id": folio_asn},
+    )
+    return {
+        "folio_asn": folio_asn,
+        "folio_oc": folio_oc,
+        "correo_envio": destino,
+        "estado_envio_correo": estado,
+        "enviado_real": estado == mailer.ENVIADO,
+    }
 
 
 def consultar_etiqueta_para_recepcion(codigo_o_qr: str, id_locacion_usuario: int | None = None) -> dict:

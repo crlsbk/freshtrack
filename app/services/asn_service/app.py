@@ -37,6 +37,7 @@ from app.services.common.response import (
     requerir_campos,
     validar_uuid,
 )
+from app.services.common.rate_limit import limite_tasa
 from app.services.common.servicio import crear_servicio, ejecutar
 from app.services.common.swagger import documentar
 
@@ -387,6 +388,36 @@ def descargar_hoja_qr_api(folio_asn: str):
         headers={"Content-Disposition": f'{disp}; filename="{folio_asn}_etiquetas.pdf"', "Cache-Control": "no-store"},
     )
 
+
+
+@app.post("/api/v1/asn/<folio_asn>/send-email")
+@documentar(
+    "Envía por correo la Hoja de Empaque con etiquetas QR del ASN (PDF adjunto)",
+    cuerpo={"correo": "proveedor@ejemplo.com", "mensaje": "Favor de imprimir las etiquetas."},
+    raiz_xml="send_email_request",
+    contrato_xsd="send_email_request",
+    respuesta={"folio_asn": "ASN-2026-000123", "folio_oc": "OC-2026-000045", "correo_envio": "proveedor@ejemplo.com",
+               "estado_envio_correo": "ENVIADO_SMTP", "enviado_real": True},
+    raiz_respuesta="send_email_result",
+    errores=("400", "403", "404", "502"),
+    exito="200",
+)
+@requiere_auth("supplier", "buyer", "warehouse", "store_manager")
+@limite_tasa(limite=10, ventana_segundos=60)
+def enviar_hoja_qr_correo_api(folio_asn: str):
+    """Adjunta el PDF de etiquetas QR y lo envía al correo indicado vía SMTP (Mailpit en Docker)."""
+    datos = leer_cuerpo("send_email_request", requerido=True)
+    requerir_campos(datos, "correo")
+    try:
+        res = dom_recepcion.enviar_hoja_asn_correo(
+            folio_asn,
+            str(datos["correo"]),
+            usuario=usuario_desde_token(),
+            mensaje_extra=datos.get("mensaje"),
+        )
+    except dom_recepcion.ErrorRecepcion as err:
+        return error_response(err.http_status, err.codigo, str(err))
+    return render_response(res, status=200, root_tag="send_email_result")
 
 if __name__ == "__main__":
     ejecutar(app, "ASN_SERVICE_PORT", 5005)

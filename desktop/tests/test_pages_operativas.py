@@ -15,7 +15,7 @@ from freshtrack_desktop.core.xml_codec import parse_xml, validate
 from freshtrack_desktop.ui.context import AppContext
 
 WAIT = 3000
-SAMPLES = Path(__file__).resolve().parents[2] / ".superpowers/sdd/2026-11-22-app-escritorio/samples"
+SAMPLES = Path(__file__).resolve().parent / "fixtures" / "xml"
 
 
 def muestra(nombre: str) -> bytes:

@@ -142,3 +142,32 @@ def test_error_de_conexion_redis_503(ctx, monkeypatch, redis_falso):
     r = _post(cli, _xml(_ticket("A-1")))
     assert r.status_code == 503 and "redis_no_disponible" in r.get_data(as_text=True)
     assert llamadas == []
+
+
+def test_excepcion_inesperada_libera_clave_y_permite_reintento(ctx, monkeypatch, redis_falso):
+    cli, _, mod = ctx
+    fallar = {"si": True}
+
+    def falsa(*, id_locacion, lineas, usuario, canal="TIENDA"):
+        if fallar["si"] and float(lineas[0]["cantidad"]) == 99:
+            raise RuntimeError("deadlock interno secreto")
+        return {"id_venta": 9, "folio": "V-0009"}
+
+    monkeypatch.setattr(mod.dom_ventas, "registrar_venta", falsa)
+    cuerpo = _xml(_ticket("C-1", cantidad="99"), _ticket("C-2"))
+    r = _post(cli, cuerpo)
+    assert r.status_code == 200
+    d = _resultado(r)
+    assert [x["estado"] for x in d["resultados"]] == ["ERROR", "IMPORTADO"]
+    assert "secreto" not in d["resultados"][0]["mensaje"]
+    assert redis_falso.get("importacion:venta:2:C-1") is None
+    fallar["si"] = False
+    d2 = _resultado(_post(cli, cuerpo))
+    assert [x["estado"] for x in d2["resultados"]] == ["IMPORTADO", "DUPLICADO"]
+
+
+def test_folio_duplicado_en_el_mismo_lote(ctx):
+    cli, llamadas, _ = ctx
+    d = _resultado(_post(cli, _xml(_ticket("D-1"), _ticket("D-1"))))
+    assert [x["estado"] for x in d["resultados"]] == ["IMPORTADO", "DUPLICADO"]
+    assert len(llamadas) == 1

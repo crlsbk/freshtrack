@@ -11,6 +11,7 @@ Responsabilidad:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from datetime import date, timedelta
@@ -41,6 +42,8 @@ from app.services.common.response import (
 )
 from app.services.common.servicio import crear_servicio, ejecutar
 from app.services.common.swagger import documentar
+
+logger = logging.getLogger(__name__)
 
 app = crear_servicio(
     "svc-commercial",
@@ -209,6 +212,7 @@ _IMPORT_EJEMPLO = {
     exito="200",
 )
 @requiere_auth("buyer", "planner")
+@limite_tasa(limite=20, ventana_segundos=60)
 def importar_ventas():
     """
     Registra cada ticket como una venta. La idempotencia se garantiza con una clave en Redis
@@ -250,12 +254,16 @@ def importar_ventas():
             if canal not in CANALES:
                 raise ValueError(f"Canal inválido. Valores: {sorted(CANALES)}")
             venta = dom_ventas.registrar_venta(id_locacion=id_locacion, lineas=lineas, usuario=usuario, canal=canal)
-        except (ValueError, ErrorApi) as err:
+        except Exception as err:  # noqa: BLE001 - un ticket fallido no debe tumbar el lote
             try:
                 redis_cli.delete(clave)
             except RedisError:
                 pass
-            mensaje = getattr(err, "mensaje", None) or str(err)
+            if isinstance(err, (ValueError, ErrorApi)):
+                mensaje = getattr(err, "mensaje", None) or str(err)
+            else:
+                logger.exception("Error inesperado importando el ticket %s", folio_ext)
+                mensaje = "Error interno al registrar la venta."
             resultados.append({"folio_externo": folio_ext, "estado": "ERROR", "mensaje": mensaje})
             conteo["ERROR"] += 1
             continue

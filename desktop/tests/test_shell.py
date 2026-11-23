@@ -465,3 +465,49 @@ def test_format_value_fecha_iso_en_hora_local():
     assert len(format_value("2026-11-23T05:44:38.234314+00:00")) == 16
     assert format_value("2026-11-23") == "2026-11-23"
     assert format_value("no es fecha") == "no es fecha"
+
+
+@pytest.mark.parametrize("rol,email", [("planner", "planner@freshtrack.mx"), ("buyer", "buyer@freshtrack.mx"),
+                                       ("admin", "admin@freshtrack.mx")])
+def test_ningun_atajo_de_teclado_esta_duplicado(controller, qtbot, fake_http, rol, email):
+    """Un atajo repetido (p. ej. Ctrl+R en el menú y en un botón) es ambiguo y Qt no dispara ninguno."""
+    from PySide6.QtGui import QAction, QShortcut
+    from PySide6.QtWidgets import QAbstractButton
+
+    _login(controller, qtbot, fake_http, rol=rol, email=email)
+    qtbot.waitUntil(lambda: controller.window is not None, timeout=WAIT)
+    w = controller.window
+    secuencias: list[str] = []
+    # Solo cuentan los atajos de alcance ventana/aplicación; los acotados a un widget con foco
+    # (Ctrl+E / Ctrl+P / Ctrl+C de cada tabla) no compiten entre sí.
+    globales = (Qt.ShortcutContext.WindowShortcut, Qt.ShortcutContext.ApplicationShortcut)
+    for a in w.findChildren(QAction):
+        if a.shortcutContext() in globales:
+            secuencias += [s.toString() for s in a.shortcuts() if not s.isEmpty()]
+    for s in w.findChildren(QShortcut):
+        if s.context() in globales and not s.key().isEmpty():
+            secuencias.append(s.key().toString())
+    for b in w.findChildren(QAbstractButton):
+        if not b.shortcut().isEmpty():
+            secuencias.append(b.shortcut().toString())
+    repetidas = {s for s in secuencias if secuencias.count(s) > 1}
+    assert not repetidas, f"atajos duplicados: {repetidas}"
+    assert "Ctrl+R" in secuencias  # el del menú «Ver → Actualizar página» sigue vivo
+
+
+def test_gc_corre_en_el_hilo_de_ui(qtbot):
+    """El GC automático queda apagado y lo dispara un QTimer del hilo principal."""
+    import gc
+
+    from freshtrack_desktop.app import instalar_gc_en_hilo_ui
+
+    estaba = gc.isenabled()
+    try:
+        timer = instalar_gc_en_hilo_ui(QApplication.instance())
+        assert not gc.isenabled() and timer.isActive()
+        assert timer.thread() is QApplication.instance().thread()
+        timer.stop()
+        timer.deleteLater()
+    finally:
+        if estaba:
+            gc.enable()

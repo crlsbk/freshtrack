@@ -45,7 +45,7 @@ class TableroPage(BasePage):
     def __init__(self, ctx, parent=None) -> None:
         super().__init__(ctx, parent)
         self.btn_actualizar = self.actions.add_button("Actualizar", self.refresh, variant="primary",
-                                                      icon="SP_BrowserReload", shortcut="Ctrl+R")
+                                                      icon="SP_BrowserReload")
         self.kpi_modelos = KpiCard("Corridas de pronóstico")
         self.kpi_mejor = KpiCard("Mejor modelo (MAE)")
         self.kpi_alertas = KpiCard("Alertas abiertas")

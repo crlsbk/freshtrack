@@ -37,7 +37,7 @@ class NewsvendorPage(BasePage):
     def __init__(self, ctx, parent=None) -> None:
         super().__init__(ctx, parent)
         self.btn_actualizar = self.actions.add_button("Actualizar catálogos", self.refresh,
-                                                      icon="SP_BrowserReload", shortcut="Ctrl+R")
+                                                      icon="SP_BrowserReload")
         self.cmb_sku = QComboBox()
         self.cmb_tienda = QComboBox()
         self.spn_horizonte = QSpinBox()

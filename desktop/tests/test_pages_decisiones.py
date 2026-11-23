@@ -189,13 +189,23 @@ def test_ciclo_planeacion_actualiza_las_tres_listas(ctx, qtbot, api, monkeypatch
     assert "5 tienda(s) recalibrada(s)" in detalle and "22 traslado(s)" in detalle
 
 
-def test_ciclo_deshabilitado_si_no_es_planner(ctx, qtbot, api):
+def test_ciclo_habilitado_para_buyer_y_el_servidor_responde_403(ctx, qtbot, api, monkeypatch):
+    """El control de permisos lo hace el servidor: buyer ve el botón y recibe el 403 (demo en vivo)."""
     con_sesion(ctx, "buyer")
     page = cargada(qtbot, ReabastecimientoPage, ctx, 5)
-    assert not page.btn_ciclo.isEnabled() and page.btn_generar.isEnabled()
-    con_sesion(ctx, "planner")
-    page.on_show()
-    assert page.btn_ciclo.isEnabled()
+    assert page.btn_ciclo.isEnabled() and page.btn_generar.isEnabled()
+    assert "Requiere rol planificador" in page.btn_ciclo.toolTip()
+    api.add("POST", f"{L}/cycle/run", status=403, body=b"""<?xml version="1.0" encoding="UTF-8"?>
+<error_response><error>prohibido</error><mensaje>Rol sin permiso</mensaje><status>403</status>
+<correlation_id>cid-403</correlation_id></error_response>""")
+    monkeypatch.setattr(reabastecimiento, "confirm", lambda *a, **k: True)
+    errores = []
+    monkeypatch.setattr(ctx, "show_error", lambda exc, parent=None: errores.append(exc))
+    page.btn_ciclo.click()
+    qtbot.waitUntil(lambda: ctx.pending == 0 and bool(errores), timeout=WAIT)
+    from freshtrack_desktop.ui.context import error_message
+    assert errores[0].status == 403 and errores[0].correlation_id == "cid-403"
+    assert error_message(errores[0]) == "No tienes permiso para esta acción"
 
 
 # --- Transferencias -------------------------------------------------------------------

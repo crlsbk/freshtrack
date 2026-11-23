@@ -124,7 +124,7 @@ class PronosticosPage(BasePage):
     def __init__(self, ctx, parent=None) -> None:
         super().__init__(ctx, parent)
         self.btn_actualizar = self.actions.add_button("Actualizar catálogos", self.refresh,
-                                                      icon="SP_BrowserReload", shortcut="Ctrl+R")
+                                                      icon="SP_BrowserReload")
 
         # Filtros comunes (tienda y SKU)
         self.cmb_tienda = _combo([(None, "Todas las tiendas")])

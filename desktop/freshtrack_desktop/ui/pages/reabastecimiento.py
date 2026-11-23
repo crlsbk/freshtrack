@@ -248,7 +248,8 @@ class ReabastecimientoPage(DecisionPage):
         self.btn_generar = button("Generar órdenes", self._generar, variant="primary", icon="SP_FileDialogNewFolder")
         gen.addWidget(self.btn_generar)
         self.btn_ciclo = button("Ejecutar ciclo de planeación", self._ciclo, icon="SP_MediaPlay",
-                                tooltip="Pronóstico por tienda, triaje y reabastecimiento neto en un solo paso")
+                                tooltip="Pronóstico por tienda, triaje y reabastecimiento neto en un solo paso. "
+                                        "Requiere rol planificador (el servidor rechaza a otros roles con 403).")
         gen.addWidget(self.btn_ciclo)
         gen.addStretch(1)
         _fijar_ancho(self.btn_aprobar, self.btn_rechazar, self.btn_contexto, self.btn_generar, self.btn_ciclo)
@@ -314,7 +315,8 @@ class ReabastecimientoPage(DecisionPage):
         self.btn_aprobar.setEnabled(puede and pendientes)
         self.btn_rechazar.setEnabled(puede and pendientes)
         self.btn_generar.setEnabled(puede)
-        self.btn_ciclo.setEnabled(self._es_rol("planner"))
+        # Habilitado también para buyer: el servidor decide (403) y la app muestra el aviso.
+        self.btn_ciclo.setEnabled(puede)
         self.btn_contexto.setEnabled(self.table.selected_row() is not None)
 
     def _detalle(self, fila: dict) -> str:

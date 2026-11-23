@@ -153,3 +153,23 @@ def test_endpoint_rol_sin_permiso_403(cliente_asn):
     _, c = cliente_asn
     r = c.post("/api/v1/asn/ASN-1/send-email", json={"correo": "a@b.mx"}, headers=_auth("auditor"))
     assert r.status_code == 403
+
+
+def test_puerto_587_siempre_usa_starttls_aunque_smtp_tls_sea_false(monkeypatch, smtp_falso):
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_TLS", "false")
+    monkeypatch.setenv("SMTP_USER", "u@gmail.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "clave")
+    cfg = mailer.config_smtp()
+    assert cfg.tls is True
+    mailer.enviar_correo("a@b.mx", "x", "y", config=cfg)
+    srv, _ = smtp_falso.enviados[0]
+    assert srv.tls is True and srv.login_con == ("u@gmail.com", "clave")
+
+
+def test_mailpit_1025_sin_tls(monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "mail")
+    monkeypatch.setenv("SMTP_PORT", "1025")
+    monkeypatch.setenv("SMTP_TLS", "false")
+    assert mailer.config_smtp().tls is False

@@ -67,7 +67,9 @@ def config_smtp() -> ConfigSMTP:
         user=os.getenv("SMTP_USER", Config.SMTP_USER).strip(),
         password=os.getenv("SMTP_PASSWORD", Config.SMTP_PASSWORD),
         remitente=(os.getenv("SMTP_FROM", Config.SMTP_FROM) or "").strip() or "FreshTrack <no-reply@freshtrack.mx>",
-        tls=os.getenv("SMTP_TLS", str(Config.SMTP_TLS)).lower() not in ("0", "false", "no"),
+        # 587 es el puerto de envío con STARTTLS (Gmail, Outlook): siempre se cifra ahí,
+        # aunque SMTP_TLS no venga en el .env (docker-compose lo pone en false para Mailpit).
+        tls=port == 587 or os.getenv("SMTP_TLS", str(Config.SMTP_TLS)).lower() not in ("0", "false", "no"),
     )
 
 

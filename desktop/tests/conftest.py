@@ -27,6 +27,7 @@ Reglas de coincidencia:
 
 from __future__ import annotations
 
+import gc
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -171,3 +172,13 @@ def settings(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     for var in ("FRESHTRACK_GATEWAY_URL", "FRESHTRACK_HOST"):
         monkeypatch.delenv(var, raising=False)
     return Settings(data_dir=tmp_path / "data")
+
+
+@pytest.fixture(autouse=True)
+def _gc_en_hilo_principal():
+    """El GC automático puede correr en un hilo del pool y destruir ahí un QWidget huérfano de
+    una prueba anterior (segfault en shiboken). Se desactiva y se recolecta en el hilo principal
+    al terminar cada prueba, igual que hace la app con `instalar_gc_en_hilo_ui`."""
+    gc.disable()
+    yield
+    gc.collect()

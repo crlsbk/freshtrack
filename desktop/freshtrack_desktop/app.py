@@ -9,6 +9,7 @@ Arranque de la app: QApplication, tema, contexto y flujo login → ventana princ
 from __future__ import annotations
 
 import argparse
+import gc
 import sys
 from typing import Callable
 
@@ -26,6 +27,29 @@ from .ui.main_window import MainWindow
 from .ui.pages import ALL_PAGES
 
 SMOKE_MS = 300
+GC_MS = 1000          # recolección de basura periódica en el hilo de UI
+GC_COMPLETO_CADA = 30  # cada N ciclos, recolección completa (las 3 generaciones)
+
+
+def instalar_gc_en_hilo_ui(app: QApplication) -> QTimer:
+    """
+    Desactiva el GC automático y lo corre con un QTimer en el hilo de UI.
+
+    Si el GC automático se dispara en un hilo del QThreadPool y la basura cíclica incluye un
+    QWidget, shiboken lo destruye fuera del hilo de UI y el proceso cae (segfault). Así la
+    recolección siempre ocurre en el hilo principal.
+    """
+    gc.disable()
+    timer = QTimer(app)
+    ciclos = {"n": 0}
+
+    def recolectar() -> None:
+        ciclos["n"] += 1
+        gc.collect(2 if ciclos["n"] % GC_COMPLETO_CADA == 0 else 0)
+
+    timer.timeout.connect(recolectar)
+    timer.start(GC_MS)
+    return timer
 
 
 class AppController(QObject):
@@ -85,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(False)
     theme.apply(app)
+    gc_timer = instalar_gc_en_hilo_ui(app)  # noqa: F841 - vive con la app
 
     ctx = build_context()
     try:

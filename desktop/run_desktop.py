@@ -1,0 +1,11 @@
+"""Lanzador: `python desktop/run_desktop.py` desde la raíz del repo (también entrada de PyInstaller)."""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from freshtrack_desktop.app import main  # noqa: E402
+
+if __name__ == "__main__":
+    raise SystemExit(main())

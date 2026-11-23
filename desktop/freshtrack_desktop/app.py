@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QApplication
 from . import __version__
 from .core.activity_log import ActivityLog
 from .core.api_client import ApiClient
-from .core.config import Settings
+from .core.config import Settings, xsd_dir
 from .ui import theme
 from .ui.context import AppContext
 from .ui.login_dialog import LoginDialog
@@ -89,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     ctx = build_context()
     try:
         if args.smoke:
+            if not (xsd_dir() / "login_request.xsd").is_file():
+                print(f"smoke: no se encuentran los XSD en {xsd_dir()}", file=sys.stderr)
+                return 2
             dlg = LoginDialog(ctx)
             dlg.show()
             QTimer.singleShot(SMOKE_MS, app.quit)

@@ -9,6 +9,14 @@ revocación de JWT, caché, contadores, rate limiting, bloqueos distribuidos y e
 > Presentación de la entrega: [`segundaEntrega/`](segundaEntrega/) · Video: https://youtu.be/vGuDwYUnJJA
 > Reporte de pruebas: [`docs/pruebas/REPORTE_PRUEBAS.md`](docs/pruebas/REPORTE_PRUEBAS.md).
 
+
+## App de escritorio
+
+Además de la web existe una **app de escritorio** (PySide6) para compradores y planeadores que consume
+solo XML de los microservicios, validado con los XSD de `contracts/xsd/`. Instalación, ejecución,
+cuentas demo, mapa de requisitos y guion de demo en [`desktop/README.md`](desktop/README.md)
+(`make desktop`, `make desktop-test`, `make desktop-build`).
+
 ---
 
 ## 1. Puesta en marcha

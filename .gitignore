@@ -17,3 +17,7 @@ __pycache__/
 # vive en docs/, no aca)
 /output/
 
+
+# App de escritorio: artefactos de PyInstaller
+desktop/dist/
+desktop/build/

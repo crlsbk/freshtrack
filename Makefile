@@ -137,3 +137,15 @@ down:
 
 clean:
 	docker compose down -v
+
+# --- App de escritorio (PySide6) --------------------------------------------
+.PHONY: desktop desktop-test desktop-build
+
+desktop:  ## Ejecuta la app de escritorio contra los microservicios locales
+	$(PYBIN) desktop/run_desktop.py
+
+desktop-test:  ## Pruebas de la app de escritorio (offscreen)
+	QT_QPA_PLATFORM=offscreen $(PYBIN) -m pytest desktop/tests -q
+
+desktop-build:  ## Empaqueta con PyInstaller en desktop/dist/FreshTrackDesktop
+	$(VENV)/bin/pyinstaller desktop/freshtrack_desktop.spec --noconfirm --distpath desktop/dist --workpath desktop/build

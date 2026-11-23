@@ -117,6 +117,43 @@ def logout():
     return render_response({"status": "LOGOUT_EXITOSO", "jti": jti}, status=200, root_tag="auth_response")
 
 
+@app.post("/api/v1/auth/refresh")
+@documentar(
+    "Renovación del JWT (emite uno nuevo y revoca el actual)",
+    respuesta={"token": "eyJhbGciOiJIUzI1NiIs...", "jti": "a1b2c3", "token_type": "Bearer", "expira_en_segundos": 28800, "usuario": _USUARIO_EJEMPLO},
+    raiz_respuesta="auth_response",
+    errores=("401", "429"),
+    exito="200",
+)
+@requiere_auth()
+@limite_tasa(limite=30, ventana_segundos=60)
+def refrescar():
+    """Emite un JWT nuevo para el usuario del token vigente y revoca el jti anterior."""
+    p = g.usuario_actual
+    usuario = {
+        "id_usuario": p.get("sub"),
+        "email": p.get("email"),
+        "nombre_completo": p.get("nombre"),
+        "rol_clave": p.get("rol"),
+        "id_locacion": p.get("id_locacion"),
+    }
+    token, jti = crear_token(usuario, ip=request.remote_addr, user_agent=request.headers.get("User-Agent"))
+    revocar_token(p.get("jti"))
+    return render_response({
+        "token": token,
+        "jti": jti,
+        "token_type": "Bearer",
+        "expira_en_segundos": cache_service.obtener_ttl(f"session:{jti}"),
+        "usuario": {
+            "id_usuario": usuario["id_usuario"],
+            "email": usuario["email"],
+            "nombre": usuario["nombre_completo"],
+            "rol": usuario["rol_clave"],
+            "id_locacion": usuario["id_locacion"],
+        },
+    }, status=200, root_tag="auth_response")
+
+
 @app.post("/api/v1/auth/verify")
 @documentar(
     "Verificación de token para otros componentes",

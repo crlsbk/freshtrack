@@ -3,8 +3,11 @@ Cliente HTTP de la app: solo XML, con contratos XSD, X-Correlation-Id y sesión 
 
 - Toda petición lleva Accept: application/xml (o application/pdf en `get_bytes`),
   X-Correlation-Id (uuid4 hex) y User-Agent FreshTrack-Desktop/1.0.
-- 401 fuera de /auth/login y /auth/refresh → un refresh y un reintento; si vuelve a
-  fallar se cierra la sesión y se avisa con `on_unauthorized()`.
+- 401 fuera de /auth/login, /auth/refresh, /auth/logout y /health → un refresh y un
+  reintento; si el servidor rechaza la sesión se cierra y se avisa con `on_unauthorized()`
+  una sola vez (solo si la sesión vigente sigue siendo la del token que falló).
+- `on_unauthorized` y los listeners corren en el hilo que hizo la petición: la UI debe
+  reenviarlos al hilo principal (señal Qt).
 """
 
 from __future__ import annotations
@@ -49,7 +52,7 @@ class ApiClient:
         self.session: Session | None = None
         self.listeners: list[Callable[[Exchange], None]] = []
         self._http = requests.Session()
-        self._lock_refresh = threading.Lock()
+        self._lock_sesion = threading.Lock()
 
     # ------------------------------------------------------------------ público
     def login(self, email: str, password: str) -> Session:
@@ -74,7 +77,7 @@ class ApiClient:
         """Renueva el JWT. False si no hay sesión, el servidor lo rechaza o auth no responde."""
         try:
             return self._refresh(None)
-        except ServiceUnavailable:
+        except ApiError:
             return False
 
     def call(
@@ -108,8 +111,9 @@ class ApiClient:
 
     def health(self, service: str) -> dict:
         inicio = time.perf_counter()
+        # /health no requiere auth: sin Authorization y sin lógica de 401/refresh.
         datos = self._ejecutar(service, "GET", "/health", expect_root="service_health",
-                               reintentar=False, estados_ok={503})
+                               con_token=False, reintentar=False, estados_ok={503})
         resultado = dict(datos) if isinstance(datos, dict) else {"valor": datos}
         resultado["elapsed_ms"] = round((time.perf_counter() - inicio) * 1000, 1)
         return resultado
@@ -145,17 +149,17 @@ class ApiClient:
                 return resp.content
             return self._decodificar(resp, service, cid, expect_root, response_xsd, estados_ok or set())
         except XmlContractError:
-            raise
+            raise  # un 401 con cuerpo no XML (proxy con auth propia) no intenta refresh
         except ApiError as exc:
             if exc.status != 401 or not con_token or path.rstrip("/").endswith(_RUTAS_SIN_REFRESH):
+                raise
+            if path.rstrip("/").endswith("/auth/logout"):
                 raise
             if reintentar and self._refresh(token_usado):
                 return self._ejecutar(service, method, path, params=params, data=data, expect_root=expect_root,
                                       response_xsd=response_xsd, accept=accept, con_token=con_token,
                                       reintentar=False, binario=binario, estados_ok=estados_ok)
-            if path.rstrip("/").endswith("/auth/logout"):
-                raise
-            self._expirar()
+            self._expirar(token_usado)
             raise
 
     def _enviar(self, service, method, path, params, data, accept, token):
@@ -244,27 +248,38 @@ class ApiClient:
             raise
 
     def _refresh(self, token_fallido: str | None) -> bool:
-        with self._lock_refresh:
+        """
+        Renueva el JWT bajo candado. True → hay un token vigente distinto del que falló
+        (renovado aquí o por otro hilo): reintentar. False → el servidor rechazó la
+        sesión (401/403) o ya no hay sesión. Otros errores (auth caído, 429, 5xx, XML
+        inválido) se propagan sin cerrar la sesión.
+        """
+        with self._lock_sesion:
             if self.session is None:
-                return False
-            # Otro hilo ya renovó el token mientras esperábamos el candado.
+                return False  # logout voluntario u otro hilo ya expiró la sesión
             if token_fallido and self.session.token != token_fallido:
-                return True
+                return True  # otro hilo ya renovó: reintentar con el token nuevo
             try:
                 datos = self._ejecutar("auth", "POST", "/api/v1/auth/refresh",
                                        expect_root="auth_response", reintentar=False)
-            except ServiceUnavailable:
-                raise  # auth caído: no se cierra la sesión, se informa "no disponible"
-            except ApiError:
-                return False
+            except XmlContractError:
+                raise
+            except ApiError as exc:
+                if exc.status in (401, 403):
+                    return False
+                raise
             nueva = Session.from_auth_response(datos)
             if not nueva.token:
-                return False
+                raise XmlContractError("La renovación del token no devolvió <token>.", ["token vacío"])
             self.session = nueva
             return True
 
-    def _expirar(self) -> None:
-        self.session = None
+    def _expirar(self, token_fallido: str | None) -> None:
+        """Cierra la sesión y avisa una sola vez, solo si sigue vigente la del token que falló."""
+        with self._lock_sesion:
+            if self.session is None or self.session.token != token_fallido:
+                return  # ya expirada, cerrada por logout o renovada por otro hilo
+            self.session = None
         try:
             self.on_unauthorized()
         except Exception:

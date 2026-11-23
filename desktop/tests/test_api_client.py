@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import pytest
 import requests
@@ -302,3 +303,125 @@ def test_xsd_dir(monkeypatch, tmp_path):
     assert (xsd_dir() / "login_request.xsd").exists()
     monkeypatch.setenv("FRESHTRACK_XSD_DIR", str(tmp_path))
     assert xsd_dir() == tmp_path
+
+
+# --- corrección ronda 1: on_unauthorized una sola vez, refresh y health ---------------
+import threading  # noqa: E402
+
+
+def _dos_hilos(api: ApiClient, path: str) -> list[BaseException | Any]:
+    resultados: list = [None, None]
+
+    def trabajo(i: int) -> None:
+        try:
+            resultados[i] = api.call("catalog", "GET", path)
+        except BaseException as exc:  # noqa: BLE001
+            resultados[i] = exc
+
+    hilos = [threading.Thread(target=trabajo, args=(i,)) for i in range(2)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join(10)
+    return resultados
+
+
+def _401_sincronizado(barrera: threading.Barrier):
+    """Ambos hilos reciben 401 con tok-viejo antes de que cualquiera intente refrescar."""
+
+    def fn(req):
+        if req.headers.get("Authorization") == "Bearer tok-viejo":
+            barrera.wait(5)
+            return 401, error_xml(401, "token_revocado"), None
+        return 200, PRODUCTOS, None
+
+    return fn
+
+
+def test_dos_hilos_con_401_y_refresh_fallido_avisan_una_vez(settings, fake_http):
+    avisos = []
+    api = _con_sesion(ApiClient(settings, on_unauthorized=lambda: avisos.append(1)))
+    fake_http.add("GET", "/api/v1/catalog/productos", body=_401_sincronizado(threading.Barrier(2)))
+    fake_http.add("POST", "/api/v1/auth/refresh", status=401, body=error_xml(401, "token_revocado"))
+    resultados = _dos_hilos(api, "/api/v1/catalog/productos")
+    assert all(isinstance(r, ApiError) and r.status == 401 for r in resultados)
+    assert avisos == [1]
+    assert api.session is None
+    assert len(fake_http.calls_to("POST", "/api/v1/auth/refresh")) == 1
+
+
+def test_dos_hilos_con_401_refrescan_una_vez_y_reintentan(settings, fake_http):
+    avisos = []
+    api = _con_sesion(ApiClient(settings, on_unauthorized=lambda: avisos.append(1)))
+    fake_http.add("GET", "/api/v1/catalog/productos", body=_401_sincronizado(threading.Barrier(2)))
+    fake_http.add("POST", "/api/v1/auth/refresh", body=auth_xml(token="tok-nuevo"))
+    resultados = _dos_hilos(api, "/api/v1/catalog/productos")
+    assert all(isinstance(r, dict) and r["total"] == "1" for r in resultados)
+    assert len(fake_http.calls_to("POST", "/api/v1/auth/refresh")) == 1
+    reintentos = [c for c in fake_http.calls_to("GET", "/api/v1/catalog/productos")
+                  if c.headers["Authorization"] == "Bearer tok-nuevo"]
+    assert len(reintentos) == 2
+    assert avisos == [] and api.session.token == "tok-nuevo"
+
+
+def test_logout_con_peticion_en_curso_no_avisa(settings, fake_http):
+    avisos = []
+    api = _con_sesion(ApiClient(settings, on_unauthorized=lambda: avisos.append(1)))
+    fake_http.add("POST", "/api/v1/auth/logout", body=auth_xml())
+
+    def en_vuelo(req):
+        api.logout()  # el usuario cierra sesión mientras la petición está en el aire
+        return 401, error_xml(401, "token_revocado"), None
+
+    fake_http.add("GET", "/api/v1/catalog/productos", body=en_vuelo)
+    with pytest.raises(ApiError) as exc:
+        api.call("catalog", "GET", "/api/v1/catalog/productos")
+    assert exc.value.status == 401
+    assert avisos == [] and api.session is None
+    assert fake_http.calls_to("POST", "/api/v1/auth/refresh") == []
+
+
+@pytest.mark.parametrize("status,body,tipo", [
+    (429, error_xml(429, "demasiadas_peticiones"), ApiError),
+    (500, error_xml(500, "error_interno"), ApiError),
+    (502, b"<html><body>Bad Gateway<br></body></html>", XmlContractError),
+])
+def test_refresh_con_error_transitorio_no_expira(settings, fake_http, status, body, tipo):
+    avisos = []
+    api = _con_sesion(ApiClient(settings, on_unauthorized=lambda: avisos.append(1)))
+    fake_http.add("GET", "/api/v1/catalog/productos", status=401, body=error_xml(401, "token_invalido"))
+    fake_http.add("POST", "/api/v1/auth/refresh", status=status, body=body)
+    with pytest.raises(tipo) as exc:
+        api.call("catalog", "GET", "/api/v1/catalog/productos")
+    assert exc.value.status == status
+    assert api.session is not None and api.session.token == "tok-viejo"
+    assert avisos == []
+
+
+def test_refresh_403_expira(settings, fake_http):
+    avisos = []
+    api = _con_sesion(ApiClient(settings, on_unauthorized=lambda: avisos.append(1)))
+    fake_http.add("GET", "/api/v1/catalog/productos", status=401, body=error_xml(401, "token_invalido"))
+    fake_http.add("POST", "/api/v1/auth/refresh", status=403, body=error_xml(403, "usuario_inactivo"))
+    with pytest.raises(ApiError):
+        api.call("catalog", "GET", "/api/v1/catalog/productos")
+    assert api.session is None and avisos == [1]
+
+
+def test_refresh_publico_con_error_devuelve_false(api, fake_http):
+    _con_sesion(api)
+    fake_http.add("POST", "/api/v1/auth/refresh", status=500, body=error_xml(500, "error_interno"))
+    assert api.refresh() is False
+    assert api.session is not None
+
+
+def test_health_401_no_expira_ni_manda_token(settings, fake_http):
+    avisos = []
+    api = _con_sesion(ApiClient(settings, on_unauthorized=lambda: avisos.append(1)))
+    fake_http.add("GET", "/health", status=401, body=error_xml(401, "token_requerido"))
+    with pytest.raises(ApiError) as exc:
+        api.health("catalog")
+    assert exc.value.status == 401
+    assert "Authorization" not in fake_http.calls[0].headers
+    assert api.session is not None and avisos == []
+    assert fake_http.calls_to("POST", "/api/v1/auth/refresh") == []

@@ -61,3 +61,11 @@ def test_usa_metodos_http_variados():
         for regla in modulo.app.url_map.iter_rules():
             metodos |= regla.methods
     assert {"GET", "POST", "PUT", "PATCH", "DELETE"} <= metodos
+
+
+def test_importacion_de_ventas_documenta_503_por_redis():
+    modulo = importlib.import_module("app.services.commercial_service.app")
+    s = modulo.app.test_client().get("/api/v1/openapi.json").get_json()
+    respuestas = s["paths"]["/api/v1/commercial/sales/import"]["post"]["responses"]
+    assert {"400", "401", "403", "429", "500", "503"} <= set(respuestas)
+    assert "redis" in respuestas["503"]["description"].lower() or "disponible" in respuestas["503"]["description"].lower()

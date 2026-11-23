@@ -208,7 +208,7 @@ _IMPORT_EJEMPLO = {
     respuesta={"importados": 1, "duplicados": 0, "errores": 0,
                "resultados": [{"folio_externo": "POS-0001", "estado": "IMPORTADO", "id_venta": 10, "folio": "V-20261021-0010"}]},
     raiz_respuesta="sales_import_result",
-    errores=("400", "403"),
+    errores=("400", "403", "503"),
     exito="200",
 )
 @requiere_auth("buyer", "planner")

@@ -76,6 +76,7 @@ _DESCRIPCION_ERRORES = {
     "415": ("Content-Type no soportado", "tipo_no_soportado", "Use application/json o application/xml."),
     "429": ("Límite de peticiones excedido (rate limit en Redis)", "limite_excedido", "Intente de nuevo en 42 segundos."),
     "500": ("Error interno controlado (sin exponer detalles)", "error_interno", "Ocurrió un error inesperado."),
+    "503": ("Dependencia no disponible (p. ej. Redis caído)", "redis_no_disponible", "Redis no disponible: no se importó ningún ticket."),
 }
 
 

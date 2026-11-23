@@ -9,7 +9,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QHBoxLayout
 
 from ...core.config import PUERTOS
-from ...core.errors import ServiceUnavailable, XmlContractError
+from ...core.errors import ApiError, ServiceUnavailable, XmlContractError
 from ..widgets import DataTable, KpiCard, secondary_label
 from .base import BasePage
 
@@ -97,7 +97,19 @@ class EstadoPage(BasePage):
         except ServiceUnavailable as exc:
             fila["detalle"] = f"Sin conexión ({exc.mensaje})"
         except XmlContractError as exc:
-            fila["detalle"] = f"Respuesta fuera de contrato: {exc.mensaje}"
+            if self.ctx.settings.gateway_url:
+                # El gateway respondió, pero con la web (HTML): el backend desplegado no tiene el alias.
+                fila["estado"] = "DESCONOCIDO"
+                fila["detalle"] = ("El gateway no expone /api/v1/" + svc + "/health; despliega la versión "
+                                   "nueva del backend para ver la salud de cada servicio.")
+            else:
+                fila["detalle"] = f"Respuesta fuera de contrato: {exc.mensaje}"
+        except ApiError as exc:
+            if self.ctx.settings.gateway_url and exc.status == 404:
+                fila["estado"] = "DESCONOCIDO"
+                fila["detalle"] = f"El gateway no expone /api/v1/{svc}/health (HTTP 404)."
+            else:
+                fila["detalle"] = f"HTTP {exc.status}: {exc.mensaje}"
         except Exception as exc:  # noqa: BLE001 - cualquier otra falla cuenta como caído
             fila["detalle"] = str(exc) or type(exc).__name__
         else:
@@ -119,11 +131,14 @@ class EstadoPage(BasePage):
         ok = sum(f["estado"] == "OK" for f in filas)
         deg = sum(f["estado"] == "DEGRADADO" for f in filas)
         caidos = sum(f["estado"] == "CAÍDO" for f in filas)
+        desconocidos = sum(f["estado"] == "DESCONOCIDO" for f in filas)
         self.kpi_ok.set_value(f"{ok}/{n}", tone="success" if ok == n else None)
         self.kpi_degradados.set_value(str(deg), tone="warning" if deg else None)
         self.kpi_caidos.set_value(str(caidos), tone="danger" if caidos else None)
         self.updated_label.setText(f"Última revisión: {datetime.now():%H:%M:%S}")
-        if caidos or deg:
+        if desconocidos:
+            self.ctx.notify(f"Estado de servicios: {desconocidos} sin dato a través del gateway")
+        elif caidos or deg:
             self.ctx.notify(f"Estado de servicios: {caidos} caído(s), {deg} degradado(s)")
 
     def _fallo(self, exc: BaseException) -> None:

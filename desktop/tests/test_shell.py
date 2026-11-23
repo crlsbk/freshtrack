@@ -527,3 +527,16 @@ def test_show_error_401_sin_sesion_ni_ventana_no_muestra_dialogo(ctx, qtbot):
     dlg = ctx.show_error(ApiError(401, "token_revocado", "Token revocado"), None)
     assert dlg is not None
     dlg.close()
+
+
+
+def test_health_en_modo_gateway_usa_alias_por_servicio(fake_http, settings):
+    from freshtrack_desktop.core.api_client import ApiClient
+
+    settings.set_servers(gateway_url="https://gw.ejemplo.mx")
+    fake_http.add("GET", "/api/v1/planning/health", body=muestra("health_planning"),
+                  headers={"Content-Type": "application/xml"})
+    api = ApiClient(settings)
+    datos = api.health("planning")
+    assert datos["status"] == "HEALTHY"
+    assert fake_http.calls[-1].url == "https://gw.ejemplo.mx/api/v1/planning/health"

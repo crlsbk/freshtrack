@@ -119,7 +119,9 @@ class ApiClient:
     def health(self, service: str) -> dict:
         inicio = time.perf_counter()
         # /health no requiere auth: sin Authorization y sin lógica de 401/refresh.
-        datos = self._ejecutar(service, "GET", "/health", expect_root="service_health",
+        # Detrás del gateway (Caddy) solo se enruta /api/v1/<servicio>…, así que se usa el alias.
+        ruta = f"/api/v1/{service}/health" if self.settings.gateway_url else "/health"
+        datos = self._ejecutar(service, "GET", ruta, expect_root="service_health",
                                con_token=False, reintentar=False, estados_ok={503})
         resultado = dict(datos) if isinstance(datos, dict) else {"valor": datos}
         resultado["elapsed_ms"] = round((time.perf_counter() - inicio) * 1000, 1)

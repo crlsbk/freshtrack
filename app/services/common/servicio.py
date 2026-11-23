@@ -115,7 +115,7 @@ def crear_servicio(
         resp.headers["X-Correlation-Id"] = correlation_id()
         resp.headers["X-Service"] = nombre
         usuario = (getattr(g, "usuario_actual", None) or {}).get("email", "-")
-        if request.path != "/health":
+        if not request.path.endswith("/health"):
             log.info(
                 "%s %s %s %.1fms user=%s cid=%s",
                 request.method, request.full_path.rstrip("?"), resp.status_code, dur_ms, usuario, correlation_id(),
@@ -155,6 +155,10 @@ def crear_servicio(
             status=200 if sano else 503,
             root_tag="service_health",
         )
+
+    # Alias detrás del gateway (Caddy enruta /api/v1/<servicio>*): svc-auth → /api/v1/auth/health.
+    prefijo = nombre.split("-", 1)[1] if nombre.startswith("svc-") else nombre
+    app.add_url_rule(f"/api/v1/{prefijo}/health", "health_gateway", health, methods=["GET"])
 
     @app.get("/api/v1/contracts/<nombre_xsd>.xsd")
     def contrato_xsd(nombre_xsd: str):

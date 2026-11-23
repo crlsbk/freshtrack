@@ -138,3 +138,12 @@ def test_health_reporta_dependencias(redis_falso):
     r = app.test_client().get("/health")
     assert r.status_code == 200
     assert r.get_json()["dependencies"] == {"redis": True}
+
+
+def test_health_tiene_alias_detras_del_gateway(redis_falso):
+    """Caddy solo enruta /api/v1/<servicio>…: cada servicio expone también /api/v1/<prefijo>/health."""
+    app = crear_servicio("svc-planning", "Planning", "Servicio de prueba", dependencias=("redis",))
+    c = app.test_client()
+    r = c.get("/api/v1/planning/health", headers={"Accept": "application/xml"})
+    assert r.status_code == 200 and b"<service_health>" in r.data
+    assert c.get("/health").status_code == 200

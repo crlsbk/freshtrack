@@ -43,7 +43,7 @@ STATUS_TONES: dict[str, str] = {
     "DUPLICADO": "warning", "ADVERTENCIA": "warning",
     "CAÍDO": "danger", "CRÍTICO": "danger", "CRITICO": "danger", "ERROR": "danger",
     "RECHAZADO": "danger", "RECHAZADA": "danger", "VENCIDO": "danger",
-    "INFO": "info", "ENVIADA": "info", "ENVIADO": "info",
+    "INFO": "info", "ENVIADA": "info", "ENVIADO": "info", "DESCONOCIDO": "warning",
     "SUGERIDA": "info", "SUGERIDO": "info", "ANUNCIADO": "info", "EN_TRANSITO": "info",
     "APLICADO": "success", "APLICADA": "success", "RECIBIDA": "success", "RECIBIDO": "success",
     "NO_CONFIABLE": "warning", "CANCELADA": "danger", "CANCELADO": "danger",

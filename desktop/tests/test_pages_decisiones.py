@@ -15,7 +15,7 @@ from freshtrack_desktop.ui.pages.transferencias import TransferenciasPage
 
 from test_shell import WAIT, ctx, error_xml  # noqa: F401 - fixture ctx
 
-SAMPLES = Path(__file__).resolve().parents[2] / ".superpowers/sdd/2026-11-22-app-escritorio/samples"
+SAMPLES = Path(__file__).resolve().parent / "fixtures" / "xml"
 ORDENES = (SAMPLES / "repl_orders.xml").read_bytes()
 TRANSFERS = (SAMPLES / "transfers.xml").read_bytes()
 DISCOUNTS = (SAMPLES / "discounts.xml").read_bytes()

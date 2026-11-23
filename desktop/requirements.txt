@@ -1,0 +1,8 @@
+# App de escritorio FreshTrack (cliente XML de los microservicios)
+PySide6>=6.8
+requests>=2.32
+lxml>=5.3
+
+# Desarrollo / empaquetado
+pytest-qt>=4.4
+pyinstaller>=6.11

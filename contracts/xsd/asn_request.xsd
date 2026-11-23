@@ -11,6 +11,10 @@
       <xs:element name="lote_proveedor" type="xs:string" minOccurs="0"/>
       <xs:element name="fecha_caducidad" type="xs:date"/>
       <xs:element name="rango_temperatura_controlada" type="xs:string" minOccurs="0"/>
+      <xs:element name="id_locacion_destino" type="xs:positiveInteger" minOccurs="0"/>
+      <xs:element name="fecha_produccion" type="xs:date" minOccurs="0"/>
+      <xs:element name="cantidad_lotes" type="xs:positiveInteger" minOccurs="0"/>
+      <xs:element name="codigo_rfid_epc" type="xs:string" minOccurs="0"/>
     </xs:all>
   </xs:complexType>
   <xs:element name="asn_request">
@@ -19,7 +23,10 @@
         <xs:element name="folio_asn">
           <xs:simpleType><xs:restriction base="xs:string"><xs:pattern value="[A-Za-z0-9_\-]{3,40}"/></xs:restriction></xs:simpleType>
         </xs:element>
+        <xs:element name="folio_oc" type="xs:string" minOccurs="0"/>
         <xs:element name="id_proveedor" type="xs:positiveInteger"/>
+        <xs:element name="fecha_despacho" type="xs:string" minOccurs="0"/>
+        <xs:element name="fecha_arribo_estimada" type="xs:string" minOccurs="0"/>
         <xs:element name="estado" minOccurs="0">
           <xs:simpleType>
             <xs:restriction base="xs:string">

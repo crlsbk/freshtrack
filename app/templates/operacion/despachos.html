@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block titulo %}Despachos y Etiquetas QR{% endblock %}
+{% block breadcrumb %}Operación › Despachos y Etiquetas QR{% endblock %}
+
+{% block content %}
+{{ ui.encabezado('Logística de Proveedor a Tienda', 'Despachos de Órdenes y Etiquetas QR',
+                 'Registra el envío de lotes físicos de una orden de compra, genera la Hoja de Empaque PDF con códigos QR y sigue su recepción en almacén.') }}
+
+{% set n_transito = despachos | selectattr('estado', 'equalto', 'EN_TRANSITO') | list | length %}
+{% set n_recibidos = despachos | selectattr('estado', 'equalto', 'RECIBIDO') | list | length %}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Órdenes por surtir', ordenes_pendientes | length, 'Emitidas, enviadas o parciales', '#2563eb', icono='carrito') }}
+  {{ ui.kpi('Despachos registrados', despachos | length, 'Avisos de embarque históricos', '#0284c7', icono='camion') }}
+  {{ ui.kpi('En tránsito', n_transito, 'Listos para escaneo en tienda', '#d97706' if n_transito else '#6b7280', icono='reloj') }}
+  {{ ui.kpi('Recibidos completos', n_recibidos, 'Conciliados en inventario FEFO', '#16a34a', icono='check') }}
+</div>
+
+{% if asn_sel %}
+  <div class="form-card" style="margin-bottom:20px;border:2px solid #16a34a;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+      <div>
+        <div class="card-title" style="margin:0;">Hoja de Empaque y Etiquetas QR · {{ asn_sel.folio_asn }}</div>
+        <div class="text-muted" style="font-size:12.5px;margin-top:2px;">
+          {{ asn_sel.proveedor }}
+          {% if asn_sel.folio_oc %} · Orden de Compra <strong>{{ asn_sel.folio_oc }}</strong>{% endif %}
+          · Estado: {{ ui.estado(asn_sel.estado) }}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="btn btn-ghost btn-sm" target="_blank" href="{{ url_for('operacion.despacho_pdf', folio_asn=asn_sel.folio_asn) }}">
+          Abrir PDF en nueva pestaña
+        </a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('operacion.despacho_pdf', folio_asn=asn_sel.folio_asn, descargar=1) }}">
+          Descargar / Imprimir Hoja QR (PDF)
+        </a>
+      </div>
+    </div>
+
+    {% if asn_sel.etiquetas_svg %}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;">
+        {% for etq in asn_sel.etiquetas_svg %}
+          <div class="card" style="padding:12px;display:flex;gap:12px;align-items:flex-start;border:1px solid var(--border);">
+            <div style="flex-shrink:0;background:#fff;padding:6px;border-radius:6px;border:1px solid var(--border);text-align:center;">
+              {{ etq.svg_qr | safe }}
+              <div class="mono" style="font-size:10px;font-weight:700;margin-top:4px;">{{ etq.codigo_etiqueta }}</div>
+            </div>
+            <div style="flex:1;min-width:0;font-size:12px;">
+              <div style="font-weight:700;color:#15803d;">Destino: {{ etq.locacion_destino }}</div>
+              <div style="font-weight:600;margin-top:2px;">{{ etq.producto }}</div>
+              <div class="text-muted">Lote: <span class="mono">{{ etq.lote_proveedor }}</span></div>
+              <div>Cant.: <strong>{{ etq.cantidad_declarada | cantidad(2) }} {{ etq.unidad_medida }}</strong></div>
+              <div class="text-muted">Caducidad: {{ etq.fecha_caducidad }} · Temp: {{ etq.rango_temperatura_controlada }}</div>
+              <div style="margin-top:6px;">
+                {% if etq.estado_escaneo == 'PENDIENTE' %}
+                  <span class="badge badge-info">Listo para escaneo en tienda</span>
+                {% elif etq.estado_escaneo == 'RECIBIDA' %}
+                  <span class="badge badge-success">Recibido en almacén</span>
+                {% elif etq.estado_escaneo == 'CUARENTENA' %}
+                  <span class="badge badge-warning">Recibido en cuarentena</span>
+                {% else %}
+                  <span class="badge badge-danger">{{ etq.estado_escaneo | legible }}</span>
+                {% endif %}
+              </div>
+              <div class="mono text-muted" style="font-size:9.5px;margin-top:4px;word-break:break-all;">{{ etq.qr_payload }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="form-note">Este despacho no contiene etiquetas QR generadas por tienda destino.</div>
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="panel-pestanas" data-pestanas>
+  <div class="tabs" role="tablist">
+    {% if current_role in ['admin', 'supplier'] %}
+      <button class="tab {% if tab_activa == 'despachar' %}active{% endif %}" type="button" data-pestana="despachar">
+        Despachar Orden de Compra ({{ ordenes_pendientes | length }})
+      </button>
+    {% endif %}
+    <button class="tab {% if tab_activa == 'historial' %}active{% endif %}" type="button" data-pestana="historial">
+      Historial de Despachos y Etiquetas ({{ despachos | length }})
+    </button>
+  </div>
+
+  {% if current_role in ['admin', 'supplier'] %}
+    <div class="pestana-contenido" data-pestana-id="despachar" {% if tab_activa != 'despachar' %}hidden{% endif %}>
+      <div class="form-card" style="margin-bottom:16px;">
+        <div class="card-title">1. Selecciona una Orden de Compra para preparar el embarque</div>
+        <form method="get" action="{{ url_for('operacion.despachos') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <input type="hidden" name="tab" value="despachar"/>
+          <div style="flex:1;min-width:280px;">
+            <label class="form-label">Orden de Compra pendiente</label>
+            <select class="input" name="id_oc" onchange="this.form.submit()">
+              {% for o in ordenes_pendientes %}
+                <option value="{{ o.id_oc }}" {% if oc_sel and o.id_oc == oc_sel.id_oc %}selected{% endif %}>
+                  {{ o.folio }} · {{ o.proveedor }} · {{ o.total_unidades | cantidad(2) }} u ({{ o.estado | legible }})
+                </option>
+              {% else %}
+                <option value="">No hay órdenes de compra pendientes por surtir</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button class="btn btn-ghost" type="submit">Cargar líneas</button>
+        </form>
+      </div>
+
+      {% if oc_sel %}
+        <form method="post" action="{{ url_for('operacion.despachos') }}">
+          <input type="hidden" name="id_oc" value="{{ oc_sel.id_oc }}"/>
+          <div class="form-card" style="margin-bottom:16px;">
+            <div class="card-title">2. Datos del transporte refrigerado (opcional)</div>
+            <div class="form-grid">
+              <div>
+                <label class="form-label">Nombre del chofer</label>
+                <input class="input" name="chofer" maxlength="80" placeholder="Ej. Carlos Mendoza"/>
+              </div>
+              <div>
+                <label class="form-label">Placas o unidad</label>
+                <input class="input mono" name="placas" maxlength="30" placeholder="Ej. NL-8492-A"/>
+              </div>
+              <div>
+                <label class="form-label">Temperatura de salida (°C)</label>
+                <input class="input" name="temperatura_salida_c" type="number" step="0.1" value="3.5"/>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap" style="margin-bottom:16px;">
+            <div class="table-header">
+              <div class="table-header-title">
+                3. Lotes físicos por tienda destino para {{ oc_sel.folio }} ({{ oc_sel.lineas | length }} partidas)
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tienda destino</th>
+                    <th>Producto</th>
+                    <th>Pedido / Recibido</th>
+                    <th>Cantidad a enviar *</th>
+                    <th>Lote fabricante *</th>
+                    <th>Producción</th>
+                    <th>Caducidad *</th>
+                    <th>Rango temp.</th>
+                    <th>RFID / EPC (opc.)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for lin in oc_sel.lineas %}
+                    {% set pendiente = [0, (lin.cantidad_unidades - (lin.cantidad_recibida or 0))] | max %}
+                    <tr>
+                      <td><strong>{{ lin.locacion_destino }}</strong></td>
+                      <td>
+                        <div>{{ lin.producto }}</div>
+                        <div class="mono text-muted" style="font-size:11px;">{{ lin.codigo_gtin }}</div>
+                      </td>
+                      <td class="mono">
+                        {{ lin.cantidad_unidades | cantidad(2) }} / {{ (lin.cantidad_recibida or 0) | cantidad(2) }} {{ lin.unidad_medida }}
+                      </td>
+                      <td>
+                        <input type="hidden" name="det_{{ loop.index }}" value="{{ lin.id_detalle }}"/>
+                        <input type="hidden" name="sku_{{ loop.index }}" value="{{ lin.id_sku }}"/>
+                        <input type="hidden" name="loc_{{ loop.index }}" value="{{ lin.id_locacion_destino }}"/>
+                        <input class="input" name="cant_{{ loop.index }}" type="number" step="0.01" min="0"
+                               value="{{ '%.2f' | format(pendiente if pendiente > 0 else lin.cantidad_unidades) }}"
+                               style="width:105px;"/>
+                      </td>
+                      <td>
+                        <input class="input mono" name="lote_{{ loop.index }}" maxlength="50" required
+                               value="LP-{{ hoy | replace('-', '') }}-{{ lin.id_sku }}{{ lin.id_locacion_destino }}"
+                               style="width:155px;"/>
+                      </td>
+                      <td>
+                        <input class="input" name="fprod_{{ loop.index }}" type="date" value="{{ hoy }}" style="width:138px;"/>
+                      </td>
+                      <td>
+                        <input class="input" name="fcad_{{ loop.index }}" type="date" value="{{ cad_defecto }}" required style="width:138px;"/>
+                      </td>
+                      <td>
+                        <input class="input" name="temp_{{ loop.index }}" maxlength="30" value="2C a 6C" style="width:95px;"/>
+                      </td>
+                      <td>
+                        <input class="input mono" name="rfid_{{ loop.index }}" maxlength="64" placeholder="Opcional" style="width:125px;"/>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;">
+            <button class="btn btn-primary" type="submit">
+              Confirmar despacho y generar Hoja QR (PDF)
+            </button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="pestana-contenido" data-pestana-id="historial" {% if tab_activa != 'historial' %}hidden{% endif %}>
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-header-title">Despachos y Hojas QR registradas ({{ despachos | length }})</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Folio despacho</th>
+            <th>Orden de Compra</th>
+            <th>Proveedor</th>
+            <th>Fecha embarque</th>
+            <th>Estado</th>
+            <th>Etiquetas QR recibidas</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in despachos %}
+            <tr>
+              <td class="mono" style="font-weight:700;">{{ d.folio_asn }}</td>
+              <td class="mono">
+                {% if d.id_oc %}
+                  <a href="{{ url_for('catalogo.orden_compra_detalle', id_oc=d.id_oc) }}">{{ d.folio_oc or 'Ver OC' }}</a>
+                {% else %}
+                  {{ d.folio_oc or '—' }}
+                {% endif %}
+              </td>
+              <td>{{ d.proveedor }}</td>
+              <td class="mono">{{ d.fecha_embarque_iso | fecha_hora }}</td>
+              <td>{{ ui.estado(d.estado) }}</td>
+              <td>
+                {% if d.total_etiquetas %}
+                  <span class="badge {{ 'badge-success' if d.etiquetas_recibidas == d.total_etiquetas else 'badge-info' }}">
+                    {{ d.etiquetas_recibidas }} / {{ d.total_etiquetas }} etiqueta(s)
+                  </span>
+                {% else %}
+                  <span class="text-muted">Sin etiquetas</span>
+                {% endif %}
+              </td>
+              <td>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <a class="btn btn-ghost btn-sm" href="{{ url_for('operacion.despachos', folio=d.folio_asn, tab='historial') }}">
+                    Ver QRs
+                  </a>
+                  <a class="btn btn-primary btn-sm" href="{{ url_for('operacion.despacho_pdf', folio_asn=d.folio_asn, descargar=1) }}">
+                    PDF Hoja QR
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            {{ ui.vacio('Aún no hay despachos con etiquetas QR registrados.', 7) }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

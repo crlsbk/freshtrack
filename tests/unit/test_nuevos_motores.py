@@ -369,3 +369,128 @@ def test_proxy_fix_y_cookie_secure_produccion():
         app_dev = create_app()
         assert app_dev.config["SESSION_COOKIE_SECURE"] is False
         assert not isinstance(app_dev.wsgi_app, ProxyFix)
+
+
+def test_qr_firma_hmac_y_parseo():
+    from app.domain import etiquetas_qr
+
+    payload = etiquetas_qr.construir_payload_qr("FTL-261123-AA11BB", "OC-20261123-0001", 3, 5)
+    assert payload.startswith("FT1|FTL-261123-AA11BB|OC-20261123-0001|L3|S5|")
+    parsed = etiquetas_qr.parsear_y_verificar_qr(payload)
+    assert parsed["formato"] == "FT1"
+    assert parsed["firma_valida"] is True
+    assert parsed["id_locacion_destino"] == 3
+    assert parsed["id_sku"] == 5
+
+    # Firma alterada debe rechazarse
+    manipulado = payload[:-4] + "ffff"
+    try:
+        etiquetas_qr.parsear_y_verificar_qr(manipulado)
+        raise AssertionError("Debió rechazar una firma HMAC alterada")
+    except ValueError:
+        pass
+
+    # Código corto
+    corto = etiquetas_qr.parsear_y_verificar_qr("FTL-261123-AA11BB")
+    assert corto["formato"] == "CODIGO" and corto["codigo_etiqueta"] == "FTL-261123-AA11BB"
+
+    # GS1-128 básico
+    gs1 = etiquetas_qr.parsear_y_verificar_qr("(01)07501000100011(10)FR-99(17)261205(30)40(400)OC-20261123-0001")
+    assert gs1["formato"] == "GS1" and gs1["codigo_gtin"] == "07501000100011" and gs1["lote_proveedor"] == "FR-99"
+    assert gs1["fecha_caducidad"] == "2026-12-05" and gs1["cantidad"] == 40.0
+
+
+def test_generar_pdf_hoja_asn_con_qr_vectorial():
+    from app.domain import etiquetas_qr
+
+    asn_doc = {
+        "folio_asn": "ASN-20261123-0001",
+        "folio_oc": "OC-20261123-0001",
+        "id_proveedor": 1,
+        "fecha_embarque": "2026-11-23T08:00:00",
+        "fecha_arribo_estimada": "2026-11-23T12:00:00",
+        "transporte": {"placas": "NL-8492-A", "chofer": "Carlos"},
+        "etiquetas": [
+            {
+                "codigo_etiqueta": f"FTL-261123-000{i}",
+                "qr_payload": etiquetas_qr.construir_payload_qr(f"FTL-261123-000{i}", "OC-20261123-0001", 3 + i, 1),
+                "id_sku": 1,
+                "producto": f"Fresa Orgánica Lote {i}",
+                "codigo_gtin": "7501000100011",
+                "unidad_medida": "kg",
+                "id_locacion_destino": 3 + i,
+                "locacion_destino": f"Tienda Destino {i}",
+                "lote_proveedor": f"LP-00{i}",
+                "fecha_produccion": "2026-11-22",
+                "fecha_caducidad": "2026-12-01",
+                "cantidad_declarada": 50.0,
+                "rango_temperatura_controlada": "2C a 6C",
+            }
+            for i in range(1, 5)
+        ],
+    }
+    pdf = etiquetas_qr.generar_pdf_hoja_asn(asn_doc, {"proveedor": "Agrícola Norte"})
+    assert pdf.startswith(b"%PDF-1.4")
+    assert b"%%EOF" in pdf[-32:]
+    assert b"ASN-20261123-0001" in pdf
+    assert b"Tienda Destino 1" in pdf
+    assert b"re f" in pdf
+    assert b"/Count 2" in pdf  # 4 tarjetas a 3 por página = 2 páginas
+
+
+def test_recepcion_escaneo_validacion_tienda_e_idempotencia(monkeypatch):
+    from datetime import date, timedelta
+    from app.domain import etiquetas_qr, recepcion
+
+    payload = etiquetas_qr.construir_payload_qr("FTL-261123-ZZ0011", "OC-20261123-0001", 3, 1)
+    cad = (date.today() + timedelta(days=5)).isoformat()
+    asn_fake = {"folio_asn": "ASN-20261123-0009", "folio_oc": "OC-20261123-0001", "id_oc": None, "id_proveedor": 1, "estado": "EN_TRANSITO"}
+    etq_fake = {
+        "codigo_etiqueta": "FTL-261123-ZZ0011",
+        "qr_payload": payload,
+        "id_sku": 1,
+        "producto": "Fresa Orgánica",
+        "unidad_medida": "kg",
+        "id_locacion_destino": 3,
+        "locacion_destino": "Tienda San Pedro",
+        "lote_proveedor": "LP-TEST-01",
+        "fecha_produccion": date.today().isoformat(),
+        "fecha_caducidad": cad,
+        "cantidad_declarada": 50.0,
+        "rango_temperatura_controlada": "2C a 6C",
+    }
+
+    monkeypatch.setattr(recepcion.doc_store, "obtener_asn_por_etiqueta", lambda c: (asn_fake, etq_fake))
+    monkeypatch.setattr(
+        recepcion,
+        "one",
+        lambda sql, **kw: (
+            {"codigo_etiqueta": "FTL-261123-ZZ0011", "folio_asn": "ASN-20261123-0009", "id_oc": None, "id_lote": "l1", "id_sku": 1, "id_locacion": 3, "cantidad_esperada": 50, "cantidad_recibida": 50, "accion_calidad": "ACEPTAR_DISPONIBLE", "resultado_inspeccion": "CONFORME", "recibido_en": None}
+            if "idempotency_key" in sql and kw.get("k") == "idem-ya-ok"
+            else ({"id_sku": 1, "nombre": "Fresa", "codigo_gtin": "7501", "unidad_medida": "kg", "vida_util_estandar": 7, "precio_costo": 20, "id_proveedor": 1, "proveedor": "Prov 1"} if "operacion.producto" in sql else ({"id_locacion": 3, "nombre": "Tienda San Pedro"} if "operacion.locacion" in sql else None))
+        ),
+    )
+
+    usuario_wh = {"id_usuario": "u1", "email": "almacen@freshtrack.mx", "rol_clave": "warehouse"}
+
+    # 1. Tienda equivocada -> 409 destino_incorrecto
+    try:
+        recepcion.procesar_recepcion_escaneo(
+            codigo_o_qr=payload,
+            id_locacion_recepcion=4,
+            cantidad_recibida=50,
+            usuario=usuario_wh,
+        )
+        raise AssertionError("Debió bloquear recepción en tienda equivocada (4 vs 3)")
+    except recepcion.ErrorRecepcion as err:
+        assert err.http_status == 409 and err.codigo == "destino_incorrecto"
+
+    # 2. Idempotency-Key repetida -> retorna 200 idempotente=True sin tocar inventario
+    res_idem = recepcion.procesar_recepcion_escaneo(
+        codigo_o_qr=payload,
+        id_locacion_recepcion=3,
+        cantidad_recibida=50,
+        usuario=usuario_wh,
+        idempotency_key="idem-ya-ok",
+    )
+    assert res_idem["idempotente"] is True and res_idem["codigo_http"] == 200

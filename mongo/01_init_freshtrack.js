@@ -141,6 +141,8 @@ db.avisos_asn.createIndex(
   { name: "idx_asn_proveedor_fecha" }
 );
 db.avisos_asn.createIndex({ estado: 1 }, { name: "idx_asn_estado" });
+db.avisos_asn.createIndex({ folio_oc: 1 }, { name: "idx_asn_folio_oc", sparse: true });
+db.avisos_asn.createIndex({ "etiquetas.codigo_etiqueta": 1 }, { name: "idx_asn_etiqueta", sparse: true });
 
 // --- alertas_operativas ------------------------------------------------------
 db.createCollection("alertas_operativas", {

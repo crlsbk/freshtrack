@@ -432,6 +432,7 @@ CREATE TABLE IF NOT EXISTS operacion.orden_compra_detalle (
     cantidad_unidades          numeric(12,2) NOT NULL,
     precio_unitario            numeric(12,2) NOT NULL DEFAULT 0,
     subtotal                   numeric(14,2) NOT NULL DEFAULT 0,
+    cantidad_recibida          numeric(12,2) NOT NULL DEFAULT 0,
     sugerencia_newsvendor      numeric(12,2),
     id_orden_reabastecimiento  uuid,
     CONSTRAINT chk_ocd_lotes    CHECK (cantidad_lotes > 0),
@@ -441,24 +442,78 @@ CREATE TABLE IF NOT EXISTS operacion.orden_compra_detalle (
 
 CREATE INDEX IF NOT EXISTS idx_ocd_oc ON operacion.orden_compra_detalle (id_oc);
 
+ALTER TABLE operacion.orden_compra_detalle
+    ADD COLUMN IF NOT EXISTS cantidad_recibida numeric(12,2) NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+    ALTER TABLE operacion.lote
+        ADD COLUMN IF NOT EXISTS id_oc uuid,
+        ADD COLUMN IF NOT EXISTS folio_asn varchar(40),
+        ADD COLUMN IF NOT EXISTS temperatura_recepcion numeric(6,2);
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_lote_orden_compra'
+    ) THEN
+        ALTER TABLE operacion.lote
+            ADD CONSTRAINT fk_lote_orden_compra
+            FOREIGN KEY (id_oc)
+            REFERENCES operacion.orden_compra(id_oc)
+            ON DELETE SET NULL;
+    END IF;
+END
+$$;
+
+-- -----------------------------------------------------------------------------
+-- Etiquetas QR / NFC / RFID escaneadas en muelle (idempotencia y calidad)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS operacion.recepcion_etiqueta (
+    codigo_etiqueta      varchar(64) PRIMARY KEY,
+    folio_asn            varchar(40) NOT NULL,
+    id_oc                uuid REFERENCES operacion.orden_compra(id_oc) ON DELETE SET NULL,
+    id_detalle_oc        uuid REFERENCES operacion.orden_compra_detalle(id_detalle) ON DELETE SET NULL,
+    id_lote              uuid REFERENCES operacion.lote(id_lote) ON DELETE SET NULL,
+    id_sku               integer NOT NULL REFERENCES operacion.producto(id_sku),
+    id_locacion          integer NOT NULL REFERENCES operacion.locacion(id_locacion),
+    cantidad_esperada    numeric(12,2) NOT NULL DEFAULT 0,
+    cantidad_recibida    numeric(12,2) NOT NULL DEFAULT 0,
+    temperatura_c        numeric(6,2),
+    resultado_inspeccion varchar(30) NOT NULL DEFAULT 'CONFORME',
+    accion_calidad       varchar(30) NOT NULL DEFAULT 'ACEPTAR_DISPONIBLE',
+    medio_lectura        varchar(20) NOT NULL DEFAULT 'QR',
+    idempotency_key      varchar(80) UNIQUE,
+    observaciones        text,
+    recibido_por         uuid REFERENCES operacion.usuario(id_usuario),
+    recibido_en          timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_recetq_accion CHECK (
+        accion_calidad IN ('ACEPTAR_DISPONIBLE', 'ACEPTAR_CUARENTENA', 'RECHAZAR_MUELLE')
+    ),
+    CONSTRAINT chk_recetq_medio CHECK (
+        medio_lectura IN ('QR', 'NFC', 'RFID', 'MANUAL')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_recetq_asn ON operacion.recepcion_etiqueta (folio_asn);
+CREATE INDEX IF NOT EXISTS idx_recetq_oc  ON operacion.recepcion_etiqueta (id_oc);
+
 -- =============================================================================
 -- TRIGGERS DE AUDITORÍA
 -- El argumento del trigger define el nombre de la acción:
 --   CREATE_PRODUCT, UPDATE_PRODUCT, CREATE_BATCH, CREATE_SALE,
 --   CREATE_SHRINKAGE, CREATE_USER, ...
 -- =============================================================================
-DROP TRIGGER IF EXISTS trg_aud_producto         ON operacion.producto;
-DROP TRIGGER IF EXISTS trg_aud_proveedor        ON operacion.proveedor;
-DROP TRIGGER IF EXISTS trg_aud_locacion         ON operacion.locacion;
-DROP TRIGGER IF EXISTS trg_aud_lote             ON operacion.lote;
-DROP TRIGGER IF EXISTS trg_aud_existencia       ON operacion.existencia;
-DROP TRIGGER IF EXISTS trg_aud_venta            ON operacion.venta;
-DROP TRIGGER IF EXISTS trg_aud_venta_det        ON operacion.venta_detalle;
-DROP TRIGGER IF EXISTS trg_aud_merma            ON operacion.merma;
-DROP TRIGGER IF EXISTS trg_aud_usuario          ON operacion.usuario;
-DROP TRIGGER IF EXISTS trg_aud_reporte_doc      ON operacion.reporte_documento;
-DROP TRIGGER IF EXISTS trg_aud_orden_compra     ON operacion.orden_compra;
-DROP TRIGGER IF EXISTS trg_aud_orden_compra_det ON operacion.orden_compra_detalle;
+DROP TRIGGER IF EXISTS trg_aud_producto           ON operacion.producto;
+DROP TRIGGER IF EXISTS trg_aud_proveedor          ON operacion.proveedor;
+DROP TRIGGER IF EXISTS trg_aud_locacion           ON operacion.locacion;
+DROP TRIGGER IF EXISTS trg_aud_lote               ON operacion.lote;
+DROP TRIGGER IF EXISTS trg_aud_existencia         ON operacion.existencia;
+DROP TRIGGER IF EXISTS trg_aud_venta              ON operacion.venta;
+DROP TRIGGER IF EXISTS trg_aud_venta_det          ON operacion.venta_detalle;
+DROP TRIGGER IF EXISTS trg_aud_merma              ON operacion.merma;
+DROP TRIGGER IF EXISTS trg_aud_usuario            ON operacion.usuario;
+DROP TRIGGER IF EXISTS trg_aud_reporte_doc        ON operacion.reporte_documento;
+DROP TRIGGER IF EXISTS trg_aud_orden_compra       ON operacion.orden_compra;
+DROP TRIGGER IF EXISTS trg_aud_orden_compra_det   ON operacion.orden_compra_detalle;
+DROP TRIGGER IF EXISTS trg_aud_recepcion_etiqueta ON operacion.recepcion_etiqueta;
 
 CREATE TRIGGER trg_aud_producto   AFTER INSERT OR UPDATE OR DELETE ON operacion.producto
     FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('PRODUCT');
@@ -484,6 +539,8 @@ CREATE TRIGGER trg_aud_orden_compra     AFTER INSERT OR UPDATE OR DELETE ON oper
     FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('PURCHASE_ORDER');
 CREATE TRIGGER trg_aud_orden_compra_det AFTER INSERT OR UPDATE OR DELETE ON operacion.orden_compra_detalle
     FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('PURCHASE_ORDER_LINE');
+CREATE TRIGGER trg_aud_recepcion_etiqueta AFTER INSERT OR UPDATE OR DELETE ON operacion.recepcion_etiqueta
+    FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('BATCH_LABEL_RECEIPT');
 
 -- =============================================================================
 -- PERMISOS

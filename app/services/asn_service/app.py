@@ -18,12 +18,13 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from flask import g, request
+from flask import Response, g, request
 
 from app.db import query
+from app.domain import recepcion as dom_recepcion
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service, doc_store
-from app.services.common.auth import requiere_auth
+from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
 from app.services.common.response import (
     ErrorApi,
     decimal_pos,
@@ -34,6 +35,7 @@ from app.services.common.response import (
     paginacion,
     render_response,
     requerir_campos,
+    validar_uuid,
 )
 from app.services.common.servicio import crear_servicio, ejecutar
 from app.services.common.swagger import documentar
@@ -91,8 +93,12 @@ def _detalle_valido(detalle) -> list[dict]:
             "id_sku": entero(item, "id_sku", minimo=1),
             "cantidad_declarada": decimal_pos(item, "cantidad_declarada"),
             "lote_proveedor": str(item.get("lote_proveedor") or "SIN-LOTE"),
+            "fecha_produccion": str(item["fecha_produccion"])[:10] if item.get("fecha_produccion") else None,
             "fecha_caducidad": caducidad,
             "rango_temperatura_controlada": str(item.get("rango_temperatura_controlada") or "2C a 6C"),
+            "id_locacion_destino": entero(item, "id_locacion_destino", minimo=1) if item.get("id_locacion_destino") else None,
+            "cantidad_lotes": entero(item, "cantidad_lotes", minimo=1) if item.get("cantidad_lotes") else None,
+            "codigo_rfid_epc": str(item.get("codigo_rfid_epc") or "").strip() or None,
         })
     return limpio
 
@@ -111,12 +117,16 @@ def _detalle_valido(detalle) -> list[dict]:
 def crear_aviso_asn():
     """
     Registra el aviso en MongoDB (colección avisos_asn, índice único por folio).
-    Valida que el proveedor y los SKU existan en PostgreSQL antes de insertar.
+    Valida que el proveedor y los SKU existan en PostgreSQL antes de insertar y,
+    cuando incluye tiendas destino, genera etiquetas QR firmadas (FT1).
     """
     datos = leer_cuerpo("asn_request", requerido=True)
     requerir_campos(datos, "folio_asn", "id_proveedor", "detalle_carga")
     folio = str(datos["folio_asn"]).strip()
     id_proveedor = entero(datos, "id_proveedor", minimo=1)
+    folio_oc = str(datos.get("folio_oc") or "").strip() or None
+    id_oc = str(datos.get("id_oc") or "").strip() or None
+    transporte = datos.get("transporte") if isinstance(datos.get("transporte"), dict) else None
     detalle = _detalle_valido(datos["detalle_carga"])
     estado = str(datos.get("estado") or "ANUNCIADO").upper()
     if estado not in ESTADOS_ASN:
@@ -125,38 +135,66 @@ def crear_aviso_asn():
     if not query("SELECT 1 FROM operacion.proveedor WHERE id_proveedor = :p AND activo", p=id_proveedor):
         return error_response(409, "regla_negocio", f"El proveedor {id_proveedor} no existe o está inactivo.")
     skus = sorted({d["id_sku"] for d in detalle})
-    existentes = {f["id_sku"] for f in query("SELECT id_sku FROM operacion.producto WHERE id_sku = ANY(:s)", s=skus)}
-    faltan = [s for s in skus if s not in existentes]
+    skus_rows = query("SELECT id_sku, nombre, codigo_gtin, unidad_medida FROM operacion.producto WHERE id_sku = ANY(:s)", s=skus)
+    info_skus = {f["id_sku"]: f for f in skus_rows}
+    faltan = [s for s in skus if s not in info_skus]
     if faltan:
         return error_response(409, "regla_negocio", "Hay SKU que no existen en el catálogo.", {"skus_inexistentes": faltan})
+
+    locs = sorted({int(d["id_locacion_destino"]) for d in detalle if d.get("id_locacion_destino")})
+    info_tiendas = (
+        {r["id_locacion"]: r for r in query("SELECT id_locacion, nombre FROM operacion.locacion WHERE id_locacion = ANY(:l)", l=locs)}
+        if locs
+        else {}
+    )
+    etiquetas = dom_recepcion.construir_etiquetas_para_asn(
+        folio_oc=folio_oc,
+        detalle_carga=detalle,
+        info_skus=info_skus,
+        info_tiendas=info_tiendas,
+    )
 
     db = _mongo()
     if db.avisos_asn.find_one({"folio_asn": folio}, {"_id": 1}):
         return error_response(409, "duplicado", f"El folio {folio} ya fue registrado.")
 
-    id_mongo = doc_store.registrar_aviso_asn(folio_asn=folio, id_proveedor=id_proveedor, detalle_carga=detalle, estado=estado)
+    id_mongo = doc_store.registrar_aviso_asn(
+        folio_asn=folio,
+        id_proveedor=id_proveedor,
+        detalle_carga=detalle,
+        estado=estado,
+        folio_oc=folio_oc,
+        id_oc=id_oc,
+        transporte=transporte,
+        etiquetas=etiquetas or None,
+    )
     if not id_mongo:
         return error_response(500, "error_mongo", "No se pudo registrar el ASN en MongoDB.")
 
     cache_service.incrementar_contador("asn", "asn_registrado")
     publicar_evento(
         "ASN_INGRESADO",
-        {"folio_asn": folio, "id_proveedor": id_proveedor, "items_count": len(detalle)},
+        {"folio_asn": folio, "folio_oc": folio_oc, "id_proveedor": id_proveedor, "items_count": len(detalle)},
         contexto={"user_id": g.usuario_actual.get("sub")},
     )
-    return render_response({"id_mongo": id_mongo, "folio_asn": folio, "estado": "REGISTRADO"}, status=201, root_tag="asn_creado")
+    return render_response(
+        {"id_mongo": id_mongo, "folio_asn": folio, "estado": "REGISTRADO", "etiquetas": etiquetas},
+        status=201,
+        root_tag="asn_creado",
+    )
 
 
 @app.get("/api/v1/asn")
 @documentar(
     "Listado de ASN con filtros y paginación",
     consulta=[("id_proveedor", "integer", "Proveedor"), ("estado", "string", "Estado del ASN"),
+              ("folio_oc", "string", "Folio de orden de compra"), ("id_locacion_destino", "integer", "Tienda destino"),
               ("id_sku", "integer", "ASN que contienen el SKU"), ("pagina", "integer", "Página"), ("por_pagina", "integer", "Tamaño")],
     raiz_respuesta="asns_list",
 )
 @requiere_auth()
 def listar_asns():
-    """Consulta documentos de MongoDB filtrando por proveedor, estado o SKU (campo anidado)."""
+    """Consulta documentos de MongoDB filtrando por proveedor, estado, OC, tienda o SKU."""
     pagina, por_pagina, offset = paginacion()
     db = _mongo()
     filtro: dict = {}
@@ -165,6 +203,11 @@ def listar_asns():
         filtro["id_proveedor"] = id_proveedor
     if request.args.get("estado"):
         filtro["estado"] = request.args["estado"].upper()
+    if request.args.get("folio_oc"):
+        filtro["folio_oc"] = request.args["folio_oc"].strip()
+    id_loc_dest = entero(request.args, "id_locacion_destino", minimo=1)
+    if id_loc_dest:
+        filtro["detalle_carga.id_locacion_destino"] = id_loc_dest
     id_sku = entero(request.args, "id_sku", minimo=1)
     if id_sku:
         filtro["detalle_carga.id_sku"] = id_sku
@@ -267,6 +310,82 @@ def registrar_inspeccion_asn(folio_asn: str):
         return error_response(404, "no_encontrado", f"ASN {folio_asn} no encontrado en MongoDB.")
     publicar_evento("ASN_INSPECCION_REGISTRADA", {"folio_asn": folio_asn, "resultado": resultado, "temperatura": temperatura})
     return render_response({"folio_asn": folio_asn, "status": "INSPECCION_AGREGADA", "resultado": resultado}, status=201, root_tag="asn_inspection")
+
+
+@app.post("/api/v1/asn/from-purchase-order")
+@documentar(
+    "Genera un Aviso de Embarque (ASN), etiquetas QR firmadas y Hoja QR PDF desde una Orden de Compra",
+    cuerpo={
+        "id_oc": "00000000-0000-0000-0000-000000000001",
+        "transporte": {"chofer": "Carlos Mendoza", "placas": "NL-8492-A", "temperatura_salida_c": 3.5},
+        "partidas": [{"id_sku": 1, "id_locacion_destino": 3, "cantidad_declarada": 50, "lote_proveedor": "LP-01", "fecha_caducidad": "2026-12-10"}],
+    },
+    raiz_xml="asn_from_oc_request",
+    raiz_respuesta="asn_from_oc_response",
+    errores=("400", "403", "404", "409"),
+    exito="201",
+)
+@requiere_auth("supplier", "buyer")
+def crear_despacho_desde_oc_api():
+    """Genera ASN en tránsito, códigos QR firmados y Hoja de Empaque PDF en Cloud Object Storage."""
+    datos = leer_cuerpo(requerido=True)
+    requerir_campos(datos, "id_oc", "partidas")
+    id_oc = validar_uuid(datos["id_oc"], "id_oc")
+    partidas = datos["partidas"] if isinstance(datos["partidas"], list) else []
+    transporte = datos.get("transporte") if isinstance(datos.get("transporte"), dict) else {}
+    try:
+        res = dom_recepcion.crear_despacho_desde_oc(
+            id_oc=id_oc,
+            partidas=partidas,
+            usuario=usuario_desde_token(),
+            transporte=transporte,
+            folio_asn=datos.get("folio_asn"),
+        )
+    except dom_recepcion.ErrorRecepcion as err:
+        return error_response(err.http_status, err.codigo, str(err), err.detalles or None)
+    cache_service.incrementar_contador("asn", "asn_from_oc")
+    return render_response(res, status=201, root_tag="asn_from_oc_response")
+
+
+@app.get("/api/v1/asn/labels")
+@app.get("/api/v1/asn/labels/<path:codigo>")
+@documentar(
+    "Consulta y valida una etiqueta QR / NFC / RFID antes de confirmar recepción en almacén",
+    consulta=[("codigo", "string", "Payload QR FT1|... o folio corto FTL-..."), ("id_locacion", "integer", "Tienda donde se escanea")],
+    raiz_respuesta="asn_label_lookup",
+    errores=("400", "404"),
+)
+@requiere_auth("warehouse", "store_manager", "buyer", "supplier")
+def consultar_etiqueta_api(codigo: str | None = None):
+    """Valida firma HMAC y retorna los datos esperados del lote y alertas de recepción."""
+    codigo_val = request.args.get("codigo") or codigo
+    if not codigo_val:
+        return error_response(400, "campos_requeridos", "Debes enviar el código de la etiqueta QR.")
+    loc_usuario = (getattr(g, "contexto", None) or {}).get("location_id") or entero(request.args, "id_locacion", minimo=1)
+    try:
+        info = dom_recepcion.consultar_etiqueta_para_recepcion(codigo_val, id_locacion_usuario=loc_usuario)
+    except dom_recepcion.ErrorRecepcion as err:
+        return error_response(err.http_status, err.codigo, str(err), err.detalles or None)
+    return render_response(info, status=200, root_tag="asn_label_lookup")
+
+
+@app.get("/api/v1/asn/<folio_asn>/labels-pdf")
+@documentar("Descarga el documento PDF con la Hoja de Empaque y Etiquetas QR del ASN", exito="200", errores=("404",))
+@requiere_auth("supplier", "buyer", "warehouse", "store_manager")
+def descargar_hoja_qr_api(folio_asn: str):
+    """Retorna el PDF de la Hoja de Empaque con QR vectoriales desde Cloud Object Storage."""
+    descargar = request.args.get("download") == "1"
+    try:
+        pdf_bytes, _ = dom_recepcion.obtener_pdf_hoja_asn(folio_asn, usuario=usuario_desde_token())
+    except dom_recepcion.ErrorRecepcion as err:
+        return error_response(err.http_status, err.codigo, str(err))
+    disp = "attachment" if descargar else "inline"
+    return Response(
+        pdf_bytes,
+        status=200,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'{disp}; filename="{folio_asn}_etiquetas.pdf"', "Cache-Control": "no-store"},
+    )
 
 
 if __name__ == "__main__":

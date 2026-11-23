@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import json
 import random
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from flask import (
     Blueprint,
+    Response,
     flash,
     jsonify,
     redirect,
@@ -29,8 +30,11 @@ from flask import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import a_float, a_int, query, sql_error
+from app.domain import compras as dom_compras
+from app.domain import etiquetas_qr
 from app.domain import inventario as dom_inv
 from app.domain import mermas as dom_mermas
+from app.domain import recepcion as dom_recepcion
 from app.domain import ventas as dom_ventas
 from app.security import login_required, requiere_vista, usuario_actual
 from app.services import clientes
@@ -503,4 +507,255 @@ def mermas():
 @bp.route("/trazabilidad")
 @login_required
 def trazabilidad():
+    return redirect(url_for("operacion.lotes"))
+
+
+# ===========================================================================
+# DESPACHOS DE PROVEEDOR (ASN + HOJA QR) Y RECEPCIÓN POR ESCANEO
+# ===========================================================================
+@bp.route("/despachos", methods=["GET", "POST"])
+@login_required
+@requiere_vista("dispatches")
+def despachos():
+    usuario = usuario_actual()
+
+    if request.method == "POST":
+        if usuario["rol_clave"] not in ("admin", "supplier"):
+            flash("Solo el proveedor o el administrador puede generar despachos y etiquetas QR.", "error")
+            return redirect(url_for("operacion.despachos"))
+
+        id_oc = (request.form.get("id_oc") or "").strip()
+        transporte = {
+            "chofer": (request.form.get("chofer") or "").strip() or None,
+            "placas": (request.form.get("placas") or "").strip() or None,
+            "temperatura_salida_c": request.form.get("temperatura_salida_c") or None,
+        }
+        indices = sorted(
+            {
+                int(k.split("_", 1)[1])
+                for k in request.form
+                if k.startswith("sku_") and k.split("_", 1)[1].isdigit()
+            }
+        )
+        partidas: list[dict] = []
+        for idx in indices:
+            cant = a_float(request.form.get(f"cant_{idx}"))
+            if cant <= 0:
+                continue
+            partidas.append(
+                {
+                    "id_detalle_oc": (request.form.get(f"det_{idx}") or "").strip() or None,
+                    "id_sku": a_int(request.form.get(f"sku_{idx}"), 0),
+                    "id_locacion_destino": a_int(request.form.get(f"loc_{idx}"), 0),
+                    "cantidad_declarada": cant,
+                    "lote_proveedor": (request.form.get(f"lote_{idx}") or "").strip(),
+                    "fecha_produccion": (request.form.get(f"fprod_{idx}") or "").strip() or None,
+                    "fecha_caducidad": (request.form.get(f"fcad_{idx}") or "").strip(),
+                    "rango_temperatura_controlada": (request.form.get(f"temp_{idx}") or "2C a 6C").strip(),
+                    "codigo_rfid_epc": (request.form.get(f"rfid_{idx}") or "").strip() or None,
+                }
+            )
+
+        if not id_oc or not partidas:
+            flash("Captura al menos una partida con cantidad mayor a cero para generar el despacho.", "error")
+            return redirect(url_for("operacion.despachos", tab="despachar"))
+
+        if clientes.activo():
+            st, r = clientes.como_usuario(
+                "asn",
+                "POST",
+                "/api/v1/asn/from-purchase-order",
+                {"id_oc": id_oc, "partidas": partidas, "transporte": transporte},
+                timeout=25,
+            )
+            if st == 201 and isinstance(r, dict) and r.get("folio_asn"):
+                flash(
+                    f"Despacho {r['folio_asn']} registrado con {len(r.get('etiquetas') or [])} etiqueta(s) QR listas para imprimir.",
+                    "ok",
+                )
+                return redirect(url_for("operacion.despachos", folio=r["folio_asn"], tab="despachar"))
+            flash(f"No se pudo generar el despacho: {clientes.mensaje_error('asn', st, r)}", "error")
+            return redirect(url_for("operacion.despachos", id_oc=id_oc, tab="despachar"))
+
+        try:
+            r = dom_recepcion.crear_despacho_desde_oc(
+                id_oc=id_oc,
+                partidas=partidas,
+                usuario=usuario,
+                transporte=transporte,
+            )
+            flash(
+                f"Despacho {r['folio_asn']} registrado con {len(r.get('etiquetas') or [])} etiqueta(s) QR listas para imprimir.",
+                "ok",
+            )
+            return redirect(url_for("operacion.despachos", folio=r["folio_asn"], tab="despachar"))
+        except (ValueError, SQLAlchemyError) as e:
+            flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
+            return redirect(url_for("operacion.despachos", id_oc=id_oc, tab="despachar"))
+
+    ordenes_pendientes = dom_recepcion.listar_ordenes_para_despacho()
+    id_oc_sel = (request.args.get("id_oc") or "").strip() or (
+        ordenes_pendientes[0]["id_oc"] if ordenes_pendientes else ""
+    )
+    oc_sel = dom_compras.obtener_orden_compra(id_oc_sel) if id_oc_sel else None
+    despachos_lista = dom_recepcion.listar_despachos_recientes(limite=40)
+
+    folio_sel = (request.args.get("folio") or "").strip()
+    asn_sel = next((d for d in despachos_lista if d.get("folio_asn") == folio_sel), None) if folio_sel else None
+    if asn_sel:
+        asn_sel = {
+            **asn_sel,
+            "etiquetas_svg": [
+                {
+                    **e,
+                    "svg_qr": etiquetas_qr.generar_svg_qr(
+                        e.get("qr_payload")
+                        or etiquetas_qr.construir_payload_qr(
+                            e["codigo_etiqueta"],
+                            asn_sel.get("folio_oc"),
+                            int(e["id_locacion_destino"]),
+                            int(e["id_sku"]),
+                        ),
+                        escala=3,
+                    ),
+                }
+                for e in (asn_sel.get("etiquetas") or [])
+            ],
+        }
+
+    tab_defecto = "despachar" if usuario["rol_clave"] in ("admin", "supplier") else "historial"
+    tab_activa = request.args.get("tab") or tab_defecto
+    if tab_activa not in ("despachar", "historial"):
+        tab_activa = tab_defecto
+    if tab_activa == "despachar" and usuario["rol_clave"] not in ("admin", "supplier"):
+        tab_activa = "historial"
+
+    return render_template(
+        "operacion/despachos.html",
+        active="dispatches",
+        ordenes_pendientes=ordenes_pendientes,
+        oc_sel=oc_sel,
+        asn_sel=asn_sel,
+        despachos=despachos_lista,
+        tab_activa=tab_activa,
+        hoy=date.today().isoformat(),
+        cad_defecto=(date.today() + timedelta(days=7)).isoformat(),
+    )
+
+
+@bp.get("/despachos/<folio_asn>/pdf")
+@login_required
+@requiere_vista("dispatches")
+def despacho_pdf(folio_asn: str):
+    descargar = request.args.get("descargar") == "1"
+    if clientes.activo():
+        ruta = f"/api/v1/asn/{folio_asn}/labels-pdf" + ("?download=1" if descargar else "")
+        st, pdf_bytes, hdrs = clientes.como_usuario_binario("asn", "GET", ruta, timeout=20)
+        if st == 200 and pdf_bytes:
+            disp = hdrs.get("content-disposition") or f'{"attachment" if descargar else "inline"}; filename="{folio_asn}_etiquetas.pdf"'
+            return Response(pdf_bytes, status=200, mimetype="application/pdf", headers={"Content-Disposition": disp, "Cache-Control": "no-store"})
+
+    try:
+        pdf_bytes, _ = dom_recepcion.obtener_pdf_hoja_asn(folio_asn, usuario=usuario_actual())
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("operacion.despachos"))
+
+    disp = "attachment" if descargar else "inline"
+    return Response(
+        pdf_bytes,
+        status=200,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'{disp}; filename="{folio_asn}_etiquetas.pdf"', "Cache-Control": "no-store"},
+    )
+
+
+@bp.get("/lotes/qr-consultar")
+@login_required
+@requiere_vista("batches")
+def lotes_qr_consultar():
+    usuario = usuario_actual()
+    if usuario["rol_clave"] not in ("admin", "warehouse", "store_manager"):
+        return jsonify({"error": "No tienes permisos para validar etiquetas de recepción."}), 403
+
+    codigo = (request.args.get("codigo") or "").strip()
+    id_loc = a_int(request.args.get("id_locacion"), 0) or None
+    if clientes.activo():
+        from urllib.parse import urlencode
+        qs = urlencode({k: v for k, v in {"codigo": codigo, "id_locacion": id_loc}.items() if v is not None})
+        st, r = clientes.como_usuario("asn", "GET", f"/api/v1/asn/labels?{qs}", timeout=8)
+        if st:
+            if st == 200:
+                return jsonify(r), 200
+            return jsonify({"error": clientes.mensaje_error("asn", st, r)}), st
+
+    try:
+        info = dom_recepcion.consultar_etiqueta_para_recepcion(codigo, id_locacion_usuario=id_loc)
+        return jsonify(info), 200
+    except dom_recepcion.ErrorRecepcion as err:
+        return jsonify({"error": str(err)}), err.http_status
+
+
+@bp.post("/lotes/recibir-qr")
+@login_required
+@requiere_vista("batches")
+def lotes_recibir_qr():
+    usuario = usuario_actual()
+    if usuario["rol_clave"] not in ("admin", "warehouse"):
+        flash("Solo el personal de almacén o el administrador puede confirmar recepciones por QR.", "error")
+        return redirect(url_for("operacion.lotes"))
+
+    codigo = (request.form.get("codigo_qr_crudo") or "").strip()
+    id_loc = a_int(request.form.get("id_locacion_recepcion"), 0)
+    cant = a_float(request.form.get("cantidad_recibida"))
+    temp_raw = (request.form.get("temperatura_registrada_c") or "").strip()
+    temp = float(temp_raw) if temp_raw else None
+    idem = (request.form.get("idempotency_key") or "").strip() or None
+    payload = {
+        "codigo_qr_crudo": codigo,
+        "id_locacion_recepcion": id_loc,
+        "cantidad_recibida": cant,
+        "fecha_caducidad_verificada": (request.form.get("fecha_caducidad_verificada") or "").strip() or None,
+        "temperatura_registrada_c": temp,
+        "resultado_inspeccion": request.form.get("resultado_inspeccion") or "CONFORME",
+        "accion_calidad": request.form.get("accion_calidad") or "ACEPTAR_DISPONIBLE",
+        "medio_lectura": "QR",
+        "observaciones": (request.form.get("observaciones") or "").strip() or None,
+        "idempotency_key": idem,
+    }
+
+    if clientes.activo():
+        st, r = clientes.como_usuario("inventory", "POST", "/api/v1/inventory/receive-scan", payload, timeout=15)
+        if st in (200, 201) and isinstance(r, dict):
+            flash(
+                f"Recepción QR confirmada ({r.get('codigo_etiqueta', '')}): "
+                f"{r.get('producto', '')} · {float(r.get('cantidad_recibida', 0)):g} "
+                f"{r.get('unidad_medida', '')} ({r.get('accion_calidad', '')}).",
+                "ok",
+            )
+        else:
+            flash(f"No se registró la recepción QR: {clientes.mensaje_error('inventory', st, r)}", "error")
+        return redirect(url_for("operacion.lotes"))
+
+    try:
+        r = dom_recepcion.procesar_recepcion_escaneo(
+            codigo_o_qr=codigo,
+            id_locacion_recepcion=id_loc,
+            cantidad_recibida=cant,
+            usuario=usuario,
+            fecha_caducidad_verificada=payload["fecha_caducidad_verificada"],
+            temperatura_registrada_c=temp,
+            resultado_inspeccion=payload["resultado_inspeccion"],
+            accion_calidad=payload["accion_calidad"],
+            medio_lectura="QR",
+            observaciones=payload["observaciones"],
+            idempotency_key=idem,
+        )
+        flash(
+            f"Recepción QR confirmada ({r['codigo_etiqueta']}): {r['producto']} · "
+            f"{r['cantidad_recibida']:g} {r['unidad_medida']} ({r['accion_calidad']}).",
+            "ok",
+        )
+    except (ValueError, SQLAlchemyError) as e:
+        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
     return redirect(url_for("operacion.lotes"))

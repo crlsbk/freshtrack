@@ -48,17 +48,21 @@ STATUS_TONES: dict[str, str] = {
     "APLICADO": "success", "APLICADA": "success", "RECIBIDA": "success", "RECIBIDO": "success",
     "NO_CONFIABLE": "warning", "CANCELADA": "danger", "CANCELADO": "danger",
 }
-_TONE_ICON = {"success": "SP_DialogApplyButton", "warning": "SP_MessageBoxWarning",
-              "danger": "SP_MessageBoxCritical", "info": "SP_MessageBoxInformation"}
+_TONE_ICON = {"success": "check-circle", "warning": "alert", "danger": "x-circle", "info": "info"}
 
 Column = tuple  # (key, header) o (key, header, fmt)
 
 
 # --------------------------------------------------------------------------- utilidades
-def std_icon(name: str) -> QIcon:
-    """Ícono de QStyle.StandardPixmap por nombre ("SP_BrowserReload"); vacío si no existe."""
+def std_icon(name: str, color: str | None = None) -> QIcon:
+    """Ícono de línea moderno (ui/icons.py). Acepta nombres propios ("refresh") o los
+    antiguos de QStyle ("SP_BrowserReload"); si no hay equivalente, cae al de QStyle."""
     if not name:
         return QIcon()
+    from . import icons
+
+    if icons.has(name):
+        return icons.icon(name, color)
     pix = getattr(QStyle.StandardPixmap, name, None)
     app = QApplication.instance()
     if pix is None or app is None:
@@ -128,7 +132,10 @@ def button(text: str, slot: Callable | None = None, *, variant: str = "", icon: 
     if variant:
         b.setProperty("variant", variant)
     if icon:
-        b.setIcon(std_icon(icon))
+        on_color = theme.tokens()["on_primary"] if variant == "primary" else (
+            theme.tokens()["on_danger"] if variant == "danger" else None)
+        b.setIcon(std_icon(icon, on_color))
+    b.setCursor(Qt.CursorShape.PointingHandCursor)
     if tooltip:
         b.setToolTip(tooltip)
     if shortcut:
@@ -249,7 +256,8 @@ class DataTable(QWidget):
                                    else QAbstractItemView.SelectionMode.SingleSelection)
         self.view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.view.verticalHeader().hide()
-        self.view.verticalHeader().setDefaultSectionSize(28)
+        self.view.verticalHeader().setDefaultSectionSize(34)
+        self.view.setShowGrid(False)
         self.view.horizontalHeader().setStretchLastSection(True)
         self.view.horizontalHeader().setHighlightSections(False)
         self.view.setWordWrap(False)
@@ -277,7 +285,7 @@ class DataTable(QWidget):
         self.act_export = self._accion("Exportar CSV…", "Ctrl+E", self.export_csv_dialog, ctx,
                                        "SP_DialogSaveButton")
         self.act_print = self._accion("Imprimir…", "Ctrl+P", lambda: self.print_table(self.title, self), ctx,
-                                      "SP_FileDialogDetailedView")
+                                      "printer")
         self._actualizar_vacio()
 
     def _accion(self, texto, atajo, slot, ctx, icono) -> QAction:
@@ -325,7 +333,7 @@ class DataTable(QWidget):
             tono = STATUS_TONES.get(str(valor or "").strip().upper())
             if tono:
                 it.setForeground(theme.color(tono))
-                it.setIcon(std_icon(_TONE_ICON[tono]))
+                it.setIcon(std_icon(_TONE_ICON[tono], theme.tokens()[tono]))
                 f = theme.font(theme.BASE_PT, bold=True)
                 it.setFont(f)
         return it

@@ -220,7 +220,7 @@ class OrdenesCompraPage(BasePage):
         self.btn_actualizar = self.actions.add_button("Actualizar", self.refresh, icon="SP_BrowserReload")
         self.btn_nueva = self.actions.add_button("Nueva OC…", self.nueva_oc, variant="primary", icon="SP_FileDialogNewFolder")
         self.btn_pdf = self.actions.add_button("Descargar PDF", self.descargar_pdf, icon="SP_ArrowDown")
-        self.btn_imprimir = self.actions.add_button("Imprimir PDF", self.imprimir_pdf, icon="SP_FileDialogDetailedView")
+        self.btn_imprimir = self.actions.add_button("Imprimir PDF", self.imprimir_pdf, icon="printer")
         self.btn_csv = self.actions.add_button("Exportar CSV", self.exportar_csv, icon="SP_DialogSaveButton")
         self.btn_correo = self.actions.add_button("Enviar por correo", self.enviar_correo, icon="SP_DialogYesButton")
 

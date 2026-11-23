@@ -93,7 +93,7 @@ class MermasPage(BasePage):
         self.btn_actualizar = self.actions.add_button("Actualizar", self.refresh, variant="primary",
                                                       icon="SP_BrowserReload")
         self.btn_exportar = self.actions.add_button("Exportar reporte", self.exportar, icon="SP_DialogSaveButton")
-        self.btn_imprimir = self.actions.add_button("Imprimir reporte", self.imprimir, icon="SP_FileDialogDetailedView")
+        self.btn_imprimir = self.actions.add_button("Imprimir reporte", self.imprimir, icon="printer")
 
         self.kpi_riesgo = KpiCard("Producto en riesgo (unid.)")
         self.kpi_proyectado = KpiCard("Desperdicio proyectado (unid.)")

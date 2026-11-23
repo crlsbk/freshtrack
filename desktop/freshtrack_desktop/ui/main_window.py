@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QStackedWidget, QWidget,
+    QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QStackedWidget,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 from .. import __version__
 from ..core.api_client import Exchange
 from .login_dialog import ROLE_NAMES
 from .pages.base import BasePage
+from . import icons
 from .widgets import std_icon
 from .xml_inspector import XmlInspector
 
@@ -34,17 +36,18 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1024, 640)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
+        self.setWindowIcon(QIcon(icons.app_logo(64)))
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("Sidebar")
-        self.sidebar.setFixedWidth(220)
         self.sidebar.setIconSize(QSize(18, 18))
+        self.sidebar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sidebar.currentRowChanged.connect(self._activar)
         self.stack = QStackedWidget()
         central = QWidget()
         lay = QHBoxLayout(central)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        lay.addWidget(self.sidebar)
+        lay.addWidget(self._panel_lateral())
         lay.addWidget(self.stack, 1)
         self.setCentralWidget(central)
 
@@ -67,6 +70,67 @@ class MainWindow(QMainWindow):
         ctx.window = self
 
     # ------------------------------------------------------------------ armado
+    def _panel_lateral(self) -> QFrame:
+        """Barra lateral: marca arriba, páginas al centro y tarjeta del usuario abajo."""
+        panel = QFrame()
+        panel.setObjectName("SidebarPanel")
+        panel.setFixedWidth(232)
+        v = QVBoxLayout(panel)
+        v.setContentsMargins(12, 16, 12, 12)
+        v.setSpacing(10)
+
+        marca = QHBoxLayout()
+        marca.setSpacing(10)
+        logo = QLabel()
+        logo.setPixmap(icons.app_logo(34))
+        nombre = QVBoxLayout()
+        nombre.setSpacing(0)
+        t1 = QLabel("FreshTrack")
+        t1.setObjectName("BrandName")
+        t2 = QLabel("Planeación y compras")
+        t2.setObjectName("BrandSub")
+        nombre.addWidget(t1)
+        nombre.addWidget(t2)
+        marca.addWidget(logo)
+        marca.addLayout(nombre, 1)
+        v.addLayout(marca)
+        v.addSpacing(6)
+
+        seccion = QLabel("MENÚ")
+        seccion.setObjectName("SidebarSection")
+        v.addWidget(seccion)
+        v.addWidget(self.sidebar, 1)
+
+        tarjeta = QFrame()
+        tarjeta.setObjectName("UserCard")
+        h = QHBoxLayout(tarjeta)
+        h.setContentsMargins(10, 8, 6, 8)
+        h.setSpacing(8)
+        self.avatar = QLabel()
+        self.avatar.setObjectName("Avatar")
+        self.avatar.setFixedSize(32, 32)
+        self.avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        datos = QVBoxLayout()
+        datos.setSpacing(0)
+        self.card_name = QLabel()
+        self.card_name.setObjectName("UserName")
+        self.card_role = QLabel()
+        self.card_role.setObjectName("UserRole")
+        datos.addWidget(self.card_name)
+        datos.addWidget(self.card_role)
+        salir = QToolButton()
+        salir.setObjectName("LogoutButton")
+        salir.setIcon(std_icon("logout"))
+        salir.setIconSize(QSize(18, 18))
+        salir.setToolTip("Cerrar sesión")
+        salir.setCursor(Qt.CursorShape.PointingHandCursor)
+        salir.clicked.connect(lambda: self.logout())
+        h.addWidget(self.avatar)
+        h.addLayout(datos, 1)
+        h.addWidget(salir)
+        v.addWidget(tarjeta)
+        return panel
+
     def _menus(self) -> None:
         mb = self.menuBar()
         archivo = mb.addMenu("&Archivo")
@@ -105,8 +169,8 @@ class MainWindow(QMainWindow):
             page = cls(self.ctx)
             self.pages.append(page)
             self.stack.addWidget(page)
-            item = QListWidgetItem(std_icon(cls.icon), cls.title)
-            item.setSizeHint(QSize(200, 36))
+            item = QListWidgetItem(std_icon(icons.PAGE_ICONS.get(cls.title, cls.icon)), cls.title)
+            item.setSizeHint(QSize(200, 40))
             self.sidebar.addItem(item)
         if self.pages and self.sidebar.currentRow() < 0:
             self.sidebar.setCurrentRow(0)
@@ -148,9 +212,17 @@ class MainWindow(QMainWindow):
         s = self.ctx.api.session
         if s is None:
             self.user_label.setText("Sin sesión")
+            self.card_name.setText("Sin sesión")
+            self.card_role.setText("")
+            self.avatar.setText("?")
             return
         nombre = s.usuario.get("nombre") or s.email
         self.user_label.setText(f"{nombre} · {ROLE_NAMES.get(s.rol, s.rol)} ({s.rol})")
+        self.card_name.setText(nombre)
+        self.card_name.setToolTip(s.email)
+        self.card_role.setText(ROLE_NAMES.get(s.rol, s.rol))
+        iniciales = "".join(p[0] for p in str(nombre).split()[:2] if p).upper() or "?"
+        self.avatar.setText(iniciales)
 
     def _ultima_llamada(self, ex: Exchange) -> None:
         svc = self.ctx.service_for_url(ex.url) or "?"

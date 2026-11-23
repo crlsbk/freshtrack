@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
     app = QApplication([])
-    theme.apply(app)
+    theme.apply(app, dark=True if os.environ.get("FRESHTRACK_OSCURO") == "1" else None)
     ctx = build_context()
     ctx.api.login(args.email, args.password)
     w = MainWindow(ctx)

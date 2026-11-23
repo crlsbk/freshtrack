@@ -73,7 +73,7 @@ class DecisionPage(BasePage):
         self.btn_csv = self.actions.add_button("Exportar CSV", self.table.export_csv_dialog,
                                                icon="SP_DialogSaveButton")
         self.btn_imprimir = self.actions.add_button(
-            "Imprimir", lambda: self.table.print_table(self.title, self), icon="SP_FileDialogDetailedView")
+            "Imprimir", lambda: self.table.print_table(self.title, self), icon="printer")
 
     def _seleccion_cambio(self) -> None:
         fila = self.table.selected_row()

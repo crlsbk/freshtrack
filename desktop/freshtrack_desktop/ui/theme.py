@@ -119,54 +119,135 @@ def _paleta(t: dict[str, str]) -> QPalette:
 
 
 def stylesheet(t: dict[str, str]) -> str:
+    from . import icons
+
+    abajo = icons.svg_file("chevron-down", t["text2"])
+    arriba = icons.svg_file("chevron-up", t["text2"])
     return f"""
 QMainWindow, QDialog {{ background: {t['window']}; }}
-QListWidget#Sidebar {{
-    background: {t['surface']}; border: none; border-right: 1px solid {t['border']};
-    outline: 0; padding-top: 8px;
-}}
+QToolTip {{ background: {t['text']}; color: {t['surface']}; border: none; padding: 6px 8px; border-radius: 6px; }}
+
+/* ---------- barra lateral ---------- */
+QFrame#SidebarPanel {{ background: {t['surface']}; border: none; border-right: 1px solid {t['border']}; }}
+QLabel#BrandName {{ font-size: 12.5pt; font-weight: 700; color: {t['text']}; }}
+QLabel#BrandSub {{ font-size: {SMALL_PT}pt; color: {t['text2']}; }}
+QLabel#SidebarSection {{ font-size: 8pt; font-weight: 700; color: {t['text2']}; padding-left: 10px; letter-spacing: 1px; }}
+QListWidget#Sidebar {{ background: transparent; border: none; outline: 0; }}
 QListWidget#Sidebar::item {{
-    height: 36px; padding-left: 9px; border-left: 3px solid transparent; color: {t['text']};
+    border-radius: 8px; padding-left: 10px; margin: 1px 0; color: {t['text2']}; font-weight: 500;
 }}
-QListWidget#Sidebar::item:hover {{ background: {t['alt_row']}; }}
-QListWidget#Sidebar::item:selected {{
-    background: {t['selection_bg']}; color: {t['text']}; border-left: 3px solid {t['primary']};
-}}
-QLabel#PageTitle {{ font-size: {TITLE_PT}pt; font-weight: 600; }}
+QListWidget#Sidebar::item:hover {{ background: {t['alt_row']}; color: {t['text']}; }}
+QListWidget#Sidebar::item:selected {{ background: {t['selection_bg']}; color: {t['primary']}; font-weight: 600; }}
+QFrame#UserCard {{ background: {t['window']}; border: 1px solid {t['border']}; border-radius: 10px; }}
+QFrame#UserCard QLabel {{ background: transparent; border: none; }}
+QFrame#UserCard QLabel#Avatar {{ background: {t['primary']}; color: {t['on_primary']}; border-radius: 16px; font-weight: 700; }}
+QLabel#UserName {{ font-weight: 600; color: {t['text']}; }}
+QLabel#UserRole {{ font-size: {SMALL_PT}pt; color: {t['text2']}; }}
+QToolButton#LogoutButton {{ border: none; border-radius: 6px; padding: 4px; background: transparent; }}
+QToolButton#LogoutButton:hover {{ background: {t['alt_row']}; }}
+
+/* ---------- textos ---------- */
+QLabel#PageTitle {{ font-size: {TITLE_PT + 2}pt; font-weight: 700; }}
 QLabel[role="secondary"] {{ color: {t['text2']}; font-size: {SMALL_PT}pt; }}
 QLabel[tone="success"] {{ color: {t['success']}; }}
 QLabel[tone="warning"] {{ color: {t['warning']}; }}
 QLabel[tone="danger"] {{ color: {t['danger']}; }}
 QLabel[tone="info"] {{ color: {t['info']}; }}
-QFrame#KpiCard {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 8px; }}
+
+/* ---------- tarjetas KPI ---------- */
+QFrame#KpiCard {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 12px; }}
 QFrame#KpiCard QLabel {{ background: transparent; border: none; }}
-QLabel#KpiValue {{ font-size: {KPI_PT}pt; font-weight: 600; }}
-QPushButton {{ padding: 5px 12px; }}
+QLabel#KpiValue {{ font-size: {KPI_PT + 2}pt; font-weight: 700; }}
+
+/* ---------- botones ---------- */
+QPushButton {{
+    background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']}; border-radius: 8px;
+    padding: 7px 14px; font-weight: 500;
+}}
+QPushButton:hover {{ background: {t['alt_row']}; }}
+QPushButton:pressed {{ background: {t['border']}; }}
+QPushButton:disabled {{ color: {t['text2']}; background: {t['window']}; }}
 QPushButton[variant="primary"] {{
-    background: {t['primary']}; color: {t['on_primary']}; border: none; border-radius: 6px;
-    padding: 6px 14px; font-weight: 600;
+    background: {t['primary']}; color: {t['on_primary']}; border: 1px solid {t['primary']}; font-weight: 600;
 }}
-QPushButton[variant="primary"]:hover {{ background: {t['primary_hover']}; }}
+QPushButton[variant="primary"]:hover {{ background: {t['primary_hover']}; border-color: {t['primary_hover']}; }}
 QPushButton[variant="danger"] {{
-    background: {t['danger']}; color: {t['on_danger']}; border: none; border-radius: 6px;
-    padding: 6px 14px; font-weight: 600;
+    background: {t['surface']}; color: {t['danger']}; border: 1px solid {t['danger']}; font-weight: 600;
 }}
+QPushButton[variant="danger"]:hover {{ background: {t['danger']}; color: {t['on_danger']}; }}
 QPushButton[variant="primary"]:disabled, QPushButton[variant="danger"]:disabled {{
-    background: {t['border']}; color: {t['text2']};
+    background: {t['window']}; color: {t['text2']}; border-color: {t['border']};
 }}
-QPushButton[variant="link"] {{ border: none; color: {t['info']}; text-align: left; padding: 2px 0; }}
-QPushButton:focus, QLineEdit:focus {{ outline: none; border: 1px solid {t['primary']}; }}
-QTableView {{
-    background: {t['surface']}; alternate-background-color: {t['alt_row']};
-    gridline-color: {t['border']}; border: 1px solid {t['border']};
+QPushButton[variant="link"] {{ border: none; background: transparent; color: {t['info']}; text-align: left; padding: 2px 0; }}
+QPushButton:focus {{ border: 1px solid {t['primary']}; }}
+
+/* ---------- campos ---------- */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QPlainTextEdit, QTextEdit {{
+    background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 8px; padding: 6px 8px;
     selection-background-color: {t['selection_bg']}; selection-color: {t['text']};
 }}
-QHeaderView::section {{
-    background: {t['window']}; color: {t['text']}; font-weight: 600; padding: 4px 6px;
-    border: none; border-bottom: 1px solid {t['border']}; border-right: 1px solid {t['border']};
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QDateEdit:focus,
+QPlainTextEdit:focus, QTextEdit:focus {{ border: 1px solid {t['primary']}; }}
+QComboBox {{ padding-right: 26px; }}
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; border: none; width: 24px; }}
+QComboBox::down-arrow {{ image: url("{abajo}"); width: 14px; height: 14px; }}
+QAbstractSpinBox {{ padding-right: 22px; }}
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{
+    subcontrol-origin: border; width: 20px; border: none; background: transparent;
 }}
-QDockWidget::title {{ padding: 4px 8px; background: {t['window']}; }}
-QStatusBar {{ color: {t['text2']}; }}
+QAbstractSpinBox::up-button {{ subcontrol-position: top right; margin: 3px 3px 0 0; }}
+QAbstractSpinBox::down-button {{ subcontrol-position: bottom right; margin: 0 3px 3px 0; }}
+QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {{ background: {t['alt_row']}; border-radius: 4px; }}
+QAbstractSpinBox::up-arrow {{ image: url("{arriba}"); width: 11px; height: 11px; }}
+QAbstractSpinBox::down-arrow {{ image: url("{abajo}"); width: 11px; height: 11px; }}
+QComboBox QAbstractItemView {{ border: 1px solid {t['border']}; border-radius: 8px; padding: 4px;
+    selection-background-color: {t['selection_bg']}; selection-color: {t['text']}; outline: 0; }}
+
+/* ---------- tablas ---------- */
+QTableView {{
+    background: {t['surface']}; alternate-background-color: {t['window']};
+    border: 1px solid {t['border']}; border-radius: 10px; gridline-color: transparent;
+    selection-background-color: {t['selection_bg']}; selection-color: {t['text']};
+}}
+QTableView::item {{ padding: 0 8px; border-bottom: 1px solid {t['border']}; }}
+QHeaderView::section {{
+    background: {t['surface']}; color: {t['text2']}; font-weight: 600; font-size: {SMALL_PT}pt;
+    padding: 8px; border: none; border-bottom: 1px solid {t['border']};
+}}
+QTableCornerButton::section {{ background: {t['surface']}; border: none; }}
+
+/* ---------- pestañas ---------- */
+QTabWidget::pane {{ border: none; border-top: 1px solid {t['border']}; top: -1px; }}
+QTabBar::tab {{
+    background: transparent; color: {t['text2']}; padding: 8px 14px; border: none;
+    border-bottom: 2px solid transparent; font-weight: 500;
+}}
+QTabBar::tab:hover {{ color: {t['text']}; }}
+QTabBar::tab:selected {{ color: {t['primary']}; border-bottom: 2px solid {t['primary']}; font-weight: 600; }}
+
+/* ---------- barras de scroll delgadas ---------- */
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {t['border']}; border-radius: 4px; min-height: 28px; }}
+QScrollBar::handle:vertical:hover {{ background: {t['text2']}; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar::handle:horizontal {{ background: {t['border']}; border-radius: 4px; min-width: 28px; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+
+/* ---------- otros ---------- */
+QGroupBox {{ border: 1px solid {t['border']}; border-radius: 10px; margin-top: 14px; padding-top: 8px; }}
+QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; color: {t['text2']}; font-weight: 600; }}
+QMenuBar {{ background: {t['surface']}; border-bottom: 1px solid {t['border']}; }}
+QMenuBar::item {{ padding: 6px 10px; background: transparent; border-radius: 6px; }}
+QMenuBar::item:selected {{ background: {t['alt_row']}; }}
+QMenu {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 8px; padding: 4px; }}
+QMenu::item {{ padding: 6px 22px 6px 12px; border-radius: 6px; }}
+QMenu::item:selected {{ background: {t['selection_bg']}; color: {t['text']}; }}
+QDockWidget::title {{ padding: 6px 10px; background: {t['surface']}; }}
+QStatusBar {{ color: {t['text2']}; background: {t['surface']}; border-top: 1px solid {t['border']}; }}
+QStatusBar QLabel {{ padding: 0 8px; }}
+QProgressBar {{ border: none; background: {t['border']}; border-radius: 3px; height: 6px; text-align: center; }}
+QProgressBar::chunk {{ background: {t['primary']}; border-radius: 3px; }}
 """
 
 
@@ -184,6 +265,12 @@ def apply(app: QApplication | None = None, dark: bool | None = None) -> None:
     app.setFont(f)
     app.setPalette(_paleta(_actual))
     app.setStyleSheet(stylesheet(_actual))
+    try:
+        from . import icons
+
+        icons.clear_cache()
+    except ImportError:
+        pass
     if dark is None and not _conectado:
         try:
             app.styleHints().colorSchemeChanged.connect(lambda *_: apply(app))

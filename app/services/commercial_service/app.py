@@ -18,10 +18,12 @@ from datetime import date, timedelta
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from flask import g, request
+from redis.exceptions import RedisError
 
 from app.db import a_float, query
 from app.domain import mermas as dom_mermas
 from app.domain import saga_venta
+from app.domain import ventas as dom_ventas
 from app.services import cache_service
 from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
 from app.services.common.rate_limit import limite_tasa
@@ -184,6 +186,88 @@ def registrar_merma():
         return error_response(409, "regla_negocio", str(err))
     cache_service.incrementar_contador("commercial", "shrinkage_registered")
     return render_response(res, status=201, root_tag="merma_registrada")
+
+
+TTL_IMPORTACION = 30 * 24 * 3600
+
+_IMPORT_EJEMPLO = {
+    "id_locacion": 2,
+    "tickets": [{"folio_externo": "POS-0001", "canal": "TIENDA", "lineas": [{"id_sku": 1, "cantidad": 2}]}],
+}
+
+
+@app.post("/api/v1/commercial/sales/import")
+@documentar(
+    "Importación masiva de ventas (idempotente por folio externo)",
+    cuerpo=_IMPORT_EJEMPLO,
+    raiz_xml="sales_import_request",
+    contrato_xsd="sales_import_request",
+    respuesta={"importados": 1, "duplicados": 0, "errores": 0,
+               "resultados": [{"folio_externo": "POS-0001", "estado": "IMPORTADO", "id_venta": 10, "folio": "V-20261021-0010"}]},
+    raiz_respuesta="sales_import_result",
+    errores=("400", "403"),
+    exito="200",
+)
+@requiere_auth("buyer", "planner")
+def importar_ventas():
+    """
+    Registra cada ticket como una venta. La idempotencia se garantiza con una clave en Redis
+    (`importacion:venta:{id_locacion}:{folio_externo}`, SET NX EX 30 días); si Redis no responde no se importa nada.
+    """
+    datos = leer_cuerpo("sales_import_request", requerido=True)
+    requerir_campos(datos, "id_locacion", "tickets")
+    id_locacion = entero(datos, "id_locacion", minimo=1)
+    tickets = datos.get("tickets")
+    if not isinstance(tickets, list):
+        raise ErrorApi(400, "parametro_invalido", "'tickets' debe ser una lista.")
+    redis_cli = cache_service.get_redis_client()
+    if redis_cli is None:
+        return error_response(503, "redis_no_disponible", "Redis no disponible: no se importó ningún ticket.")
+
+    usuario = usuario_desde_token()
+    resultados = []
+    conteo = {"IMPORTADO": 0, "DUPLICADO": 0, "ERROR": 0}
+    for i, ticket in enumerate(tickets):
+        folio_ext = str(ticket.get("folio_externo") or "") if isinstance(ticket, dict) else ""
+        if not folio_ext:
+            resultados.append({"folio_externo": folio_ext, "estado": "ERROR", "mensaje": f"El ticket {i + 1} no tiene folio_externo."})
+            conteo["ERROR"] += 1
+            continue
+        clave = f"importacion:venta:{id_locacion}:{folio_ext}"
+        try:
+            reservada = redis_cli.set(clave, "1", nx=True, ex=TTL_IMPORTACION)
+        except RedisError:
+            return error_response(503, "redis_no_disponible", "Redis no disponible: importación interrumpida.",
+                                  {"procesados": resultados})
+        if not reservada:
+            resultados.append({"folio_externo": folio_ext, "estado": "DUPLICADO"})
+            conteo["DUPLICADO"] += 1
+            continue
+        try:
+            lineas = [{"id_sku": entero(l, "id_sku", minimo=1), "cantidad": decimal_pos(l, "cantidad")}
+                      for l in (ticket.get("lineas") or [])]
+            canal = str(ticket.get("canal") or "TIENDA").upper()
+            if canal not in CANALES:
+                raise ValueError(f"Canal inválido. Valores: {sorted(CANALES)}")
+            venta = dom_ventas.registrar_venta(id_locacion=id_locacion, lineas=lineas, usuario=usuario, canal=canal)
+        except (ValueError, ErrorApi) as err:
+            try:
+                redis_cli.delete(clave)
+            except RedisError:
+                pass
+            mensaje = getattr(err, "mensaje", None) or str(err)
+            resultados.append({"folio_externo": folio_ext, "estado": "ERROR", "mensaje": mensaje})
+            conteo["ERROR"] += 1
+            continue
+        resultados.append({"folio_externo": folio_ext, "estado": "IMPORTADO",
+                           "id_venta": venta.get("id_venta"), "folio": venta.get("folio")})
+        conteo["IMPORTADO"] += 1
+
+    cache_service.incrementar_contador("commercial", "sales_imported")
+    return render_response(
+        {"importados": conteo["IMPORTADO"], "duplicados": conteo["DUPLICADO"], "errores": conteo["ERROR"], "resultados": resultados},
+        status=200, root_tag="sales_import_result",
+    )
 
 
 @app.get("/api/v1/commercial/sales")

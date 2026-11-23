@@ -31,7 +31,7 @@ POR_PAGINA_DEFECTO = 20
 POR_PAGINA_MAXIMO = 100
 
 # Etiquetas que siempre representan elementos de una lista al leer XML.
-_ETIQUETAS_LISTA = {"item", "item_carga", "linea", "subitem"}
+_ETIQUETAS_LISTA = {"item", "item_carga", "linea", "subitem", "ticket"}
 
 
 # =============================================================================

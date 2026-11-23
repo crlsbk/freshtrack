@@ -34,12 +34,12 @@ class DecisionPage(BasePage):
 
     def __init__(self, ctx, parent=None) -> None:
         super().__init__(ctx, parent)
-        self._cargando = False
+        self._gen = 0  # generación de la última lectura pedida; respuestas viejas se ignoran
         self.table = DataTable(empty_text=f"Sin {self.entidad}s para mostrar", title=self.title)
         self.table.selection_changed.connect(self._seleccion_cambio)
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(170)
+        self.detail.setMaximumHeight(115)
         self.detail.setPlaceholderText("Selecciona una fila para ver el detalle.")
         self.status_label = secondary_label("")
 
@@ -95,14 +95,15 @@ class DecisionPage(BasePage):
         raise NotImplementedError
 
     def refresh(self) -> None:
-        if self._cargando:
-            return
-        self._cargando = True
-        self.ctx.run(self._consulta, on_ok=self._mostrar, on_error=self._fallo_lectura,
+        self._gen += 1
+        gen = self._gen
+        self.ctx.run(self._consulta, on_ok=lambda datos: self._mostrar(datos, gen),
+                     on_error=lambda exc: self._fallo_lectura(exc, gen),
                      busy=getattr(self, "btn_actualizar", None))
 
-    def _mostrar(self, datos: Any) -> None:
-        self._cargando = False
+    def _mostrar(self, datos: Any, gen: int | None = None) -> None:
+        if gen is not None and gen != self._gen:
+            return  # llegó tarde: ya se pidió una lectura más nueva
         filas = self._filas_de(datos)
         self.table.set_rows(filas)
         self.detail.clear()
@@ -112,8 +113,9 @@ class DecisionPage(BasePage):
     def _despues_de_mostrar(self, datos: Any, filas: list[dict]) -> None:
         pass
 
-    def _fallo_lectura(self, exc: BaseException) -> None:
-        self._cargando = False
+    def _fallo_lectura(self, exc: BaseException, gen: int | None = None) -> None:
+        if gen is not None and gen != self._gen:
+            return
         self.ctx.show_error(exc, self)
 
     # ---- decisiones en lote
@@ -190,6 +192,12 @@ def _spin(valor: int, minimo: int, maximo: int, sufijo: str) -> QSpinBox:
     return s
 
 
+def _fijar_ancho(*botones: QWidget) -> None:
+    """Ancho mínimo = el que pide el texto, para que nunca se trunque."""
+    for b in botones:
+        b.setMinimumWidth(b.sizeHint().width())
+
+
 def _todas(combo: QComboBox, texto: str) -> None:
     combo.clear()
     combo.addItem(texto, "")
@@ -224,15 +232,6 @@ class ReabastecimientoPage(DecisionPage):
         filtros.addWidget(self.cmb_tienda)
         self.cmb_estado.currentIndexChanged.connect(lambda _i: self.refresh())
         self.cmb_tienda.currentIndexChanged.connect(lambda _i: self.refresh())
-        filtros.addSpacing(16)
-        filtros.addWidget(QLabel("Horizonte"))
-        self.spin_horizonte = _spin(7, 1, 90, " días")
-        filtros.addWidget(self.spin_horizonte)
-        self.btn_generar = button("Generar órdenes", self._generar, variant="primary", icon="SP_FileDialogNewFolder")
-        filtros.addWidget(self.btn_generar)
-        self.btn_ciclo = button("Ejecutar ciclo de planeación", self._ciclo, icon="SP_MediaPlay",
-                                tooltip="Pronóstico por tienda, triaje y reabastecimiento neto en un solo paso")
-        filtros.addWidget(self.btn_ciclo)
         filtros.addStretch(1)
         self.btn_aprobar = button("Aprobar", self._aprobar, variant="primary", icon="SP_DialogApplyButton")
         self.btn_rechazar = button("Rechazar", self._rechazar, variant="danger", icon="SP_DialogCancelButton")
@@ -240,6 +239,20 @@ class ReabastecimientoPage(DecisionPage):
         for b in (self.btn_aprobar, self.btn_rechazar, self.btn_contexto):
             filtros.addWidget(b)
         self.body.addLayout(filtros)
+
+        gen = QHBoxLayout()
+        gen.setSpacing(8)
+        gen.addWidget(QLabel("Horizonte"))
+        self.spin_horizonte = _spin(7, 1, 90, " días")
+        gen.addWidget(self.spin_horizonte)
+        self.btn_generar = button("Generar órdenes", self._generar, variant="primary", icon="SP_FileDialogNewFolder")
+        gen.addWidget(self.btn_generar)
+        self.btn_ciclo = button("Ejecutar ciclo de planeación", self._ciclo, icon="SP_MediaPlay",
+                                tooltip="Pronóstico por tienda, triaje y reabastecimiento neto en un solo paso")
+        gen.addWidget(self.btn_ciclo)
+        gen.addStretch(1)
+        _fijar_ancho(self.btn_aprobar, self.btn_rechazar, self.btn_contexto, self.btn_generar, self.btn_ciclo)
+        self.body.addLayout(gen)
 
         self.table.set_columns([
             ("producto", "Producto"), ("locacion", "Tienda"), ("cantidad_sugerida", "Sugerida", "num"),

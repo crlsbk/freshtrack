@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton
 
 from ...core.xml_codec import as_list, num
 from ..widgets import ask_text, button, confirm  # noqa: F401 - la base los resuelve por módulo
-from .reabastecimiento import DecisionPage, _spin  # noqa: F401
+from .reabastecimiento import DecisionPage, _fijar_ancho, _spin  # noqa: F401
 
 ESTADOS = ("SUGERIDO", "APROBADO", "RECHAZADO", "APLICADO")
 
@@ -58,14 +58,16 @@ class DescuentosPage(DecisionPage):
         self.btn_rechazar = button("Rechazar", self._rechazar, variant="danger", icon="SP_DialogCancelButton")
         fila.addWidget(self.btn_aprobar)
         fila.addWidget(self.btn_rechazar)
+        _fijar_ancho(*(fila.itemAt(i).widget() for i in range(fila.count())
+                       if isinstance(fila.itemAt(i).widget(), QPushButton)))
         self.body.addLayout(fila)
 
         self.table.set_columns([
-            ("producto", "Producto"), ("locacion", "Tienda"), ("descuento_pct", "Descuento", "pct"),
+            ("producto", "Producto"), ("locacion", "Tienda"), ("estado", "Estado", "status"),
+            ("codigo_lote_prov", "Lote"), ("descuento_pct", "Descuento", "pct"),
             ("precio_normal", "Precio normal", "money"), ("precio_nuevo", "Precio nuevo", "money"),
             ("margen", "Margen", "pct"), ("cantidad", "Cantidad", "num"), ("vigencia", "Vigencia"),
-            ("ingreso_potencial", "Ingreso potencial", "money"), ("estado", "Estado", "status"),
-            ("codigo_lote_prov", "Lote"),
+            ("ingreso_potencial", "Ingreso potencial", "money"),
         ])
         self._pie()
         self._actualizar_botones()

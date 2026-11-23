@@ -310,3 +310,42 @@ def test_exportar_csv_de_cada_pagina(ctx, qtbot, api, tmp_path):
         page = cargada(qtbot, cls, ctx, n)
         assert page.table.export_csv(tmp_path / f"{cls.__name__}.csv") == n
         assert page.btn_csv is not None and page.btn_imprimir is not None
+
+
+# --- Ronda 1 ---------------------------------------------------------------------------
+def test_refresh_concurrente_gana_el_ultimo_filtro(ctx, qtbot, fake_http):
+    import time
+
+    con_sesion(ctx)
+    fake_http.add("GET", "/api/v1/catalog/locations", body=LOCS)
+
+    def ordenes(req):
+        if req.params.get("estado") == "PENDIENTE":
+            time.sleep(0.4)  # la respuesta vieja llega después de la nueva
+            return 200, ORDENES, {}
+        return 200, VACIO_ORD, {}
+
+    fake_http.add("GET", f"{L}/replenishment/orders", body=ordenes)
+    page = ReabastecimientoPage(ctx)
+    qtbot.addWidget(page)
+    page.refresh()  # estado PENDIENTE (lento, 5 filas)
+    page.cmb_estado.setCurrentIndex(page.cmb_estado.findData("RECHAZADA"))  # dispara el segundo refresh (0 filas)
+    qtbot.waitUntil(lambda: ctx.pending == 0, timeout=WAIT)
+    QApplication.processEvents()
+    assert page.table.rows() == [] and "0 de 0" in page.status_label.text()
+
+
+def test_barra_de_botones_no_trunca_texto(ctx, qtbot, api):
+    con_sesion(ctx)
+    page = ReabastecimientoPage(ctx)
+    qtbot.addWidget(page)
+    for b in (page.btn_ciclo, page.btn_generar, page.btn_aprobar, page.btn_rechazar, page.btn_contexto):
+        assert b.minimumWidth() >= b.sizeHint().width()
+    assert page.detail.maximumHeight() <= 120
+
+
+def test_descuentos_estado_y_lote_junto_a_producto(ctx, qtbot, api):
+    page = DescuentosPage(ctx)
+    qtbot.addWidget(page)
+    cabeceras = [page.table.model.horizontalHeaderItem(i).text() for i in range(4)]
+    assert cabeceras == ["Producto", "Tienda", "Estado", "Lote"]

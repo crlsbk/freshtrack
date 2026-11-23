@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton
 
 from ...core.xml_codec import as_list, num
 from ..widgets import ask_text, button, confirm  # noqa: F401 - la base los resuelve por módulo
-from .reabastecimiento import DecisionPage, _spin, _todas  # noqa: F401
+from .reabastecimiento import DecisionPage, _fijar_ancho, _spin  # noqa: F401
 
 ESTADOS = ("SUGERIDA", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA")
 _VALIDACIONES = {
@@ -55,6 +55,8 @@ class TransferenciasPage(DecisionPage):
                                    tooltip="Mueve el inventario entre tiendas (solo transferencias aprobadas)")
         for b in (self.btn_aprobar, self.btn_rechazar, self.btn_ejecutar):
             fila.addWidget(b)
+        _fijar_ancho(*(fila.itemAt(i).widget() for i in range(fila.count())
+                       if isinstance(fila.itemAt(i).widget(), QPushButton)))
         self.body.addLayout(fila)
 
         self.table.set_columns([

@@ -26,6 +26,7 @@ from decimal import Decimal
 from flask import Flask, Response, g, request, send_from_directory
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import Config
 from app.services import cache_service, doc_store
@@ -97,6 +98,8 @@ def crear_servicio(
     """Crea la aplicación Flask de un microservicio con el comportamiento común."""
     app = Flask(nombre)
     app.config.from_object(Config)
+    if os.getenv("TRUST_PROXY", str(Config.TRUST_PROXY)).lower() == "true":
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
     app.config["JSON_SORT_KEYS"] = False
     app.json = JsonContrato(app)
     log = logging.getLogger(f"freshtrack.{nombre}")

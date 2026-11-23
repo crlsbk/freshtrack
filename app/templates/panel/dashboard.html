@@ -32,7 +32,7 @@
             'Órdenes de compra que el sistema sugiere y esperan la decisión de una persona.', 'carrito') }}
   {{ ui.kpi('Transferencias sugeridas', kpis.transferencias.sugeridas,
             (kpis.transferencias.ejecutadas | string) ~ ' ya ejecutadas', '#7c3aed',
-            url_for('analitica.transferencias') if 'transfers' in puede else None,
+            url_for('analitica.triaje', tab='traslados') if 'triage' in puede else None,
             'Mover producto por vencer de una tienda donde sobra a otra donde sí se vende.', 'camion') }}
 </div>
 
@@ -172,8 +172,8 @@
       </div>
     </div>
     <p class="text-muted" style="font-size:14px;">
-      El detalle de cada venta y el registro de nuevas ventas están en
-      {% if 'sales' in puede %}<a href="{{ url_for('operacion.ventas') }}">Ventas</a>{% else %}la pantalla de Ventas{% endif %}.
+      El detalle en tiempo real de cada venta recibida está en
+      {% if 'sales' in puede %}<a href="{{ url_for('operacion.ventas') }}">Monitor de Ventas</a>{% else %}el Monitor de Ventas{% endif %}.
     </p>
   </div>
 

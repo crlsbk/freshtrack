@@ -50,7 +50,7 @@ def _situacion(id_sku: int, id_locacion: int, horizonte: int) -> dict:
         sku=id_sku,
         loc=id_locacion,
     )
-    promedio_diario = pronostico.demanda_diaria_promedio(id_sku, id_locacion, 28)
+    promedio_diario = pronostico.demanda_diaria_vigente(id_sku, id_locacion)
     dias_riesgo = a_int(config_valor("dias_ventana_riesgo_lote", "5"), 5)
 
     fisico = 0.0

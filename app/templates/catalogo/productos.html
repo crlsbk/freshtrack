@@ -28,7 +28,7 @@
   </div>
   <button class="btn btn-primary" type="submit">Filtrar</button>
   <a class="btn btn-ghost" href="{{ url_for('catalogo.productos') }}">Limpiar</a>
-  {% if current_role in ['admin', 'buyer'] %}
+  {% if current_role in ['admin', 'supplier'] %}
   <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nuevo-producto')">
     + Nuevo producto
   </button>
@@ -36,7 +36,7 @@
 </form>
 
 {# ── Formulario de alta ── #}
-{% if current_role in ['admin', 'buyer'] %}
+{% if current_role in ['admin', 'supplier'] %}
 <div class="form-card" id="form-nuevo-producto" style="display:none;">
   <div class="card-title">Registrar producto</div>
   <form method="post" action="{{ url_for('catalogo.productos') }}">
@@ -94,6 +94,10 @@
         <input class="input" name="punto_reorden" type="number" step="0.01" min="0" value="0"/>
       </div>
       <div>
+        <label class="form-label">MOQ por lote</label>
+        <input class="input" name="moq_lote" type="number" step="0.01" min="1" placeholder="Por defecto del proveedor"/>
+      </div>
+      <div>
         <label class="form-label">Perecedero</label>
         <select class="input" name="perecedero">
           <option value="1">Sí</option>
@@ -126,6 +130,7 @@
         <th>Producto</th>
         <th>Categoría</th>
         <th>Proveedor</th>
+        <th>MOQ lote</th>
         <th>Vida útil</th>
         <th>Costo</th>
         <th>Venta</th>
@@ -154,6 +159,7 @@
               <span class="text-muted">—</span>
             {% endif %}
           </td>
+          <td class="mono">{{ (p.moq_lote_efectivo or 1) | cantidad(2) }} {{ p.unidad_medida }}</td>
           <td class="mono">{{ p.vida_util_estandar }} d</td>
           <td class="mono">{{ ui.moneda(p.precio_costo) }}</td>
           <td class="mono">{{ ui.moneda(p.precio_venta) }}</td>
@@ -167,7 +173,7 @@
             {% endif %}
           </td>
           <td>
-            {% if current_role in ['admin', 'buyer'] %}
+            {% if current_role in ['admin', 'supplier'] %}
             <div class="acciones">
               <button class="btn btn-ghost btn-sm" type="button"
                       onclick="toggleForm('editar-producto-{{ p.id_sku }}')">Editar</button>
@@ -184,7 +190,7 @@
           </td>
         </tr>
         <tr id="editar-producto-{{ p.id_sku }}" style="display:none;">
-          <td colspan="11" style="background:var(--muted);">
+          <td colspan="12" style="background:var(--muted);">
             <form method="post"
                   action="{{ url_for('catalogo.editar_producto', id_sku=p.id_sku) }}">
               <div class="form-grid-3">
@@ -237,6 +243,11 @@
                   <input class="input" name="punto_reorden" type="number" step="0.01"
                          value="{{ '%.2f' | format(p.punto_reorden | float) }}"/>
                 </div>
+                <div>
+                  <label class="form-label">MOQ por lote</label>
+                  <input class="input" name="moq_lote" type="number" step="0.01" min="1"
+                         value="{{ '%.2f' | format((p.moq_lote_efectivo or 1) | float) }}"/>
+                </div>
               </div>
               <div class="form-actions">
                 <button class="btn btn-primary btn-sm" type="submit">Guardar cambios</button>
@@ -247,7 +258,7 @@
           </td>
         </tr>
       {% else %}
-        {{ ui.vacio('Todavía no hay productos registrados. Usa «Nuevo producto» para dar de alta el primero.', 11) }}
+        {{ ui.vacio('Todavía no hay productos registrados. Usa «Nuevo producto» para dar de alta el primero.', 12) }}
       {% endfor %}
     </tbody>
   </table>

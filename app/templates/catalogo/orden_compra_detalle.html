@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block title %}{{ orden.folio }} · Orden de Compra PDF · FreshTrack{% endblock %}
+
+{% block content %}
+{{ ui.encabezado('Orden de Compra Formal', orden.folio ~ ' · ' ~ orden.proveedor,
+                 'Documento formal de compra por lotes enrutado por tienda destino, con descarga y envío directo al proveedor.') }}
+
+<div class="filtros" style="justify-content:space-between;align-items:center;">
+  <a class="btn btn-ghost" href="{{ url_for('catalogo.proveedores', proveedor=orden.id_proveedor, tab='ordenes') }}">
+    &larr; Volver a Proveedores y Compras
+  </a>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a class="btn btn-ghost" target="_blank" href="{{ url_for('catalogo.orden_compra_pdf', id_oc=orden.id_oc) }}">
+      Abrir PDF en nueva pestaña
+    </a>
+    <a class="btn btn-primary" href="{{ url_for('catalogo.orden_compra_pdf', id_oc=orden.id_oc, descargar=1) }}">
+      Descargar PDF ({{ orden.folio }}.pdf)
+    </a>
+  </div>
+</div>
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Folio', orden.folio, 'Estado: ' ~ (orden.estado | legible), '#2563eb', icono='carrito') }}
+  {{ ui.kpi('Lotes solicitados', orden.total_lotes, (orden.total_unidades | cantidad(2)) ~ ' unidades totales', '#16a34a', icono='caja') }}
+  {{ ui.kpi('Importe total', ui.moneda(orden.total), (orden.resumen_tiendas | length) ~ ' tienda(s) destino', '#0284c7', icono='dinero') }}
+  {{ ui.kpi('Entrega estimada', orden.fecha_entrega_estimada or '—', 'Tiempo de entrega: ' ~ orden.lead_time_dias ~ ' días', '#d97706', icono='reloj') }}
+</div>
+
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="form-card" style="margin-bottom:0;">
+    <div class="card-title">Datos del proveedor y respaldo documental</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">
+      <div>
+        <div class="text-muted" style="font-size:11px;">Proveedor</div>
+        <strong>{{ orden.proveedor }}</strong>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;">RFC</div>
+        <span class="mono">{{ orden.rfc }}</span>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;">Correo comercial</div>
+        <span>{{ orden.contacto_email or 'Sin correo registrado' }}</span>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;">Teléfono</div>
+        <span>{{ orden.telefono or '—' }}</span>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;">Emitida por</div>
+        <span>{{ orden.comprador }}</span>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;">Fecha de emisión</div>
+        <span>{{ orden.fecha_creacion | fecha_hora }}</span>
+      </div>
+    </div>
+
+    {% if orden.observaciones %}
+      <div class="form-note" style="margin-top:12px;">
+        <strong>Observaciones:</strong> {{ orden.observaciones }}
+      </div>
+    {% endif %}
+
+    {% if orden.documento_pdf %}
+      <div class="form-note" style="margin-top:12px;">
+        <strong>Respaldo en la nube:</strong>
+        {{ orden.documento_pdf.nombre_archivo }}
+        ({{ ((orden.documento_pdf.tamano_bytes or 0) / 1024) | round(1) }} KB) ·
+        Documento archivado para consulta y descarga inmediata.
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="form-card" style="margin-bottom:0;">
+    <div class="card-title">Enviar orden de compra por correo electrónico</div>
+    <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span class="text-muted" style="font-size:12px;">Estado de envío:</span>
+      {% if orden.estado_envio_correo == 'ENVIADO_SMTP' %}
+        <span class="badge badge-success">Enviada por correo a {{ orden.correo_envio }}</span>
+      {% elif orden.estado_envio_correo == 'REGISTRADO_SIN_SMTP' %}
+        <span class="badge badge-info">Envío registrado para {{ orden.correo_envio }}</span>
+      {% else %}
+        <span class="badge badge-neutral">Pendiente de envío</span>
+      {% endif %}
+    </div>
+
+    {% if current_role in ['admin', 'buyer'] %}
+      <form method="post" action="{{ url_for('catalogo.orden_compra_enviar_correo', id_oc=orden.id_oc) }}">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <label class="form-label">Correo destinatario *</label>
+            <input class="input" type="email" name="correo" required
+                   value="{{ orden.correo_envio or orden.contacto_email or '' }}"
+                   placeholder="compras@proveedor.mx"/>
+          </div>
+          <div>
+            <label class="form-label">Mensaje adicional para el proveedor (opcional)</label>
+            <textarea class="input" name="mensaje" rows="2"
+                      placeholder="Adjuntamos la orden de compra con las cantidades en lotes por tienda destino."></textarea>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary" type="submit">Enviar orden con PDF</button>
+            {% if not correo_configurado %}
+              <a class="btn btn-ghost" href="{{ mailto_href }}">Abrir en tu aplicación de correo</a>
+            {% endif %}
+          </div>
+        </div>
+      </form>
+      {% if not correo_configurado %}
+        <div class="form-note" style="margin-top:10px;">
+          El envío directo registra la solicitud de despacho y marca la orden como enviada; también puedes descargar el PDF o usar tu aplicación de correo habitual.
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="table-wrap" style="margin-bottom:20px;">
+  <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <div class="table-header-title">Vista previa del documento PDF ({{ orden.folio }})</div>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('catalogo.orden_compra_pdf', id_oc=orden.id_oc, descargar=1) }}">
+      Descargar PDF
+    </a>
+  </div>
+  <div style="padding:14px;">
+    <iframe src="{{ url_for('catalogo.orden_compra_pdf', id_oc=orden.id_oc) }}"
+            title="Orden de Compra {{ orden.folio }}"
+            style="width:100%;height:680px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;"></iframe>
+  </div>
+</div>
+
+<div class="table-wrap" style="margin-bottom:20px;">
+  <div class="table-header">
+    <div class="table-header-title">Resumen de enrutamiento por tienda destino ({{ orden.resumen_tiendas | length }})</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Tienda destino</th>
+        <th>Lotes asignados</th>
+        <th>Unidades totales</th>
+        <th>Importe tienda</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rt in orden.resumen_tiendas %}
+        <tr>
+          <td><strong>{{ rt.locacion_destino }}</strong></td>
+          <td class="mono">{{ rt.lotes }}</td>
+          <td class="mono">{{ rt.unidades | cantidad(2) }}</td>
+          <td class="mono" style="font-weight:600;">{{ ui.moneda(rt.subtotal) }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Detalle de lotes solicitados ({{ orden.lineas | length }} líneas)</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Tienda destino</th>
+        <th>Producto</th>
+        <th>Lotes</th>
+        <th>MOQ / lote</th>
+        <th>Total unidades</th>
+        <th>Precio unitario</th>
+        <th>Subtotal</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in orden.lineas %}
+        <tr>
+          <td><strong>{{ l.locacion_destino }}</strong></td>
+          <td>
+            <div>{{ l.producto }}</div>
+            <div class="mono text-muted" style="font-size:11px;">{{ l.codigo_gtin }}</div>
+          </td>
+          <td class="mono" style="font-weight:700;">{{ l.cantidad_lotes }}</td>
+          <td class="mono">{{ l.unidades_por_lote | cantidad(2) }} {{ l.unidad_medida }}</td>
+          <td class="mono">{{ l.cantidad_unidades | cantidad(2) }} {{ l.unidad_medida }}</td>
+          <td class="mono">{{ ui.moneda(l.precio_unitario) }}</td>
+          <td class="mono" style="font-weight:600;">{{ ui.moneda(l.subtotal) }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

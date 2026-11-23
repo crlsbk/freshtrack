@@ -24,9 +24,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import a_float, one, query, transaccion
 from app.events.dispatcher import publicar_evento
+from app.repos import catalogo as repo_cat
 from app.repos.catalogo import normalizar_gtin
 from app.services import cache_service
-from app.services.common.auth import requiere_auth
+from app.services.common.auth import requiere_auth, usuario_desde_token
 from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import (
     ErrorApi,
@@ -52,7 +53,7 @@ app = crear_servicio(
 CACHE_PREFIX_PRODUCTS = "catalog:products:"
 CACHE_KEY_LOCATIONS = "catalog:locations:all"
 CAMPOS_PRODUCTO = """p.id_sku, p.codigo_gtin, p.nombre, p.categoria, p.unidad_medida, p.id_proveedor,
-                     p.stock_seguridad, p.punto_reorden, p.perecedero,
+                     p.stock_seguridad, p.punto_reorden, p.moq_lote, p.perecedero,
                      p.vida_util_estandar, p.precio_costo, p.precio_venta, p.activo"""
 
 _PRODUCTO_EJEMPLO = {
@@ -70,8 +71,8 @@ def _producto(fila: dict) -> dict:
     d = dict(fila)
     d["precio_venta"] = a_float(d["precio_venta"])
     d["precio_costo"] = a_float(d["precio_costo"])
-    for campo in ("stock_seguridad", "punto_reorden"):
-        if campo in d:
+    for campo in ("stock_seguridad", "punto_reorden", "moq_lote"):
+        if campo in d and d[campo] is not None:
             d[campo] = a_float(d[campo])
     d.pop("_total", None)
     return d
@@ -113,6 +114,8 @@ def _validar_producto(datos: dict, parcial: bool) -> dict:
     for campo in ("stock_seguridad", "punto_reorden"):
         if datos.get(campo) not in (None, ""):
             limpio[campo] = decimal_pos(datos, campo, permitir_cero=True)
+    if datos.get("moq_lote") not in (None, ""):
+        limpio["moq_lote"] = decimal_pos(datos, "moq_lote")
     if not limpio:
         raise ErrorApi(400, "cuerpo_vacio", "No se recibió ningún campo de producto para actualizar.")
     return limpio
@@ -202,7 +205,7 @@ def _invalidar_y_publicar(evento: str, payload: dict) -> None:
     raiz_respuesta="producto_creado",
     errores=("400", "409", "415"),
 )
-@requiere_auth("buyer")
+@requiere_auth("supplier")
 def crear_producto():
     """Crea un producto en PostgreSQL, invalida la caché de Redis y emite PRODUCTO_CREADO."""
     datos = _validar_producto(leer_cuerpo("producto_request", requerido=True), parcial=False)
@@ -257,7 +260,7 @@ def _actualizar(id_sku: int, parcial: bool):
     errores=("400", "409"),
     exito="200",
 )
-@requiere_auth("buyer")
+@requiere_auth("supplier")
 def reemplazar_producto(id_sku: int):
     """PUT: exige todos los campos obligatorios del producto."""
     return _actualizar(id_sku, parcial=False)
@@ -273,15 +276,15 @@ def reemplazar_producto(id_sku: int):
     errores=("400", "409"),
     exito="200",
 )
-@requiere_auth("buyer")
+@requiere_auth("supplier")
 def modificar_producto(id_sku: int):
-    """PATCH: actualiza solo los campos enviados (precio, vida útil, estado...)."""
+    """PATCH: actualiza solo los campos enviados (precio, vida útil, moq_lote, estado...)."""
     return _actualizar(id_sku, parcial=True)
 
 
 @app.delete("/api/v1/catalog/products/<int:id_sku>")
-@documentar("Baja lógica de producto", respuesta={"id_sku": 1, "activo": False}, raiz_respuesta="producto_baja")
-@requiere_auth("admin")
+@documentar("Baja lógica de producto (reservado a proveedor o administrador)", respuesta={"id_sku": 1, "activo": False}, raiz_respuesta="producto_baja")
+@requiere_auth("supplier")
 def desactivar_producto(id_sku: int):
     """Desactiva el producto (no se borra: conserva la trazabilidad de sus lotes)."""
     with transaccion(id_usuario=g.usuario_actual.get("sub"), usuario_email=g.usuario_actual.get("email")) as conn:
@@ -334,6 +337,80 @@ def listar_proveedores():
     for f in filas:
         f["moq"] = a_float(f.get("moq"))
     return render_response({"total": len(filas), "proveedores": filas}, status=200, root_tag="catalogo_proveedores")
+
+
+@app.post("/api/v1/catalog/suppliers")
+@documentar(
+    "Alta de proveedor (reservado exclusivamente a admin)",
+    cuerpo={"razon_social": "Frutas Selectas S.A.", "rfc": "FSE260101AB1", "lead_time_dias": 2, "moq": 40, "contacto_email": "ventas@frutas.mx"},
+    raiz_xml="proveedor_request",
+    raiz_respuesta="proveedor_creado",
+    errores=("400", "403", "409"),
+    exito="201",
+)
+@requiere_auth("admin")
+def crear_proveedor_api():
+    """Solo un administrador puede dar de alta proveedores."""
+    datos = leer_cuerpo(requerido=True)
+    try:
+        res = repo_cat.crear_proveedor(datos, usuario_desde_token())
+    except ValueError as err:
+        return error_response(400, "parametro_invalido", str(err))
+    except IntegrityError:
+        return error_response(409, "duplicado", "Ya existe un proveedor registrado con ese RFC.")
+    publicar_evento("PROVEEDOR_CREADO", res)
+    return render_response(res, status=201, root_tag="proveedor_creado")
+
+
+@app.patch("/api/v1/catalog/suppliers/<int:id_proveedor>")
+@documentar("Actualización de proveedor o estado (solo admin)", raiz_respuesta="proveedor", errores=("400", "403", "404", "409"))
+@requiere_auth("admin")
+def actualizar_proveedor_api(id_proveedor: int):
+    """Actualiza datos o estado activo/inactivo de un proveedor (solo admin)."""
+    actual = repo_cat.obtener_proveedor(id_proveedor)
+    if not actual:
+        return error_response(404, "no_encontrado", f"Proveedor {id_proveedor} no existe.")
+    datos = leer_cuerpo(requerido=True)
+    try:
+        if "activo" in datos and len(datos) == 1:
+            act = datos["activo"]
+            activo_bool = act if isinstance(act, bool) else str(act).strip().lower() in ("true", "1", "on", "si", "sí")
+            repo_cat.cambiar_estado_proveedor(id_proveedor, activo_bool, usuario_desde_token())
+        else:
+            fusion = {
+                "razon_social": datos.get("razon_social", actual["razon_social"]),
+                "rfc": datos.get("rfc", actual["rfc"]),
+                "lead_time_dias": datos.get("lead_time_dias", actual["lead_time_dias"]),
+                "moq": datos.get("moq", actual["moq"]),
+                "contacto_email": datos.get("contacto_email", actual.get("contacto_email")),
+                "telefono": datos.get("telefono", actual.get("telefono")),
+            }
+            repo_cat.actualizar_proveedor(id_proveedor, fusion, usuario_desde_token())
+            if "activo" in datos:
+                act = datos["activo"]
+                activo_bool = act if isinstance(act, bool) else str(act).strip().lower() in ("true", "1", "on", "si", "sí")
+                repo_cat.cambiar_estado_proveedor(id_proveedor, activo_bool, usuario_desde_token())
+    except ValueError as err:
+        return error_response(400, "parametro_invalido", str(err))
+    except IntegrityError:
+        return error_response(409, "duplicado", "Ya existe otro proveedor con ese RFC.")
+    actualizado = repo_cat.obtener_proveedor(id_proveedor)
+    assert actualizado is not None
+    actualizado["moq"] = a_float(actualizado.get("moq"))
+    if actualizado.get("fecha_alta"):
+        actualizado["fecha_alta"] = actualizado["fecha_alta"].isoformat()
+    return render_response(actualizado, status=200, root_tag="proveedor")
+
+
+@app.delete("/api/v1/catalog/suppliers/<int:id_proveedor>")
+@documentar("Desactivación lógica de proveedor (solo admin)", raiz_respuesta="proveedor_baja", errores=("403", "404"))
+@requiere_auth("admin")
+def desactivar_proveedor_api(id_proveedor: int):
+    actual = repo_cat.obtener_proveedor(id_proveedor)
+    if not actual:
+        return error_response(404, "no_encontrado", f"Proveedor {id_proveedor} no existe.")
+    repo_cat.cambiar_estado_proveedor(id_proveedor, False, usuario_desde_token())
+    return render_response({"id_proveedor": id_proveedor, "activo": False}, status=200, root_tag="proveedor_baja")
 
 
 if __name__ == "__main__":

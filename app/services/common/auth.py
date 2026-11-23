@@ -24,11 +24,35 @@ from typing import Any, Callable
 import jwt
 from flask import g, request
 
-from app.security import decodificar_token
+from app.security import decodificar_token, verificar_sesion_respaldo_bd
 from app.services.cache_service import esta_jwt_revocado, incrementar_contador, sesion_activa
-from app.services.common.response import correlation_id, error_response
+from app.services.common.response import ErrorApi, correlation_id, error_response
 
 logger = logging.getLogger("freshtrack.auth")
+
+ROLES_ACOTADOS_SUCURSAL = {"store_manager", "warehouse"}
+
+
+def validar_alcance_locacion(id_locacion_objetivo: int | None) -> None:
+    """
+    Restringe operaciones de escritura por sucursal para roles operativos de tienda/almacén:
+    si el usuario está asignado a una sucursal en su JWT, no puede modificar datos de otra.
+    """
+    payload = getattr(g, "usuario_actual", None) or {}
+    rol = (payload.get("rol") or "").lower()
+    if rol not in ROLES_ACOTADOS_SUCURSAL:
+        return
+    loc_token = payload.get("id_locacion")
+    if loc_token is None or id_locacion_objetivo is None:
+        return
+    if int(loc_token) != int(id_locacion_objetivo):
+        incrementar_contador("auth", "access_denied_branch")
+        raise ErrorApi(
+            403,
+            "sucursal_no_autorizada",
+            f"El usuario de la sucursal {loc_token} no tiene permiso para modificar datos de la sucursal {id_locacion_objetivo}.",
+            {"id_locacion_token": int(loc_token), "id_locacion_solicitada": int(id_locacion_objetivo)},
+        )
 
 
 def obtener_contexto() -> dict[str, Any]:
@@ -90,9 +114,19 @@ def requiere_auth(*roles_permitidos: str) -> Callable:
                 incrementar_contador("auth", "access_denied_invalid")
                 return error_response(401, "token_invalido", "Token inválido, expirado o manipulado.")
 
-            if sesion_activa(payload["jti"]) is False:
+            estado_redis = sesion_activa(payload["jti"])
+            if estado_redis is False:
                 incrementar_contador("auth", "access_denied_no_session")
                 return error_response(401, "sesion_inexistente", "La sesión no existe o expiró en Redis. Inicie sesión de nuevo.")
+            if estado_redis is None:
+                # Fail-Closed ante fallo de Redis: si el respaldo en PostgreSQL no confirma sesión vigente, rechazar.
+                if not verificar_sesion_respaldo_bd(payload["jti"]):
+                    incrementar_contador("auth", "access_denied_redis_fail_closed")
+                    return error_response(
+                        401,
+                        "sesion_no_verificable",
+                        "No se pudo verificar la vigencia de la sesión ante la indisponibilidad de Redis (Fail-Closed).",
+                    )
 
             rol_usuario = (payload.get("rol") or "").lower()
             if roles_permitidos:

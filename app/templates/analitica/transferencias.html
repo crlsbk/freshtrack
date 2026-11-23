@@ -21,6 +21,7 @@
   <form method="post" action="{{ url_for('analitica.transferencias_detectar') }}">
     <button class="btn btn-primary" type="submit">Detectar oportunidades</button>
   </form>
+  <a class="btn btn-ghost" href="{{ url_for('analitica.triaje') }}">⚡ Triaje automático (Descuento ↔ Traslado ↔ Merma)</a>
   <form method="get" action="{{ url_for('analitica.transferencias') }}"
         style="display:flex;gap:12px;align-items:flex-end;">
     <div class="campo">

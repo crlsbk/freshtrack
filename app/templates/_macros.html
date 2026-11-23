@@ -60,8 +60,9 @@
       'SUGERIDA': 'info', 'SUGERIDO': 'info', 'EJECUTADA': 'success',
       'APROBADO': 'success', 'RECHAZADO': 'danger', 'CANCELADA': 'neutral',
       'ABIERTA': 'danger', 'ATENDIDA': 'success', 'DESCARTADA': 'neutral',
-      'AGOTADO': 'neutral', 'DISPONIBLE': 'success', 'VENCIDO': 'danger',
-      'BLOQUEADO': 'warning'} %}
+      'AGOTADO': 'neutral', 'DISPONIBLE': 'success', 'RESERVADO': 'info',
+      'VENCIDO': 'danger', 'BLOQUEADO': 'warning', 'CUARENTENA': 'warning',
+      'DAÑADO': 'danger', 'RETIRADO': 'neutral', 'MERMA': 'danger'} %}
   <span class="badge badge-{{ mapa.get(valor, 'neutral') }}">{{ valor | legible }}</span>
 {% endmacro %}
 
@@ -177,4 +178,114 @@
 {# --- Bloque de explicación (reabastecimiento / transferencia) ------------ #}
 {% macro explicacion(texto) %}
   <pre class="explicacion">{{ texto }}</pre>
+{% endmacro %}
+
+{# --- Modal reutilizable de trazabilidad de lote (Pop-up) ----------------- #}
+{% macro modal_trazabilidad() %}
+<div class="ft-modal-backdrop" id="modal-trazabilidad" role="dialog" aria-modal="true" aria-labelledby="modal-traza-titulo">
+  <div class="ft-modal">
+    <div class="ft-modal-head">
+      <div>
+        <div class="ft-modal-title" id="modal-traza-titulo">Trazabilidad del lote</div>
+        <div class="text-muted" id="modal-traza-sub" style="font-size:12px;">Cargando historial operativo…</div>
+      </div>
+      <button type="button" class="ft-modal-close" onclick="cerrarModalTrazabilidad()" aria-label="Cerrar">×</button>
+    </div>
+    <div class="ft-modal-body" id="modal-traza-body">
+      <div class="text-muted" style="padding:24px;text-align:center;">Consultando historial completo del lote…</div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const num = (v, d = 2) => Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: d });
+  const mon = (v) => Number(v || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+
+  window.cerrarModalTrazabilidad = function () {
+    const m = document.getElementById('modal-trazabilidad');
+    if (m) m.classList.remove('open');
+  };
+
+  window.abrirModalTrazabilidad = async function (idLote) {
+    const m = document.getElementById('modal-trazabilidad');
+    const sub = document.getElementById('modal-traza-sub');
+    const body = document.getElementById('modal-traza-body');
+    if (!m || !body) return;
+    sub.textContent = 'Consultando historial…';
+    body.innerHTML = '<div class="text-muted" style="padding:24px;text-align:center;">Cargando trazabilidad del lote…</div>';
+    m.classList.add('open');
+
+    try {
+      const urlTpl = {{ url_for('operacion.lotes_trazabilidad_json', id_lote='__LOTE__') | tojson }};
+      const resp = await fetch(urlTpl.replace('__LOTE__', encodeURIComponent(idLote)));
+      const d = await resp.json();
+      if (!resp.ok || !d.lote) {
+        body.innerHTML = `<div class="aviso-advertencia">${esc(d.error || 'No se pudo cargar la trazabilidad del lote.')}</div>`;
+        return;
+      }
+      const l = d.lote;
+      const r = d.resumen || {};
+      sub.textContent = `${l.codigo_lote_prov} · ${l.producto} · ${l.estado} (${l.clasificacion})`;
+
+      const exRows = (d.existencias || []).map(e =>
+        `<tr><td><strong>${esc(e.locacion)}</strong></td><td>${esc(e.tipo_locacion)}</td><td class="mono">${num(e.cantidad_disponible)} ${esc(l.unidad_medida)}</td><td class="mono">${num(e.cantidad_reservada)}</td></tr>`
+      ).join('') || '<tr><td colspan="4" class="text-muted">Sin existencia actual.</td></tr>';
+
+      const vRows = (d.ventas || []).slice(0, 12).map(v =>
+        `<tr><td class="mono" style="font-size:11px;">${esc(v.folio)}</td><td>${esc(v.locacion)}</td><td class="mono">${num(v.cantidad)}</td><td class="mono">${mon(v.subtotal)}</td></tr>`
+      ).join('') || '<tr><td colspan="4" class="text-muted">Sin ventas registradas aún.</td></tr>';
+
+      const mRows = (d.mermas || []).slice(0, 10).map(x =>
+        `<tr><td>${esc(x.locacion)}</td><td><span class="badge badge-warning">${esc(x.causa_merma)}</span></td><td class="mono">${num(x.cantidad)}</td><td class="mono">${mon(x.valor_merma)}</td></tr>`
+      ).join('') || '<tr><td colspan="4" class="text-muted">Sin mermas asociadas.</td></tr>';
+
+      const movRows = (d.movimientos || []).map(mv =>
+        `<tr><td class="mono" style="font-size:11px;">${esc(String(mv.fecha || '').replace('T', ' ').slice(0, 16))}</td><td><span class="badge badge-info">${esc(mv.tipo)}</span></td><td>${esc(mv.locacion)}</td><td class="mono">${num(mv.cantidad)}</td><td class="mono">${num(mv.cantidad_resultante)}</td><td style="font-size:11.5px;">${esc(mv.usuario || 'Sistema')}</td></tr>`
+      ).join('') || '<tr><td colspan="6" class="text-muted">Sin movimientos registrados.</td></tr>';
+
+      body.innerHTML = `
+        <div class="stat-grid-4">
+          <div class="card kpi-card"><div class="kpi-label">Recibido</div><div class="kpi-value">${num(r.recibido)} ${esc(l.unidad_medida)}</div><div class="kpi-sub">Costo unit. ${mon(l.costo_unitario)}</div></div>
+          <div class="card kpi-card"><div class="kpi-label">Vendido</div><div class="kpi-value" style="color:var(--success);">${num(r.vendido)} ${esc(l.unidad_medida)}</div><div class="kpi-sub">${num(r.porcentaje_venta, 1)}% de lo recibido</div></div>
+          <div class="card kpi-card"><div class="kpi-label">Mermado</div><div class="kpi-value" style="color:var(--danger);">${num(r.mermado)} ${esc(l.unidad_medida)}</div><div class="kpi-sub">${num(r.porcentaje_merma, 1)}% de lo recibido</div></div>
+          <div class="card kpi-card"><div class="kpi-label">Existencia actual</div><div class="kpi-value">${num(r.existencia)} ${esc(l.unidad_medida)}</div><div class="kpi-sub">${esc(l.dias_restantes)} días restantes</div></div>
+        </div>
+        <div class="detalle-grid">
+          <div class="detalle-item"><div class="detalle-etiqueta">Proveedor</div><div class="detalle-valor">${esc(l.proveedor)}</div></div>
+          <div class="detalle-item"><div class="detalle-etiqueta">Recepción</div><div class="detalle-valor">${esc(l.fecha_recepcion)} (${esc(l.locacion_recepcion || '—')})</div></div>
+          <div class="detalle-item"><div class="detalle-etiqueta">Caducidad</div><div class="detalle-valor">${esc(l.fecha_caducidad)} · Vida útil ${num(l.vida_util_pct, 0)}%</div></div>
+        </div>
+        <div>
+          <div class="card-title" style="font-size:14px;margin-bottom:8px;">Existencia por ubicación</div>
+          <table><thead><tr><th>Ubicación</th><th>Tipo</th><th>Disponible</th><th>Reservado</th></tr></thead><tbody>${exRows}</tbody></table>
+        </div>
+        <div class="grid-2">
+          <div>
+            <div class="card-title" style="font-size:14px;margin-bottom:8px;">Últimas ventas FEFO</div>
+            <table><thead><tr><th>Folio</th><th>Tienda</th><th>Cant.</th><th>Subtotal</th></tr></thead><tbody>${vRows}</tbody></table>
+          </div>
+          <div>
+            <div class="card-title" style="font-size:14px;margin-bottom:8px;">Mermas del lote</div>
+            <table><thead><tr><th>Tienda</th><th>Causa</th><th>Cant.</th><th>Valor</th></tr></thead><tbody>${mRows}</tbody></table>
+          </div>
+        </div>
+        <div>
+          <div class="card-title" style="font-size:14px;margin-bottom:8px;">Historial de movimientos</div>
+          <table><thead><tr><th>Fecha</th><th>Movimiento</th><th>Ubicación</th><th>Cambio</th><th>Saldo</th><th>Responsable</th></tr></thead><tbody>${movRows}</tbody></table>
+        </div>`;
+    } catch (err) {
+      body.innerHTML = `<div class="aviso-advertencia">Error al consultar la trazabilidad: ${esc(err)}</div>`;
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const m = document.getElementById('modal-trazabilidad');
+    if (e.target === m) cerrarModalTrazabilidad();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cerrarModalTrazabilidad();
+  });
+})();
+</script>
 {% endmacro %}

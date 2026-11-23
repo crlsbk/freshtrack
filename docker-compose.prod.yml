@@ -1,0 +1,133 @@
+# =============================================================================
+# FreshTrack — Overlay de Producción para GCP (Caddy HTTPS + Gunicorn + GCS)
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+#
+# Efectos clave sobre docker-compose.yml:
+#   1. Cierra todos los puertos internos (5432, 6379, 27017, 5000–5008, 9000–9001).
+#   2. Desactiva el contenedor local S3 (minio) por defecto (usa Google Cloud Storage HMAC).
+#   3. Ejecuta Flask Web y los 8 microservicios con Gunicorn (WSGI productivo).
+#   4. Expone únicamente Caddy en :80 y :443 con TLS automático y rutas /api/v1/*.
+# =============================================================================
+
+x-entorno-prod: &entorno-prod
+  TRUST_PROXY: "true"
+  SESSION_COOKIE_SECURE: "true"
+  SVC_PUBLIC_HOST: ${PUBLIC_DOMAIN:-localhost}
+  OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-https://storage.googleapis.com}
+  OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-auto}
+
+services:
+  postgres:
+    ports: !reset []
+
+  mongo:
+    ports: !reset []
+    command: ["mongod", "--wiredTigerCacheSizeGB", "1"]
+
+  redis:
+    ports: !reset []
+
+  minio:
+    profiles: ["local-s3"]
+    ports: !reset []
+
+  app:
+    ports: !reset []
+    depends_on: !override
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      svc_auth: { condition: service_healthy }
+      svc_catalog: { condition: service_healthy }
+      svc_commercial: { condition: service_healthy }
+      svc_planning: { condition: service_healthy }
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "90", "--access-logfile", "-", "run:app"]
+
+  svc_auth:
+    ports: !reset []
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.auth_service.app:app"]
+
+  svc_catalog:
+    ports: !reset []
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5002", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.catalog_service.app:app"]
+
+  svc_inventory:
+    ports: !reset []
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5003", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.inventory_service.app:app"]
+
+  svc_commercial:
+    ports: !reset []
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5004", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.commercial_service.app:app"]
+
+  svc_asn:
+    ports: !reset []
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.asn_service.app:app"]
+
+  svc_planning:
+    ports: !reset []
+    depends_on: !override
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5006", "--workers", "2", "--threads", "4", "--timeout", "120", "--access-logfile", "-", "app.services.planning_service.app:app"]
+
+  svc_alerts:
+    ports: !reset []
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5007", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.alerts_service.app:app"]
+
+  svc_audit:
+    ports: !reset []
+    environment:
+      <<: *entorno-prod
+    command: ["gunicorn", "--bind", "0.0.0.0:5008", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.audit_service.app:app"]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: freshtrack_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@freshtrack.mx}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - freshtrack
+    depends_on:
+      app: { condition: service_healthy }
+      svc_auth: { condition: service_healthy }
+      svc_catalog: { condition: service_healthy }
+      svc_inventory: { condition: service_healthy }
+      svc_commercial: { condition: service_healthy }
+      svc_asn: { condition: service_healthy }
+      svc_planning: { condition: service_healthy }
+      svc_alerts: { condition: service_healthy }
+      svc_audit: { condition: service_healthy }
+
+volumes:
+  caddy_data:
+  caddy_config:

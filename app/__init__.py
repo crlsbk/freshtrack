@@ -7,10 +7,12 @@ que arma el menú lateral según el rol de la sesión.
 
 from __future__ import annotations
 
+import os
 from decimal import Decimal
 
 from flask import Flask, session
 from flask.json.provider import DefaultJSONProvider
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import Config
 from app.navegacion import (
@@ -122,6 +124,11 @@ def _registrar_filtros(app: Flask) -> None:
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config.from_object(Config)
+    secure = os.getenv("SESSION_COOKIE_SECURE", str(Config.SESSION_COOKIE_SECURE)).lower() == "true"
+    app.config["SESSION_COOKIE_SECURE"] = secure
+    app.config["PREFERRED_URL_SCHEME"] = "https" if secure else "http"
+    if os.getenv("TRUST_PROXY", str(Config.TRUST_PROXY)).lower() == "true":
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
     app.json = ProveedorJSON(app)
     _registrar_filtros(app)
 

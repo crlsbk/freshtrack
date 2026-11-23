@@ -193,7 +193,7 @@ ON CONFLICT (email) DO NOTHING;
 -- -----------------------------------------------------------------------------
 INSERT INTO analitica.configuracion (clave, valor, tipo, descripcion) VALUES
     ('horizonte_pronostico_dias',      '7',    'entero',  'Horizonte por defecto del pronóstico en días'),
-    ('metodo_pronostico_default',      'SUAVIZACION_EXPONENCIAL', 'texto', 'Método de pronóstico por defecto'),
+    ('metodo_pronostico_default',      'AUTO',                    'texto',  'Método de pronóstico automático por tienda'),
     ('ventana_media_movil',            '28',   'entero',  'Días de historia usados por la media móvil'),
     ('alpha_suavizacion',              '0.30', 'decimal', 'Factor de suavización exponencial (0-1)'),
     ('min_dias_historia_pronostico',   '14',   'entero',  'Mínimo de días con ventas para pronosticar una serie'),

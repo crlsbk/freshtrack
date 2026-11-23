@@ -1,129 +1,185 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block titulo %}Pronósticos{% endblock %}
+{% block titulo %}Pronósticos por Tienda{% endblock %}
 {% block breadcrumb %}Analítica › Pronósticos{% endblock %}
 
 {% block content %}
 {{ ui.encabezado(
   'Analítica',
-  'Pronóstico de demanda',
-  'Demanda esperada por producto y tienda para los próximos días, con el error de cada modelo para saber qué tan confiable es.'
+  'Modelos de demanda por tienda y vigilancia de deriva',
+  'Cada tienda cuenta con su propio modelo automático sin configuración manual. El sistema evalúa de forma continua cambios bruscos en las ventas o pérdida de confiabilidad.'
 ) }}
 
-{# ── Ejecutar ── #}
-<div class="form-card">
-  <div class="card-title">Ejecutar pronóstico</div>
-  <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}">
-    <div class="form-grid-3">
-      <div>
-        <label class="form-label">
-          Método {{ ui.ayuda('Algoritmo utilizado para proyectar la serie temporal: Promedio móvil simple, Suavización exponencial, o Descomposición estacional por día de semana.') }}
-        </label>
-        <select class="input" name="metodo">
-          {% for clave, m in metodos.items() %}
-            <option value="{{ clave }}"
-                    {% if corrida and corrida.metodo == clave %}selected{% endif %}>
-              {{ m.etiqueta }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="form-label">
-          Horizonte (días) {{ ui.ayuda('Ventana temporal futura: cantidad de días hacia adelante que se pronosticarán para cada SKU en cada tienda.') }}
-        </label>
-        <input class="input" name="horizonte" type="number" min="1" max="30"
-               value="{{ horizonte_defecto }}"/>
-      </div>
-      <div>
-        <label class="form-label">
-          Ventana de historia (días) {{ ui.ayuda('Días de ventas históricas que el modelo analiza para entrenar los patrones de consumo (mínimo 14 días para capturar estacionalidad semanal).') }}
-        </label>
-        <input class="input" name="dias_historia" type="number" min="14" max="365" value="120"/>
-      </div>
-      <div>
-        <label class="form-label">
-          Ventana de la media móvil {{ ui.ayuda('Número de días recientes considerados en el cálculo de la media móvil para suavizar picos aislados de demanda.') }}
-        </label>
-        <input class="input" name="ventana" type="number" min="2" max="90"
-               value="{{ ventana_defecto }}"/>
-      </div>
-      <div>
-        <label class="form-label">
-          Alfa (suavización exponencial) {{ ui.ayuda('Factor de ponderación α entre 0.05 y 0.95. Un valor alto da mayor peso a los días más recientes; un valor bajo genera proyecciones más estables.') }}
-        </label>
-        <input class="input" name="alpha" type="number" step="0.05" min="0.05" max="0.95"
-               value="{{ alpha_defecto }}"/>
-      </div>
-      <div>
-        <label class="form-label">
-          Limitar a una tienda {{ ui.ayuda('Permite ejecutar el modelo de demanda para una sola sucursal o para toda la red de tiendas de forma agregada.') }}
-        </label>
-        <select class="input" name="id_locacion">
-          <option value="">Todas</option>
-          {% for l in locaciones %}
-            <option value="{{ l.id_locacion }}">{{ l.nombre }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-primary" type="submit">Ejecutar y guardar corrida</button>
-    </div>
-    <div class="form-note">
-      {% for clave, m in metodos.items() %}
-        <strong>{{ m.etiqueta }}:</strong> {{ m.descripcion }}
-        {% if not loop.last %}<br/>{% endif %}
-      {% endfor %}
-    </div>
-  </form>
+{% set sr = salud.resumen if salud else {'total_tiendas': 0, 'confiables': 0, 'vigilancia': 0, 'no_confiables': 0, 'total_anomalias_sku': 0} %}
+
+<div class="stat-grid-4">
+  {{ ui.kpi('Modelos por tienda', sr.total_tiendas, 'Un modelo propio por sucursal',
+            None, None, 'Cada sucursal mantiene un modelo independiente ajustado a su propio patrón de venta.', 'caja') }}
+  {{ ui.kpi('Modelos confiables', sr.confiables, 'Estables y vigentes', '#16a34a', None,
+            'Tiendas cuyo volumen reciente y precisión se mantienen dentro del comportamiento esperado.', 'check') }}
+  {{ ui.kpi('En vigilancia', sr.vigilancia, 'Variación moderada reciente', '#d97706', None,
+            'Tiendas con picos aislados, sesgo leve o más de 72 horas sin actualizarse.', 'reloj') }}
+  {{ ui.kpi('Requieren recalibración', sr.no_confiables,
+            (sr.total_anomalias_sku ~ ' producto(s) con anomalía'),
+            '#dc2626' if sr.no_confiables else '#6b7280', None,
+            'Tiendas donde la demanda cambió bruscamente o el error superó el límite confiable y se recomienda recalibrar.', 'alerta') }}
 </div>
 
-{% if corrida %}
-  {# ── Precisión de la última corrida ── #}
-  <div class="card" style="margin-bottom:20px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
-      <div>
-        <div class="card-title" style="margin-bottom:4px;">
-          Última corrida — {{ metodos.get(corrida.metodo, {}).get('etiqueta', corrida.metodo) }}
-        </div>
-        <div class="text-muted" style="font-size:12px;">
-          Ejecutada el {{ corrida.fecha_ejecucion | fecha_hora }}
-          {% if corrida.ejecutado_por %}por {{ corrida.ejecutado_por }}{% endif %} ·
-          {{ corrida.n_series }} series · horizonte {{ corrida.horizonte_dias }} días
-        </div>
-      </div>
-      <span class="badge badge-info mono" style="font-size:10px;">{{ corrida.id_run }}</span>
+{# ── Control simple de actualización por tienda ── #}
+{% if current_role in ['admin', 'planner'] %}
+<div class="form-card" style="margin-bottom:20px;">
+  <div class="card-title">Actualización automática por tienda</div>
+  <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}"
+        style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+    <input type="hidden" name="metodo" value="AUTO"/>
+    <div class="campo" style="min-width:250px;flex:1;">
+      <label class="form-label">
+        Tienda {{ ui.ayuda('Si eliges Todas, se crea o actualiza un modelo independiente para cada tienda activa. Si eliges una sucursal, solo se recalibra su modelo.') }}
+      </label>
+      <select class="input" name="id_locacion">
+        <option value="">Todas (1 modelo independiente por tienda)</option>
+        {% for l in locaciones %}
+          <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
+        {% endfor %}
+      </select>
     </div>
-
-    <div class="stat-grid-4">
-      {{ ui.kpi('MAE (error absoluto medio)', (corrida.mae) | cantidad(2),
-                'Unidades por producto y día', None, None,
-                'Mean Absolute Error: desviación promedio en unidades entre la predicción y las ventas reales en la validación retrospectiva.', 'diana') }}
-      {{ ui.kpi('RMSE', (corrida.rmse) | cantidad(2),
-                'Penaliza errores grandes', None, None,
-                'Root Mean Squared Error: penaliza cuadráticamente los errores grandes, alertando sobre quiebres imprevistos o picos no detectados.', 'alerta') }}
-      {{ ui.kpi('WMAPE', ((corrida.wmape) | cantidad(1)) ~ '%',
-                'Error sobre la demanda total', '#d97706', None,
-                'Weighted Mean Absolute Percentage Error: error porcentual ponderado por volumen. Es el estándar de oro en retail porque no se distorsiona con SKUs de baja rotación.', 'tendencia') }}
-      {{ ui.kpi('Duración', (corrida.duracion_ms | string) ~ ' ms', 'Tiempo de cómputo', None, None,
-                'Tiempo total transcurrido en procesar y proyectar todas las series temporales.', 'reloj') }}
+    <div class="campo" style="min-width:170px;">
+      <label class="form-label">
+        Horizonte de proyección {{ ui.ayuda('Días hacia adelante que cubrirá el pronóstico para planear triaje y compras.') }}
+      </label>
+      <select class="input" name="horizonte">
+        {% for h in [7, 14, 21] %}
+          <option value="{{ h }}" {% if h == horizonte_defecto %}selected{% endif %}>{{ h }} días</option>
+        {% endfor %}
+      </select>
     </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-primary" type="submit">
+        {{ 'Recalibrar tienda seleccionada' if id_locacion else 'Actualizar modelos por tienda' }}
+      </button>
+      {% if id_locacion %}
+        <a class="btn btn-ghost" href="{{ url_for('analitica.pronostico') }}">Ver todas las tiendas</a>
+      {% endif %}
+    </div>
+  </form>
+  <div class="form-note" style="margin-top:10px;">
+    La selección de estrategia se realiza automáticamente dentro de cada tienda eligiendo el patrón de menor error histórico y estacionalidad semanal, sin ajustes manuales.
+  </div>
+</div>
+{% else %}
+<div class="form-note" style="margin-bottom:20px;">
+  Vista de solo consulta: la actualización o recalibración de los modelos predictivos por tienda está reservada para Planeación y Administración.
+</div>
+{% endif %}
 
-    <div class="aviso-info">
-      <strong>Cómo se mide:</strong> sobre el tramo final del historial se pronostica
-      hacia adelante y se compara con la demanda real ya registrada (validación
-      retrospectiva). El MAE dice cuántas unidades se desvía en promedio el pronóstico;
-      el WMAPE expresa ese error como porcentaje de la demanda total, que es la cifra
-      comparable entre productos de tamaños muy distintos.
+{# ── Tabla principal: salud y deriva por tienda ── #}
+<div class="table-wrap" style="margin-bottom:20px;">
+  <div class="table-header">
+    <div class="table-header-title">
+      Modelos activos por tienda y vigilancia de deriva ({{ salud.tiendas | length if salud else 0 }})
     </div>
   </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Tienda</th>
+        <th>Modelo y vigencia</th>
+        <th>Precisión</th>
+        <th>Deriva reciente (14 d) {{ ui.ayuda('Compara las ventas de las últimas dos semanas contra la historia previa de la tienda para detectar cambios de ritmo, días atípicos o desabasto.') }}</th>
+        <th>Estado y diagnóstico</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in (salud.tiendas if salud else []) %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ t.locacion }}</div>
+            {% if t.productos_con_anomalia %}
+              <span class="badge badge-warning" style="font-size:10.5px;margin-top:4px;">
+                {{ t.productos_con_anomalia }} producto(s) con variación
+              </span>
+            {% endif %}
+          </td>
+          <td>
+            {% if t.id_run %}
+              <div style="font-size:12.5px;font-weight:500;">{{ t.fecha_ejecucion | fecha_hora }}</div>
+              <div class="text-muted" style="font-size:11.5px;">
+                {{ t.n_series }} productos · {{ t.horizonte_dias or horizonte_defecto }} d ·
+                {{ t.estrategia_etiqueta }}
+              </div>
+            {% else %}
+              <span class="badge badge-danger">Sin modelo propio</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if t.wmape is not none %}
+              <div class="mono" style="font-weight:600;">Error {{ t.wmape | cantidad(1) }}%</div>
+              <div class="text-muted" style="font-size:11px;">MAE {{ t.mae | cantidad(2) }} u/día</div>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+            <div style="margin-top:4px;">
+              <span class="badge badge-{{ 'success' if t.confiabilidad == 'Alta' else ('warning' if t.confiabilidad == 'Media' else ('danger' if t.confiabilidad == 'Baja' else 'neutral')) }}">
+                Confiabilidad {{ t.confiabilidad }}
+              </span>
+            </div>
+          </td>
+          <td>
+            <div class="mono {% if ((t.z_nivel or 0) | abs) >= 2.8 %}text-danger{% elif ((t.z_nivel or 0) | abs) >= 1.8 %}text-warning{% endif %}" style="font-weight:600;">
+              {{ '%+.1f' | format((t.cambio_nivel_pct or 0) | float) }}% ritmo
+            </div>
+            <div class="text-muted" style="font-size:11px;">
+              Índice cambio {{ '%.2f' | format((t.psi or 0) | float) }} · {{ t.dias_atipicos or 0 }} día(s) atípico(s)
+            </div>
+          </td>
+          <td style="max-width:300px;">
+            {% if t.estado == 'CONFIABLE' %}
+              <span class="badge badge-success">Confiable</span>
+            {% elif t.estado == 'VIGILANCIA' %}
+              <span class="badge badge-warning">Vigilar</span>
+            {% elif t.estado == 'NO_CONFIABLE' %}
+              <span class="badge badge-danger">Recalibrar</span>
+            {% else %}
+              <span class="badge badge-neutral">Sin historia</span>
+            {% endif %}
+            <ul style="margin:6px 0 0 16px;font-size:11.5px;color:var(--muted-foreground);">
+              {% for m in t.motivos[:2] %}
+                <li>{{ m }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+          <td style="min-width:170px;">
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              {% if current_role in ['admin', 'planner'] %}
+                <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}">
+                  <input type="hidden" name="id_locacion" value="{{ t.id_locacion }}"/>
+                  <input type="hidden" name="metodo" value="AUTO"/>
+                  <input type="hidden" name="horizonte" value="{{ t.horizonte_dias or horizonte_defecto }}"/>
+                  <button class="btn {{ 'btn-primary' if t.requiere_reemplazo else 'btn-ghost' }} btn-sm" type="submit" style="width:100%;">
+                    Recalibrar tienda
+                  </button>
+                </form>
+              {% endif %}
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('analitica.pronostico', locacion=t.id_locacion) }}">
+                Ver productos
+              </a>
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No se encontraron tiendas activas para evaluar.', 6) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
-  {# ── Pronóstico por producto y tienda ── #}
+{# ── Anomalías detectadas por producto ── #}
+{% if salud and salud.anomalias_sku %}
   <div class="table-wrap" style="margin-bottom:20px;">
     <div class="table-header">
       <div class="table-header-title">
-        Pronóstico por producto y tienda ({{ series | length }} series)
+        Anomalías y cambios de demanda por producto ({{ salud.anomalias_sku | length }})
       </div>
     </div>
     <table>
@@ -131,62 +187,101 @@
         <tr>
           <th>Producto</th>
           <th>Tienda</th>
-          <th>Próximo día</th>
-          <th>Total horizonte ({{ corrida.horizonte_dias }} d)</th>
-          <th>Promedio diario</th>
-          <th>Unidad</th>
-          <th>Vigencia</th>
+          <th>Ritmo base → reciente</th>
+          <th>Indicadores de anomalía</th>
+          <th>Confiabilidad</th>
+          <th>Diagnóstico sugerido</th>
         </tr>
       </thead>
       <tbody>
-        {% for s in series %}
+        {% for a in salud.anomalias_sku %}
           <tr>
-            <td style="font-weight:600;">{{ s.producto }}</td>
-            <td>{{ s.locacion }}</td>
-            <td class="mono">{{ (s.proximo_dia) | cantidad(2) }}</td>
-            <td class="mono" style="font-weight:600;color:var(--role-accent);">
-              {{ (s.total_horizonte) | cantidad(2) }}
+            <td style="font-weight:600;">{{ a.producto }}</td>
+            <td>{{ a.locacion }}</td>
+            <td class="mono">
+              {{ (a.media_base) | cantidad(1) }} → {{ (a.media_reciente) | cantidad(1) }} {{ a.unidad_medida }}/d
             </td>
-            <td class="mono text-muted">
-              {{ ((s.total_horizonte | float) / (corrida.horizonte_dias or 1)) | cantidad(2) }}
+            <td style="font-size:11.5px;">
+              <span class="mono {% if ((a.z_nivel or 0) | abs) >= 2.8 %}text-danger{% else %}text-warning{% endif %}">
+                {{ '%+.1f' | format((a.cambio_nivel_pct or 0) | float) }}%
+              </span>
+              · {{ a.dias_atipicos }} atípico(s)
+              {% if a.delta_ceros_pp > 0 %}· +{{ a.delta_ceros_pp | cantidad(0) }} pp sin venta{% endif %}
             </td>
-            <td class="text-muted" style="font-size:12px;">{{ s.unidad_medida }}</td>
-            <td class="mono" style="font-size:11px;">{{ s.desde }} → {{ s.hasta }}</td>
+            <td>
+              <span class="badge badge-{{ 'danger' if a.estado == 'NO_CONFIABLE' else 'warning' }}">
+                {{ a.confiabilidad }}
+              </span>
+            </td>
+            <td style="font-size:12px;">
+              {{ a.motivos[0] if a.motivos else '' }}
+            </td>
           </tr>
-        {% else %}
-          {{ ui.vacio('Esta corrida no produjo series. Registra ventas o carga el ETL.', 7) }}
         {% endfor %}
       </tbody>
     </table>
   </div>
-{% else %}
-  <div class="card">
-    <div class="tabla-vacia">
-      <div class="tabla-vacia-titulo">Todavía no hay corridas de pronóstico</div>
-      <div class="tabla-vacia-texto">
-        Ejecuta el pronóstico con el formulario de arriba. La corrida queda guardada
-        con su método, parámetros, horizonte y error medido.
-      </div>
-    </div>
-  </div>
 {% endif %}
 
-{# ── Historial de corridas ── #}
+{# ── Pronóstico vigente por producto y tienda ── #}
+<div class="table-wrap" style="margin-bottom:20px;">
+  <div class="table-header">
+    <div class="table-header-title">
+      Proyección de demanda vigente ({{ series | length }} series)
+      {% if id_locacion %}
+        <span class="badge badge-info" style="margin-left:8px;">Filtrado por tienda</span>
+      {% endif %}
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Producto</th>
+        <th>Tienda</th>
+        <th>Próximo día</th>
+        <th>Total horizonte</th>
+        <th>Promedio diario</th>
+        <th>Unidad</th>
+        <th>Vigencia</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in series %}
+        <tr>
+          <td style="font-weight:600;">{{ s.producto }}</td>
+          <td>{{ s.locacion }}</td>
+          <td class="mono">{{ (s.proximo_dia) | cantidad(2) }}</td>
+          <td class="mono" style="font-weight:600;color:var(--role-accent);">
+            {{ (s.total_horizonte) | cantidad(2) }}
+          </td>
+          <td class="mono text-muted">
+            {{ ((s.total_horizonte | float) / (s.horizonte_dias or 1)) | cantidad(2) }}
+          </td>
+          <td class="text-muted" style="font-size:12px;">{{ s.unidad_medida }}</td>
+          <td class="mono" style="font-size:11px;">{{ s.desde }} → {{ s.hasta }}</td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('Aún no hay proyecciones generadas. Pulsa «Actualizar modelos por tienda» para calibrar cada sucursal.', 7) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Historial de calibraciones por tienda ── #}
 {% if corridas %}
   <div class="table-wrap">
     <div class="table-header">
-      <div class="table-header-title">Historial de corridas</div>
+      <div class="table-header-title">Historial de calibraciones por tienda</div>
     </div>
     <table>
       <thead>
         <tr>
           <th>Fecha</th>
-          <th>Método</th>
+          <th>Tienda</th>
           <th>Horizonte</th>
-          <th>Series</th>
+          <th>Productos</th>
           <th>MAE</th>
-          <th>RMSE</th>
-          <th>WMAPE</th>
+          <th>Error (WMAPE)</th>
           <th>Ejecutó</th>
           <th>Estado</th>
         </tr>
@@ -195,13 +290,12 @@
         {% for c in corridas %}
           <tr>
             <td class="mono" style="font-size:11px;">{{ c.fecha_ejecucion | fecha_hora }}</td>
-            <td>{{ metodos.get(c.metodo, {}).get('etiqueta', c.metodo) }}</td>
+            <td style="font-weight:500;">{{ c.locacion or 'Red completa' }}</td>
             <td class="mono">{{ c.horizonte_dias }} d</td>
             <td class="mono">{{ c.n_series }}</td>
             <td class="mono">{{ (c.mae) | cantidad(2) if c.mae is not none else '—' }}</td>
-            <td class="mono">{{ (c.rmse) | cantidad(2) if c.rmse is not none else '—' }}</td>
             <td class="mono">{{ ((c.wmape) | cantidad(1)) ~ '%' if c.wmape is not none else '—' }}</td>
-            <td style="font-size:12px;">{{ c.ejecutado_por or '—' }}</td>
+            <td style="font-size:12px;">{{ c.ejecutado_por or 'Automático' }}</td>
             <td>{{ ui.estado(c.estado) }}</td>
           </tr>
         {% endfor %}

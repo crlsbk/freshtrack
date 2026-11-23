@@ -39,6 +39,8 @@ TIPOS = {
                                    "descripcion": "Hay una orden de compra sugerida esperando aprobación."},
     "TRANSFERENCIA_SUGERIDA": {"etiqueta": "Transferencia sugerida", "icono": "transfer",
                                "descripcion": "Conviene mover producto a otra tienda donde se vende mejor."},
+    "DERIVA_DEMANDA": {"etiqueta": "Cambio de demanda / modelo", "icono": "alert",
+                       "descripcion": "Se detectó un cambio brusco en las ventas o pérdida de precisión en el pronóstico de una tienda."},
 }
 
 SEVERIDADES = {
@@ -413,22 +415,97 @@ def generar_alertas(usuario: dict | None = None) -> dict:
             )
             conteos["TRANSFERENCIA_SUGERIDA"] += 1
 
+        # --- 6b. Deriva de datos y confiabilidad del modelo por tienda ------
+        cerradas_deriva = 0
+        try:
+            from app.domain import pronostico as _motor_pron
+
+            salud = _motor_pron.evaluar_salud_modelos()
+            for t in salud.get("tiendas", []):
+                huella_d = f"DERIVA_DEMANDA:LOC:{t['id_locacion']}"
+                if t["estado"] in ("NO_CONFIABLE", "VIGILANCIA"):
+                    sev = "ALTA" if t["estado"] == "NO_CONFIABLE" else "MEDIA"
+                    motivo_p = (t.get("motivos") or ["Cambio en patrón de demanda"])[0]
+                    mensaje_d = f"Modelo de {t['locacion']}: {motivo_p} {t['recomendacion']}"
+                    det_d = {
+                        "estado_modelo": t["estado"],
+                        "confiabilidad": t["confiabilidad"],
+                        "psi": t["psi"],
+                        "cambio_nivel_pct": t["cambio_nivel_pct"],
+                        "wmape": t["wmape"],
+                        "dias_atipicos": t["dias_atipicos"],
+                        "productos_con_anomalia": t.get("productos_con_anomalia", 0),
+                        "motivos": t["motivos"],
+                    }
+                    upd = conn.execute(
+                        text(
+                            """
+                            UPDATE analitica.alerta
+                               SET severidad = :sev,
+                                   mensaje = :mensaje,
+                                   detalle = CAST(:detalle AS jsonb),
+                                   referencia_id = CAST(:ref_id AS uuid)
+                             WHERE huella = :huella
+                               AND estado = 'ABIERTA'
+                            """
+                        ),
+                        {
+                            "sev": sev,
+                            "mensaje": mensaje_d,
+                            "detalle": _json(det_d),
+                            "ref_id": t.get("id_run"),
+                            "huella": huella_d[:120],
+                        },
+                    )
+                    if not upd.rowcount:
+                        _insertar(
+                            conn,
+                            tipo="DERIVA_DEMANDA",
+                            severidad=sev,
+                            id_locacion=t["id_locacion"],
+                            mensaje=mensaje_d,
+                            detalle=det_d,
+                            referencia_tipo="FORECAST_RUN" if t.get("id_run") else None,
+                            referencia_id=t.get("id_run"),
+                            huella=huella_d,
+                        )
+                        conteos["DERIVA_DEMANDA"] += 1
+                elif t["estado"] == "CONFIABLE":
+                    res_c = conn.execute(
+                        text(
+                            """
+                            UPDATE analitica.alerta
+                               SET estado = 'ATENDIDA', fecha_cierre = now()
+                             WHERE estado = 'ABIERTA'
+                               AND tipo = 'DERIVA_DEMANDA'
+                               AND id_locacion = :loc
+                            """
+                        ),
+                        {"loc": t["id_locacion"]},
+                    )
+                    cerradas_deriva += res_c.rowcount or 0
+        except Exception:
+            pass
+
         # --- 7. Cerrar alertas cuya causa ya desapareció --------------------
-        cerradas = conn.execute(
-            text(
-                """
-                UPDATE analitica.alerta a
-                   SET estado = 'ATENDIDA', fecha_cierre = now()
-                 WHERE a.estado = 'ABIERTA'
-                   AND a.id_lote IS NOT NULL
-                   AND NOT EXISTS (
-                       SELECT 1 FROM operacion.existencia e
-                       WHERE e.id_lote = a.id_lote AND e.cantidad_disponible > 0
-                   )
-                   AND a.tipo IN ('LOTE_POR_VENCER', 'RIESGO_DE_MERMA')
-                """
-            )
-        ).rowcount or 0
+        cerradas = (
+            conn.execute(
+                text(
+                    """
+                    UPDATE analitica.alerta a
+                       SET estado = 'ATENDIDA', fecha_cierre = now()
+                     WHERE a.estado = 'ABIERTA'
+                       AND a.id_lote IS NOT NULL
+                       AND NOT EXISTS (
+                           SELECT 1 FROM operacion.existencia e
+                           WHERE e.id_lote = a.id_lote AND e.cantidad_disponible > 0
+                       )
+                       AND a.tipo IN ('LOTE_POR_VENCER', 'RIESGO_DE_MERMA')
+                    """
+                )
+            ).rowcount
+            or 0
+        ) + cerradas_deriva
 
     if usuario:
         auditoria.registrar(

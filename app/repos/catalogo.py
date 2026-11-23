@@ -85,7 +85,8 @@ def listar_productos(
         f"""
         SELECT p.id_sku, p.codigo_gtin, p.nombre, p.categoria, p.vida_util_estandar,
                p.unidad_medida, p.precio_costo, p.precio_venta, p.stock_seguridad,
-               p.punto_reorden, p.perecedero, p.activo, p.fecha_alta,
+               p.punto_reorden, p.moq_lote, COALESCE(p.moq_lote, pr.moq, 1) AS moq_lote_efectivo,
+               p.perecedero, p.activo, p.fecha_alta,
                p.id_proveedor, pr.razon_social AS proveedor, pr.lead_time_dias,
                pr.moq,
                (SELECT COUNT(*) FROM operacion.lote l WHERE l.id_sku = p.id_sku) AS n_lotes,
@@ -105,7 +106,8 @@ def listar_productos(
 def obtener_producto(id_sku: int) -> dict | None:
     return one(
         """
-        SELECT p.*, pr.razon_social AS proveedor
+        SELECT p.*, COALESCE(p.moq_lote, pr.moq, 1) AS moq_lote_efectivo,
+               pr.razon_social AS proveedor
         FROM operacion.producto p
         LEFT JOIN operacion.proveedor pr ON pr.id_proveedor = p.id_proveedor
         WHERE p.id_sku = :id
@@ -133,6 +135,10 @@ def crear_producto(datos: dict, usuario: dict) -> dict:
     vida_util = a_int(datos.get("vida_util_estandar"), 0)
     if vida_util <= 0:
         raise ValueError("La vida útil estándar debe ser mayor que cero.")
+    moq_lote_raw = datos.get("moq_lote")
+    moq_lote = a_float(moq_lote_raw) if str(moq_lote_raw or "").strip() else None
+    if moq_lote is not None and moq_lote <= 0:
+        raise ValueError("El tamaño mínimo de lote (MOQ) debe ser mayor que cero.")
 
     with transaccion(
         id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
@@ -143,10 +149,10 @@ def crear_producto(datos: dict, usuario: dict) -> dict:
                 INSERT INTO operacion.producto
                     (codigo_gtin, nombre, id_proveedor, categoria, vida_util_estandar,
                      unidad_medida, precio_costo, precio_venta, stock_seguridad,
-                     punto_reorden, perecedero, activo)
+                     punto_reorden, moq_lote, perecedero, activo)
                 VALUES
                     (:gtin, :nombre, :proveedor, :categoria, :vida, :unidad,
-                     :costo, :venta, :seguridad, :reorden, :perecedero, true)
+                     :costo, :venta, :seguridad, :reorden, :moq_lote, :perecedero, true)
                 RETURNING id_sku
                 """
             ),
@@ -161,6 +167,7 @@ def crear_producto(datos: dict, usuario: dict) -> dict:
                 "venta": a_float(datos.get("precio_venta")),
                 "seguridad": a_float(datos.get("stock_seguridad")),
                 "reorden": a_float(datos.get("punto_reorden")),
+                "moq_lote": moq_lote,
                 "perecedero": bool(datos.get("perecedero", True)),
             },
         ).scalar()
@@ -188,6 +195,10 @@ def actualizar_producto(id_sku: int, datos: dict, usuario: dict) -> None:
     vida_util = a_int(datos.get("vida_util_estandar"), 0)
     if vida_util <= 0:
         raise ValueError("La vida útil estándar debe ser mayor que cero.")
+    moq_lote_raw = datos.get("moq_lote")
+    moq_lote = a_float(moq_lote_raw) if str(moq_lote_raw or "").strip() else anterior.get("moq_lote")
+    if moq_lote is not None and moq_lote <= 0:
+        raise ValueError("El tamaño mínimo de lote (MOQ) debe ser mayor que cero.")
 
     nuevo = {
         "nombre": nombre,
@@ -199,6 +210,7 @@ def actualizar_producto(id_sku: int, datos: dict, usuario: dict) -> None:
         "precio_venta": a_float(datos.get("precio_venta")),
         "stock_seguridad": a_float(datos.get("stock_seguridad")),
         "punto_reorden": a_float(datos.get("punto_reorden")),
+        "moq_lote": moq_lote,
         "perecedero": bool(datos.get("perecedero", True)),
     }
 
@@ -213,7 +225,8 @@ def actualizar_producto(id_sku: int, datos: dict, usuario: dict) -> None:
                        categoria = :categoria, vida_util_estandar = :vida_util_estandar,
                        unidad_medida = :unidad_medida, precio_costo = :precio_costo,
                        precio_venta = :precio_venta, stock_seguridad = :stock_seguridad,
-                       punto_reorden = :punto_reorden, perecedero = :perecedero
+                       punto_reorden = :punto_reorden, moq_lote = :moq_lote,
+                       perecedero = :perecedero
                  WHERE id_sku = :id
                 """
             ),

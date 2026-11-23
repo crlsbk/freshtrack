@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from flask import g, request
 
 from app.db import a_float, one, query
+from app.domain import kpis as motor_kpis
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service, doc_store
 from app.services.common.auth import requiere_auth
@@ -146,31 +147,41 @@ def atender_alerta(id_mongo: str):
 
 
 @app.get("/api/v1/alerts/esg/carbon-avoided")
-@documentar("Reporte ESG: alimento rescatado y CO2e evitado", raiz_respuesta="reporte_esg_sostenibilidad")
+@documentar("Reporte ESG: alimento rescatado, desperdicio evitado neto y CO2e evitado", raiz_respuesta="reporte_esg_sostenibilidad")
 @requiere_auth()
 def calcular_esg():
-    """Suma lo recuperado en analitica.desperdicio_evitado y lo convierte a CO2e (cacheado 5 min en Redis)."""
+    """Suma recuperado bruto, estimado neto contrafactual y CO2e evitado (cacheado 5 min en Redis)."""
     clave = "alerts:esg:resumen"
     cache = cache_service.get_json(clave)
     if cache:
         return render_response({**cache, "fuente": "redis_cache"}, status=200, root_tag="reporte_esg_sostenibilidad")
-    fila = one(
-        """
-        SELECT COALESCE(SUM(cantidad_recuperada), 0) AS kg, COALESCE(SUM(valor_recuperado), 0) AS mxn
-        FROM analitica.desperdicio_evitado
-        """
-    ) or {}
-    kg, mxn = a_float(fila.get("kg")), a_float(fila.get("mxn"))
-    co2e = round(kg * 2.5, 2)
+    comp = motor_kpis.indicadores_desperdicio_completo(30)
     cuerpo = {
-        "alimento_recuperado_kg": round(kg, 2),
-        "ahorro_financiero_mxn": round(mxn, 2),
-        "co2e_evitado_kg": co2e,
-        "co2e_evitado_toneladas": round(co2e / 1000.0, 3),
-        "factor_conversion": "2.5 kg CO2e / kg perecedero",
+        "alimento_recuperado_kg": comp["producto_recuperado"]["unidades"],
+        "desperdicio_evitado_neto_kg": comp["desperdicio_evitado_estimado"]["unidades"],
+        "contrafactual_organico_kg": comp["desperdicio_evitado_estimado"]["contrafactual_organico"],
+        "ahorro_financiero_mxn": comp["producto_recuperado"]["valor"],
+        "co2e_evitado_kg": comp["co2e_evitado_estimado"]["kg_co2e"],
+        "co2e_evitado_toneladas": comp["co2e_evitado_estimado"]["toneladas_co2e"],
+        "factor_conversion": comp["co2e_evitado_estimado"]["factor"],
+        "indicadores_6": comp,
     }
     cache_service.set_json(clave, cuerpo, ttl_segundos=300)
     return render_response({**cuerpo, "fuente": "postgres"}, status=200, root_tag="reporte_esg_sostenibilidad")
+
+
+@app.get("/api/v1/alerts/waste-measurement")
+@documentar(
+    "Medición causal y contrafactual del desperdicio (6 indicadores)",
+    consulta=[("dias", "integer", "Ventana para reducción observada de merma (defecto 30)")],
+    raiz_respuesta="medicion_desperdicio",
+)
+@requiere_auth()
+def medicion_desperdicio():
+    """Distingue riesgo, proyección, recuperación bruta, neto contrafactual, merma observada y CO2e."""
+    dias = min(entero(request.args, "dias", minimo=7, defecto=30) or 30, 365)
+    comp = motor_kpis.indicadores_desperdicio_completo(dias)
+    return render_response(comp, status=200, root_tag="medicion_desperdicio")
 
 
 @app.get("/api/v1/alerts/analytics/kpis")

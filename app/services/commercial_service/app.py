@@ -23,7 +23,7 @@ from app.db import a_float, query
 from app.domain import mermas as dom_mermas
 from app.domain import saga_venta
 from app.services import cache_service
-from app.services.common.auth import requiere_auth, usuario_desde_token
+from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
 from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import (
     ErrorApi,
@@ -58,6 +58,7 @@ def _locacion(datos: dict) -> int:
     loc = g.contexto.get("location_id") or entero(datos, "id_locacion", minimo=1)
     if not loc:
         raise ErrorApi(400, "campos_requeridos", "Falta 'id_locacion' (en el cuerpo o en el header X-Location-Id).", {"faltantes": ["id_locacion"]})
+    validar_alcance_locacion(loc)
     return loc
 
 

@@ -40,6 +40,9 @@ class Config:
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    PREFERRED_URL_SCHEME = "https" if SESSION_COOKIE_SECURE else "http"
+    TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() == "true"
     PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.getenv("JWT_HORAS_VIGENCIA", "8")))
     MAX_CONTENT_LENGTH = 4 * 1024 * 1024  # 4 MB
 
@@ -85,6 +88,21 @@ class Config:
     HORIZONTE_PRONOSTICO_DIAS = int(os.getenv("HORIZONTE_PRONOSTICO_DIAS", "7"))
     VENTANA_MEDIA_MOVIL = int(os.getenv("VENTANA_MEDIA_MOVIL", "28"))
     ALPHA_SUAVIZACION = float(os.getenv("ALPHA_SUAVIZACION", "0.30"))
+
+    # --- Cloud Object Storage (S3 / MinIO) ---------------------------------
+    OBJECT_STORAGE_ENDPOINT = os.getenv("OBJECT_STORAGE_ENDPOINT", "http://127.0.0.1:9000").rstrip("/")
+    OBJECT_STORAGE_ACCESS_KEY = os.getenv("OBJECT_STORAGE_ACCESS_KEY", "freshtrack_s3")
+    OBJECT_STORAGE_SECRET_KEY = os.getenv("OBJECT_STORAGE_SECRET_KEY", "freshtrack_s3_secret_2026")
+    OBJECT_STORAGE_BUCKET = os.getenv("OBJECT_STORAGE_BUCKET", "freshtrack-reportes")
+    OBJECT_STORAGE_REGION = os.getenv("OBJECT_STORAGE_REGION", "us-east-1")
+
+    # --- Correo saliente (SMTP opcional) -----------------------------------
+    SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER", "").strip()
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM = os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "compras@freshtrack.mx")).strip()
+    SMTP_TLS = os.getenv("SMTP_TLS", "true").lower() not in ("0", "false", "no")
 
     # --- Entorno -----------------------------------------------------------
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"

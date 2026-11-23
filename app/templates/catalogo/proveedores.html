@@ -1,168 +1,605 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block titulo %}Proveedores{% endblock %}
-{% block breadcrumb %}Catálogos › Proveedores{% endblock %}
+
+{% block title %}Proveedores y Compras por Lotes · FreshTrack{% endblock %}
 
 {% block content %}
-{{ ui.encabezado(
-  'Catálogo',
-  'Proveedores',
-  'Alta, consulta, edición y activación de proveedores, con su tiempo de entrega (lead time) y pedido mínimo (MOQ).'
-) }}
+{{ ui.encabezado('Abastecimiento y Compras', 'Proveedores y Compras por Lotes',
+                 'Consulta el catálogo de cada proveedor con su MOQ de lote, evalúa la necesidad inteligente por tienda, enruta lotes y emite órdenes de compra en PDF.') }}
 
-<form class="filtros" method="get" action="{{ url_for('catalogo.proveedores') }}">
-  <div class="campo campo-ancho">
-    <label class="form-label" for="q">Buscar</label>
-    <input class="input" id="q" name="q" type="text" value="{{ filtro }}"
-           placeholder="Razón social o RFC"/>
-  </div>
-  <button class="btn btn-primary" type="submit">Filtrar</button>
-  <a class="btn btn-ghost" href="{{ url_for('catalogo.proveedores') }}">Limpiar</a>
-  <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nuevo-proveedor')">
-    + Nuevo proveedor
-  </button>
-</form>
+{% set n_activos = proveedores_activos | length %}
+{% set n_pendientes = namespace(total=0, urgentes=0) %}
+{% for pr in proveedores_activos %}
+  {% set n_pendientes.total = n_pendientes.total + (pr.ordenes_pendientes or 0) %}
+  {% set n_pendientes.urgentes = n_pendientes.urgentes + (pr.urgentes or 0) %}
+{% endfor %}
 
-<div class="form-card" id="form-nuevo-proveedor" style="display:none;">
-  <div class="card-title">Registrar proveedor</div>
-  <form method="post" action="{{ url_for('catalogo.proveedores') }}">
-    <div class="form-grid-3">
-      <div>
-        <label class="form-label">Razón social *</label>
-        <input class="input" name="razon_social" required placeholder="Lácteos del Norte S.A. de C.V."/>
-      </div>
-      <div>
-        <label class="form-label">RFC *</label>
-        <input class="input" name="rfc" required placeholder="LDN850101ABC" maxlength="13"/>
-      </div>
-      <div>
-        <label class="form-label">Lead time (días) *</label>
-        <input class="input" name="lead_time_dias" type="number" min="0" value="3" required/>
-      </div>
-      <div>
-        <label class="form-label">MOQ (pedido mínimo) *</label>
-        <input class="input" name="moq" type="number" step="1" min="1" value="50" required/>
-      </div>
-      <div>
-        <label class="form-label">Correo de contacto</label>
-        <input class="input" name="contacto_email" type="email" placeholder="ventas@proveedor.mx"/>
-      </div>
-      <div>
-        <label class="form-label">Teléfono</label>
-        <input class="input" name="telefono" placeholder="81 1234 5678"/>
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-primary" type="submit">Guardar</button>
-      <button class="btn btn-ghost" type="button"
-              onclick="toggleForm('form-nuevo-proveedor')">Cancelar</button>
-    </div>
-    <div class="form-note">
-      El lead time y el MOQ alimentan el motor de reabastecimiento: sin ellos no se
-      puede calcular si el pedido llega a tiempo ni si el mínimo obliga a sobreinventar.
-    </div>
-  </form>
+<div class="stat-grid-4">
+  {{ ui.kpi('Proveedores activos', n_activos, (proveedores | length) ~ ' registrados en catálogo', '#2563eb', icono='camion') }}
+  {{ ui.kpi('Necesidades sugeridas', n_pendientes.total, n_pendientes.urgentes ~ ' de prioridad alta', '#d97706' if n_pendientes.urgentes else '#6b7280', icono='alerta') }}
+  {{ ui.kpi('Lotes sugeridos (proveedor)', (catalogo_prov.resumen.total_lotes_sugeridos if catalogo_prov else 0),
+            (catalogo_prov.proveedor.razon_social if catalogo_prov else 'Sin proveedor seleccionado'), '#16a34a', icono='caja') }}
+  {{ ui.kpi('Órdenes de compra emitidas', ordenes_compra | length, 'Con documento PDF respaldado', '#0284c7',
+            href=url_for('catalogo.proveedores', tab='ordenes', proveedor=id_prov_sel or None), icono='carrito') }}
 </div>
 
-<div class="table-wrap">
-  <div class="table-header">
-    <div class="table-header-title">Proveedores ({{ proveedores | length }})</div>
+<div class="panel-pestanas" data-pestanas>
+  <div class="tabs" role="tablist">
+    <button class="tab {% if tab_activa == 'pedir' %}active{% endif %}" type="button" data-pestana="pedir">
+      Catálogo y Pedido por Lotes
+    </button>
+    <button class="tab {% if tab_activa == 'ordenes' %}active{% endif %}" type="button" data-pestana="ordenes">
+      Órdenes de Compra Emitidas ({{ ordenes_compra | length }})
+    </button>
+    {% if current_role == 'admin' %}
+      <button class="tab {% if tab_activa == 'directorio' %}active{% endif %}" type="button" data-pestana="directorio">
+        Directorio y Alta de Proveedores ({{ proveedores | length }})
+      </button>
+    {% endif %}
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Razón social</th>
-        <th>RFC</th>
-        <th>Contacto</th>
-        <th>Lead time</th>
-        <th>MOQ</th>
-        <th>Productos</th>
-        <th>Lotes</th>
-        <th>Estado</th>
-        <th>Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in proveedores %}
-        <tr>
-          <td class="mono">{{ p.id_proveedor }}</td>
-          <td style="font-weight:600;">{{ p.razon_social }}</td>
-          <td class="mono" style="font-size:11.5px;">{{ p.rfc }}</td>
-          <td style="font-size:12px;">
-            {{ p.contacto_email or '—' }}<br/>
-            <span class="text-muted">{{ p.telefono or '' }}</span>
-          </td>
-          <td class="mono">{{ p.lead_time_dias }} días</td>
-          <td class="mono">{{ "%.0f" | format(p.moq | float) }}</td>
-          <td class="mono">{{ p.n_productos }}</td>
-          <td class="mono">{{ p.n_lotes }}</td>
-          <td>
-            {% if p.activo %}
-              <span class="badge badge-success">ACTIVO</span>
-            {% else %}
-              <span class="badge badge-neutral">INACTIVO</span>
-            {% endif %}
-          </td>
-          <td>
-            <div class="acciones">
-              <button class="btn btn-ghost btn-sm" type="button"
-                      onclick="toggleForm('editar-proveedor-{{ p.id_proveedor }}')">Editar</button>
-              <form class="inline-form" method="post"
-                    action="{{ url_for('catalogo.estado_proveedor', id_proveedor=p.id_proveedor) }}">
-                <input type="hidden" name="activo" value="{{ 0 if p.activo else 1 }}"/>
-                <button class="btn {{ 'btn-danger' if p.activo else 'btn-primary' }} btn-sm"
-                        type="submit">
-                  {{ 'Desactivar' if p.activo else 'Activar' }}
-                </button>
-              </form>
+
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {# PESTAÑA 1: CONSOLIDADO PROVEEDOR + PRODUCTOS + LOTES INTELIGENTES + OC #}
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  <div class="pestana-contenido" data-pestana-id="pedir" {% if tab_activa != 'pedir' %}hidden{% endif %}>
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:600;color:var(--foreground);">
+          1. Elige un proveedor para revisar su catálogo de lotes y necesidades por tienda:
+        </div>
+        <form method="get" action="{{ url_for('catalogo.proveedores') }}" style="display:flex;gap:8px;align-items:center;">
+          <input type="hidden" name="tab" value="pedir"/>
+          {% if id_prov_sel %}<input type="hidden" name="proveedor" value="{{ id_prov_sel }}"/>{% endif %}
+          <label class="form-label" style="margin:0;white-space:nowrap;">Horizonte análisis:</label>
+          <select class="input" name="horizonte" onchange="this.form.submit()" style="width:auto;min-width:110px;">
+            {% for h in [7, 14, 21] %}
+              <option value="{{ h }}" {% if horizonte_sel == h %}selected{% endif %}>{{ h }} días</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">
+        {% for pr in proveedores_activos %}
+          {% set es_sel = (pr.id_proveedor == id_prov_sel) %}
+          <a href="{{ url_for('catalogo.proveedores', proveedor=pr.id_proveedor, horizonte=horizonte_sel, tab='pedir') }}"
+             class="card"
+             style="text-decoration:none;color:inherit;padding:12px 14px;border:2px solid {{ '#16a34a' if es_sel else 'var(--border)' }};background:{{ 'rgba(22,163,74,0.06)' if es_sel else 'var(--card)' }};transition:border-color 0.15s;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+              <strong style="font-size:13.5px;line-height:1.25;">{{ pr.razon_social }}</strong>
+              {% if pr.urgentes %}
+                <span class="badge badge-danger">{{ pr.urgentes }} alta</span>
+              {% elif pr.ordenes_pendientes %}
+                <span class="badge badge-warning">{{ pr.ordenes_pendientes }} sug.</span>
+              {% else %}
+                <span class="badge badge-neutral">Al día</span>
+              {% endif %}
             </div>
-          </td>
-        </tr>
-        <tr id="editar-proveedor-{{ p.id_proveedor }}" style="display:none;">
-          <td colspan="10" style="background:var(--muted);">
-            <form method="post"
-                  action="{{ url_for('catalogo.editar_proveedor', id_proveedor=p.id_proveedor) }}">
-              <div class="form-grid-3">
+            <div class="text-muted" style="font-size:11.5px;margin-top:6px;">
+              {{ pr.n_productos }} producto(s) · Entrega {{ pr.lead_time_dias }} d · MOQ base {{ pr.moq | cantidad(0) }}
+            </div>
+            {% if pr.unidades_sugeridas > 0 %}
+              <div style="font-size:11.5px;margin-top:4px;color:#15803d;font-weight:600;">
+                Demanda sugerida: {{ pr.unidades_sugeridas | cantidad(0) }} u
+              </div>
+            {% endif %}
+          </a>
+        {% else %}
+          <div class="form-note">No hay proveedores activos registrados.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if catalogo_prov %}
+      {% set prov = catalogo_prov.proveedor %}
+      <div class="form-card" style="margin-bottom:16px;padding:14px 18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="font-size:15px;font-weight:700;">{{ prov.razon_social }}</div>
+            <div class="text-muted" style="font-size:12px;margin-top:2px;">
+              RFC: <span class="mono">{{ prov.rfc }}</span> ·
+              Correo: {{ prov.contacto_email or 'Sin correo registrado' }} ·
+              Tel: {{ prov.telefono or '—' }} ·
+              Tiempo de entrega: <strong>{{ prov.lead_time_dias }} día(s)</strong>
+            </div>
+          </div>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+            <div>
+              <div class="text-muted" style="font-size:11px;">Productos activos</div>
+              <div class="mono" style="font-weight:700;font-size:15px;">{{ catalogo_prov.resumen.total_productos }}</div>
+            </div>
+            <div>
+              <div class="text-muted" style="font-size:11px;">Lotes sugeridos</div>
+              <div class="mono" style="font-weight:700;font-size:15px;color:#16a34a;">{{ catalogo_prov.resumen.total_lotes_sugeridos }}</div>
+            </div>
+            <div>
+              <div class="text-muted" style="font-size:11px;">Monto sugerido</div>
+              <div class="mono" style="font-weight:700;font-size:15px;">{{ ui.moneda(catalogo_prov.resumen.monto_sugerido) }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('catalogo.crear_orden_compra') }}" id="form-orden-compra">
+        <input type="hidden" name="id_proveedor" value="{{ prov.id_proveedor }}"/>
+
+        <div class="table-wrap" style="margin-bottom:16px;">
+          <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div class="table-header-title">
+                2. Matriz inteligente de lotes por producto y tienda destino ({{ catalogo_prov.productos | length }} productos)
+              </div>
+              <div class="text-muted" style="font-size:11.5px;">
+                Cada lote respeta el MOQ por lote definido por el proveedor en el producto y descuenta inventario útil, riesgo y traslados entrantes.
+              </div>
+            </div>
+            {% if current_role in ['admin', 'buyer'] %}
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="aplicarSugerenciasOC()">
+                  Aplicar sugerencias inteligentes
+                </button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="limpiarLotesOC()">
+                  Limpiar lotes
+                </button>
+              </div>
+            {% endif %}
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th style="min-width:220px;">Producto y MOQ de lote</th>
+                  {% for t in catalogo_prov.tiendas %}
+                    <th style="min-width:155px;text-align:center;">
+                      {{ t.nombre }}
+                      <div class="text-muted" style="font-size:10.5px;font-weight:400;">{{ t.ciudad }}</div>
+                    </th>
+                  {% endfor %}
+                  <th style="min-width:130px;text-align:right;">Total producto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in catalogo_prov.productos %}
+                  <tr data-sku-row="{{ p.id_sku }}">
+                    <td>
+                      <div style="font-weight:600;">{{ p.nombre }}</div>
+                      <div class="mono text-muted" style="font-size:11px;">{{ p.codigo_gtin }} · {{ p.categoria }}</div>
+                      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                        <span class="badge badge-info">MOQ lote: {{ p.moq_lote | cantidad(2) }} {{ p.unidad_medida }}</span>
+                        <span class="badge badge-neutral">Vida {{ p.vida_util_estandar }} d</span>
+                      </div>
+                      <div class="text-muted" style="font-size:11px;margin-top:4px;">
+                        {{ ui.moneda(p.precio_costo) }}/{{ p.unidad_medida }} · <strong>{{ ui.moneda(p.costo_por_lote) }}/lote</strong>
+                      </div>
+                    </td>
+
+                    {% for c in p.tiendas %}
+                      <td style="text-align:center;vertical-align:top;padding:10px 8px;">
+                        <div style="font-size:10.5px;margin-bottom:4px;display:flex;justify-content:center;gap:4px;flex-wrap:wrap;">
+                          {% if c.prioridad == 'ALTA' and c.lotes_sugeridos > 0 %}
+                            <span class="badge badge-danger" title="{{ c.advertencias | join(' | ') }}">Alta</span>
+                          {% elif c.lotes_sugeridos > 0 %}
+                            <span class="badge badge-warning" title="{{ c.advertencias | join(' | ') }}">Sug. {{ c.lotes_sugeridos }}</span>
+                          {% else %}
+                            <span class="badge badge-neutral">OK</span>
+                          {% endif %}
+                          <span class="text-muted" title="Inventario útil en tienda">Útil {{ c.inventario_util | cantidad(0) }}</span>
+                          {% if c.entradas_traslados > 0 %}
+                            <span style="color:#0284c7;font-weight:600;" title="Traslados entrantes descontados">+{{ c.entradas_traslados | cantidad(0) }} tr.</span>
+                          {% endif %}
+                        </div>
+
+                        {% if current_role in ['admin', 'buyer'] %}
+                          <input class="input oc-lote-input"
+                                 type="number" min="0" step="1"
+                                 name="lotes_{{ p.id_sku }}_{{ c.id_locacion }}"
+                                 value="{{ c.lotes_sugeridos }}"
+                                 data-sku="{{ p.id_sku }}"
+                                 data-loc="{{ c.id_locacion }}"
+                                 data-loc-nombre="{{ c.locacion }}"
+                                 data-moq="{{ p.moq_lote }}"
+                                 data-costo="{{ p.costo_por_lote }}"
+                                 data-unidad="{{ p.unidad_medida }}"
+                                 data-sugerido="{{ c.lotes_sugeridos }}"
+                                 style="width:82px;margin:0 auto;padding:5px 8px;text-align:center;font-weight:700;"/>
+                        {% else %}
+                          <div class="mono" style="font-weight:700;">{{ c.lotes_sugeridos }}</div>
+                        {% endif %}
+
+                        <div class="text-muted oc-celda-detalle"
+                             id="celda-u-{{ p.id_sku }}-{{ c.id_locacion }}"
+                             style="font-size:11px;margin-top:4px;">
+                          {{ c.unidades_sugeridas_lote | cantidad(0) }} {{ p.unidad_medida }}
+                        </div>
+                      </td>
+                    {% endfor %}
+
+                    <td style="text-align:right;vertical-align:middle;">
+                      <div class="mono" style="font-weight:700;" id="sku-lotes-{{ p.id_sku }}">
+                        {{ p.total_lotes_sugeridos }} lote(s)
+                      </div>
+                      <div class="text-muted mono" style="font-size:11.5px;" id="sku-unidades-{{ p.id_sku }}">
+                        {{ p.total_unidades_sugeridas | cantidad(2) }} {{ p.unidad_medida }}
+                      </div>
+                      <div class="mono" style="font-size:12px;color:#15803d;font-weight:600;margin-top:2px;" id="sku-subtotal-{{ p.id_sku }}">
+                        {{ ui.moneda(p.total_lotes_sugeridos * p.costo_por_lote) }}
+                      </div>
+                    </td>
+                  </tr>
+                {% else %}
+                  {{ ui.vacio('Este proveedor aún no tiene productos activos asignados.', (catalogo_prov.tiendas | length) + 2) }}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {% if current_role in ['admin', 'buyer'] and catalogo_prov.productos %}
+          <div class="form-card" style="display:flex;flex-direction:column;gap:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;">
+              <div style="flex:1;min-width:260px;">
+                <div class="card-title" style="margin-bottom:6px;">3. Resumen de enrutamiento por tienda y emisión de Orden de Compra</div>
+                <div id="resumen-tiendas-oc" style="display:flex;flex-wrap:wrap;gap:8px;font-size:12px;"></div>
+              </div>
+              <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
                 <div>
-                  <label class="form-label">Razón social</label>
-                  <input class="input" name="razon_social" value="{{ p.razon_social }}" required/>
+                  <div class="text-muted" style="font-size:11px;">Total lotes</div>
+                  <div class="mono" style="font-size:18px;font-weight:700;" id="oc-total-lotes">0</div>
                 </div>
                 <div>
-                  <label class="form-label">RFC</label>
-                  <input class="input" name="rfc" value="{{ p.rfc }}" maxlength="13" required/>
+                  <div class="text-muted" style="font-size:11px;">Total unidades</div>
+                  <div class="mono" style="font-size:18px;font-weight:700;" id="oc-total-unidades">0</div>
                 </div>
                 <div>
-                  <label class="form-label">Lead time (días)</label>
-                  <input class="input" name="lead_time_dias" type="number" min="0"
-                         value="{{ p.lead_time_dias }}" required/>
-                </div>
-                <div>
-                  <label class="form-label">MOQ</label>
-                  <input class="input" name="moq" type="number" step="1" min="1"
-                         value="{{ '%.0f' | format(p.moq | float) }}" required/>
-                </div>
-                <div>
-                  <label class="form-label">Correo</label>
-                  <input class="input" name="contacto_email" value="{{ p.contacto_email or '' }}"/>
-                </div>
-                <div>
-                  <label class="form-label">Teléfono</label>
-                  <input class="input" name="telefono" value="{{ p.telefono or '' }}"/>
+                  <div class="text-muted" style="font-size:11px;">Importe estimado</div>
+                  <div class="mono" style="font-size:18px;font-weight:700;color:#16a34a;" id="oc-total-monto">$0.00</div>
                 </div>
               </div>
-              <div class="form-actions">
-                <button class="btn btn-primary btn-sm" type="submit">Guardar cambios</button>
-                <button class="btn btn-ghost btn-sm" type="button"
-                        onclick="toggleForm('editar-proveedor-{{ p.id_proveedor }}')">Cerrar</button>
+            </div>
+
+            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+              <div style="flex:1;min-width:260px;">
+                <label class="form-label">Observaciones e instrucciones de entrega para el proveedor</label>
+                <input class="input" name="observaciones" maxlength="500"
+                       placeholder="Ej. Entregar separado por tienda en muelle refrigerado antes de las 08:00."/>
               </div>
-            </form>
-          </td>
-        </tr>
-      {% else %}
-        {{ ui.vacio('Todavía no hay proveedores registrados.', 10) }}
-      {% endfor %}
-    </tbody>
-  </table>
+              <button class="btn btn-primary" type="submit" id="btn-emitir-oc">
+                Registrar Orden de Compra y Generar PDF
+              </button>
+            </div>
+          </div>
+        {% endif %}
+      </form>
+    {% endif %}
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {# PESTAÑA 2: HISTORIAL DE ÓRDENES DE COMPRA CON PDF                      #}
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  <div class="pestana-contenido" data-pestana-id="ordenes" {% if tab_activa != 'ordenes' %}hidden{% endif %}>
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-header-title">Órdenes de compra emitidas ({{ ordenes_compra | length }})</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Proveedor</th>
+            <th>Tiendas</th>
+            <th>Lotes / Unidades</th>
+            <th>Importe total</th>
+            <th>Entrega estimada</th>
+            <th>Estado OC</th>
+            <th>Correo</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for oc in ordenes_compra %}
+            <tr>
+              <td class="mono" style="font-weight:700;">{{ oc.folio }}</td>
+              <td>
+                <div style="font-weight:600;">{{ oc.proveedor }}</div>
+                <div class="text-muted" style="font-size:11px;">{{ oc.comprador }}</div>
+              </td>
+              <td class="mono">{{ oc.n_tiendas }} tienda(s)</td>
+              <td>
+                <div class="mono" style="font-weight:600;">{{ oc.total_lotes }} lote(s)</div>
+                <div class="text-muted mono" style="font-size:11px;">{{ oc.total_unidades | cantidad(2) }} u</div>
+              </td>
+              <td class="mono" style="font-weight:600;">{{ ui.moneda(oc.total) }}</td>
+              <td class="mono">{{ oc.fecha_entrega_estimada or '—' }}</td>
+              <td>
+                {% if oc.estado == 'ENVIADA' %}
+                  <span class="badge badge-success">Enviada</span>
+                {% elif oc.estado == 'CANCELADA' %}
+                  <span class="badge badge-danger">Cancelada</span>
+                {% else %}
+                  <span class="badge badge-info">{{ oc.estado | legible }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if oc.estado_envio_correo == 'ENVIADO_SMTP' %}
+                  <span class="badge badge-success">Enviado</span>
+                {% elif oc.estado_envio_correo == 'REGISTRADO_SIN_SMTP' %}
+                  <span class="badge badge-info">Registrado</span>
+                {% else %}
+                  <span class="badge badge-neutral">Sin enviar</span>
+                {% endif %}
+                {% if oc.correo_envio %}
+                  <div class="text-muted" style="font-size:11px;">{{ oc.correo_envio }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <a class="btn btn-primary btn-sm" href="{{ url_for('catalogo.orden_compra_detalle', id_oc=oc.id_oc) }}">
+                    Ver PDF / Correo
+                  </a>
+                  <a class="btn btn-ghost btn-sm" href="{{ url_for('catalogo.orden_compra_pdf', id_oc=oc.id_oc, descargar=1) }}">
+                    Descargar
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            {{ ui.vacio('Aún no se ha registrado ninguna orden de compra. Selecciona lotes en la pestaña «Catálogo y Pedido por Lotes».', 9) }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {# PESTAÑA 3: SOLO ADMIN — DIRECTORIO, ALTA Y EDICIÓN DE PROVEEDORES      #}
+  {# ══════════════════════════════════════════════════════════════════════ #}
+  {% if current_role == 'admin' %}
+    <div class="pestana-contenido" data-pestana-id="directorio" {% if tab_activa != 'directorio' %}hidden{% endif %}>
+      <form class="filtros" method="get" action="{{ url_for('catalogo.proveedores') }}">
+        <input type="hidden" name="tab" value="directorio"/>
+        <div class="campo" style="min-width:240px;">
+          <label class="form-label">Buscar proveedor</label>
+          <input class="input" name="q" value="{{ filtro }}" placeholder="Razón social o RFC…"/>
+        </div>
+        <button class="btn btn-primary" type="submit">Buscar</button>
+        {% if filtro %}
+          <a class="btn btn-ghost" href="{{ url_for('catalogo.proveedores', tab='directorio') }}">Limpiar</a>
+        {% endif %}
+        <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nuevo-proveedor')">
+          + Nuevo proveedor
+        </button>
+      </form>
+
+      <div class="form-card" id="form-nuevo-proveedor" style="display:none;">
+        <div class="card-title">Registrar nuevo proveedor (Solo Administración)</div>
+        <form method="post" action="{{ url_for('catalogo.proveedores') }}">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">RFC *</label>
+              <input class="input mono" name="rfc" required maxlength="13" placeholder="Ej. ABC190101XYZ"/>
+            </div>
+            <div>
+              <label class="form-label">Razón social *</label>
+              <input class="input" name="razon_social" required maxlength="200"/>
+            </div>
+            <div>
+              <label class="form-label">Tiempo de entrega (días)</label>
+              <input class="input" name="lead_time_dias" type="number" min="0" value="3"/>
+            </div>
+            <div>
+              <label class="form-label">Pedido mínimo base (MOQ)</label>
+              <input class="input" name="moq" type="number" step="0.01" min="1" value="10"/>
+            </div>
+            <div>
+              <label class="form-label">Correo de contacto</label>
+              <input class="input" name="contacto_email" type="email"/>
+            </div>
+            <div>
+              <label class="form-label">Teléfono</label>
+              <input class="input" name="telefono" maxlength="20"/>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn btn-primary" type="submit">Guardar proveedor</button>
+            <button class="btn btn-ghost" type="button" onclick="toggleForm('form-nuevo-proveedor')">Cancelar</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-header-title">Proveedores registrados ({{ proveedores | length }})</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>RFC</th>
+              <th>Razón social</th>
+              <th>Entrega</th>
+              <th>MOQ base</th>
+              <th>Contacto</th>
+              <th>Productos</th>
+              <th>Lotes</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pr in proveedores %}
+              <tr>
+                <td class="mono">{{ pr.rfc }}</td>
+                <td><strong>{{ pr.razon_social }}</strong></td>
+                <td class="mono">{{ pr.lead_time_dias }} d</td>
+                <td class="mono">{{ pr.moq | cantidad(2) }}</td>
+                <td>
+                  <div>{{ pr.contacto_email or '—' }}</div>
+                  <div class="text-muted" style="font-size:11px;">{{ pr.telefono or '' }}</div>
+                </td>
+                <td class="mono">{{ pr.n_productos }}</td>
+                <td class="mono">{{ pr.n_lotes }}</td>
+                <td>
+                  {% if pr.activo %}
+                    <span class="badge badge-success">Activo</span>
+                  {% else %}
+                    <span class="badge badge-neutral">Inactivo</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div style="display:flex;gap:6px;">
+                    <button class="btn btn-ghost btn-sm" type="button"
+                            onclick="toggleForm('editar-proveedor-{{ pr.id_proveedor }}')">Editar</button>
+                    <form method="post" action="{{ url_for('catalogo.estado_proveedor', id_proveedor=pr.id_proveedor) }}">
+                      <input type="hidden" name="activo" value="{{ '0' if pr.activo else '1' }}"/>
+                      <button class="btn btn-ghost btn-sm" type="submit">
+                        {{ 'Desactivar' if pr.activo else 'Activar' }}
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              <tr id="editar-proveedor-{{ pr.id_proveedor }}" style="display:none;">
+                <td colspan="9" style="background:var(--muted);">
+                  <form method="post" action="{{ url_for('catalogo.editar_proveedor', id_proveedor=pr.id_proveedor) }}">
+                    <div class="form-grid">
+                      <div>
+                        <label class="form-label">RFC</label>
+                        <input class="input mono" name="rfc" value="{{ pr.rfc }}" required maxlength="13"/>
+                      </div>
+                      <div>
+                        <label class="form-label">Razón social</label>
+                        <input class="input" name="razon_social" value="{{ pr.razon_social }}" required maxlength="200"/>
+                      </div>
+                      <div>
+                        <label class="form-label">Entrega (días)</label>
+                        <input class="input" name="lead_time_dias" type="number" min="0" value="{{ pr.lead_time_dias }}"/>
+                      </div>
+                      <div>
+                        <label class="form-label">MOQ base</label>
+                        <input class="input" name="moq" type="number" step="0.01" min="1" value="{{ '%.2f' | format(pr.moq | float) }}"/>
+                      </div>
+                      <div>
+                        <label class="form-label">Correo</label>
+                        <input class="input" name="contacto_email" type="email" value="{{ pr.contacto_email or '' }}"/>
+                      </div>
+                      <div>
+                        <label class="form-label">Teléfono</label>
+                        <input class="input" name="telefono" maxlength="20" value="{{ pr.telefono or '' }}"/>
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                      <button class="btn btn-primary btn-sm" type="submit">Guardar cambios</button>
+                      <button class="btn btn-ghost btn-sm" type="button"
+                              onclick="toggleForm('editar-proveedor-{{ pr.id_proveedor }}')">Cancelar</button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              {{ ui.vacio('No se encontraron proveedores registrados.', 9) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
 </div>
+
+<script>
+(function () {
+  const moneda = (v) => Number(v || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+  const cant = (v) => Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  function recalcularOC() {
+    const inputs = document.querySelectorAll('.oc-lote-input');
+    if (!inputs.length) return;
+    const porSku = {};
+    const porTienda = {};
+    let totLotes = 0;
+    let totUnidades = 0;
+    let totMonto = 0;
+
+    inputs.forEach((inp) => {
+      const lotes = Math.max(0, Math.floor(Number(inp.value || 0)));
+      const sku = inp.dataset.sku;
+      const loc = inp.dataset.loc;
+      const locNombre = inp.dataset.locNombre || ('Tienda ' + loc);
+      const moq = Number(inp.dataset.moq || 1);
+      const costo = Number(inp.dataset.costo || 0);
+      const unidad = inp.dataset.unidad || 'u';
+      const u = lotes * moq;
+      const sub = lotes * costo;
+
+      const cell = document.getElementById(`celda-u-${sku}-${loc}`);
+      if (cell) cell.textContent = `${cant(u)} ${unidad}`;
+
+      if (!porSku[sku]) porSku[sku] = { lotes: 0, u: 0, sub: 0, unidad };
+      porSku[sku].lotes += lotes;
+      porSku[sku].u += u;
+      porSku[sku].sub += sub;
+
+      if (!porTienda[locNombre]) porTienda[locNombre] = { lotes: 0, u: 0, sub: 0 };
+      porTienda[locNombre].lotes += lotes;
+      porTienda[locNombre].u += u;
+      porTienda[locNombre].sub += sub;
+
+      totLotes += lotes;
+      totUnidades += u;
+      totMonto += sub;
+    });
+
+    Object.entries(porSku).forEach(([sku, d]) => {
+      const elL = document.getElementById(`sku-lotes-${sku}`);
+      const elU = document.getElementById(`sku-unidades-${sku}`);
+      const elS = document.getElementById(`sku-subtotal-${sku}`);
+      if (elL) elL.textContent = `${d.lotes} lote(s)`;
+      if (elU) elU.textContent = `${cant(d.u)} ${d.unidad}`;
+      if (elS) elS.textContent = moneda(d.sub);
+    });
+
+    const elTotL = document.getElementById('oc-total-lotes');
+    const elTotU = document.getElementById('oc-total-unidades');
+    const elTotM = document.getElementById('oc-total-monto');
+    if (elTotL) elTotL.textContent = totLotes;
+    if (elTotU) elTotU.textContent = cant(totUnidades);
+    if (elTotM) elTotM.textContent = moneda(totMonto);
+
+    const cont = document.getElementById('resumen-tiendas-oc');
+    if (cont) {
+      const activos = Object.entries(porTienda).filter(([, t]) => t.lotes > 0);
+      if (!activos.length) {
+        cont.innerHTML = '<span class="text-muted">Selecciona al menos 1 lote para alguna tienda destino.</span>';
+      } else {
+        cont.innerHTML = activos
+          .map(([nombre, t]) =>
+            `<span class="badge badge-info">${nombre}: ${t.lotes} lote(s) · ${cant(t.u)} u · ${moneda(t.sub)}</span>`
+          )
+          .join('');
+      }
+    }
+
+    const btn = document.getElementById('btn-emitir-oc');
+    if (btn) btn.disabled = totLotes <= 0;
+  }
+
+  window.aplicarSugerenciasOC = function () {
+    document.querySelectorAll('.oc-lote-input').forEach((inp) => {
+      inp.value = inp.dataset.sugerido || 0;
+    });
+    recalcularOC();
+  };
+
+  window.limpiarLotesOC = function () {
+    document.querySelectorAll('.oc-lote-input').forEach((inp) => {
+      inp.value = 0;
+    });
+    recalcularOC();
+  };
+
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.classList.contains('oc-lote-input')) recalcularOC();
+  });
+  document.addEventListener('DOMContentLoaded', recalcularOC);
+})();
+</script>
 {% endblock %}

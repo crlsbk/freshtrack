@@ -15,7 +15,7 @@
   {{ ui.kpi('Tipos de acción distintos', acciones | length) }}
   {{ ui.kpi('Página actual', (paginacion.pagina | string) ~ ' de ' ~ (paginacion.paginas | string),
             (paginacion.por_pagina | string) ~ ' por página') }}
-  {{ ui.kpi('Tabla de origen', 'auditoria.bitacora_eventos', 'Consultada en vivo') }}
+  {{ ui.kpi('Cobertura de registro', 'Operaciones y movimientos', 'Trazabilidad completa') }}
 </div>
 
 <form class="filtros" method="get" action="{{ url_for('panel.auditoria_bitacora') }}">

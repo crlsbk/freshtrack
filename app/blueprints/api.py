@@ -239,13 +239,13 @@ def api_merma():
 
 @bp.post("/pronostico/ejecutar")
 @token_requerido
-@rol_en_token("admin", "planner", "buyer")
+@rol_en_token("admin", "planner")
 def api_pronostico_ejecutar():
     datos = request.get_json(silent=True) or request.form
     try:
         resultado = motor_pron.ejecutar_pronostico(
             usuario=_usuario(),
-            metodo=datos.get("metodo", "SUAVIZACION_EXPONENCIAL"),
+            metodo=datos.get("metodo", "AUTO"),
             horizonte=a_int(datos.get("horizonte"), 7),
             ventana=a_int(datos.get("ventana"), 28),
             alpha=float(datos.get("alpha", 0.30) or 0.30),

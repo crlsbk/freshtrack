@@ -128,12 +128,12 @@ def como_usuario(clave: str, metodo: str, ruta: str, cuerpo: Any = None, timeout
 
 
 def mensaje_error(clave: str, status: int, respuesta: Any) -> str:
-    """Texto para el usuario cuando un microservicio rechaza o no atiende la operación."""
+    """Texto claro para operadores cuando un módulo rechaza o no atiende la operación."""
     if status == 0:
-        return f"{nombre(clave)} no está disponible en este momento. Intenta de nuevo en unos segundos."
+        return "El módulo solicitado no está disponible en este momento. Intenta de nuevo en unos segundos."
     texto = (respuesta or {}).get("mensaje") if isinstance(respuesta, dict) else None
     if status == 403:
-        return f"Tu rol no tiene permiso para esta operación ({nombre(clave)} respondió 403)."
+        return "Tu rol o sucursal no tiene permiso para realizar esta operación."
     if status == 401:
         return "Tu sesión expiró o fue cerrada. Vuelve a iniciar sesión."
     detalle = ""
@@ -141,7 +141,34 @@ def mensaje_error(clave: str, status: int, respuesta: Any) -> str:
         faltantes = respuesta["detalles"].get("faltantes")
         if faltantes:
             detalle = " Faltan: " + ", ".join(faltantes) + "."
-    return f"{texto or 'La operación no se completó.'}{detalle} ({nombre(clave)}, HTTP {status})"
+    return f"{texto or 'La operación no se completó.'}{detalle}"
+
+
+def llamar_formato(
+    clave: str,
+    metodo: str,
+    ruta: str,
+    cuerpo_bytes: bytes | None = None,
+    content_type: str = "application/json",
+    accept: str = "application/json",
+    token: str | None = None,
+    timeout: float = 15.0,
+) -> tuple[int, bytes, str]:
+    """Envía una petición HTTP en JSON o XML hacia un servicio interno."""
+    req = urllib.request.Request(url_interna(clave) + ruta, data=cuerpo_bytes, method=metodo)
+    req.add_header("Accept", accept)
+    req.add_header("User-Agent", "freshtrack-web")
+    if cuerpo_bytes is not None:
+        req.add_header("Content-Type", content_type)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read(), resp.headers.get("Content-Type", accept)
+    except urllib.error.HTTPError as err:
+        return err.code, err.read(), err.headers.get("Content-Type", accept)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return 0, b"", accept
 
 
 def activo() -> bool:
@@ -172,3 +199,36 @@ def reenviar(clave: str, metodo: str, ruta: str, consulta: str, cuerpo: bytes | 
     except (urllib.error.URLError, TimeoutError, OSError):
         cuerpo_error = json.dumps({"error": "servicio_no_disponible", "mensaje": f"{nombre(clave)} no respondió."}).encode()
         return 502, cuerpo_error, "application/json", ""
+
+
+def llamar_binario(
+    clave: str,
+    metodo: str,
+    ruta: str,
+    *,
+    token: str | None = None,
+    timeout: float = 20.0,
+) -> tuple[int, bytes, dict[str, str]]:
+    """Petición binaria (p. ej. descarga de PDF) hacia un microservicio interno."""
+    req = urllib.request.Request(url_interna(clave) + ruta, method=metodo)
+    req.add_header("Accept", "*/*")
+    req.add_header("User-Agent", "freshtrack-web")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            hdrs = {k.lower(): v for k, v in resp.headers.items()}
+            return resp.status, resp.read(), hdrs
+    except urllib.error.HTTPError as err:
+        hdrs = {k.lower(): v for k, v in err.headers.items()} if err.headers else {}
+        return err.code, err.read(), hdrs
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return 0, b"", {}
+
+
+def como_usuario_binario(clave: str, metodo: str, ruta: str, timeout: float = 20.0) -> tuple[int, bytes, dict[str, str]]:
+    """Reenvía el JWT de sesión para recuperar respuestas binarias de un microservicio."""
+    from flask import has_request_context, session
+
+    token = session.get("token") if has_request_context() else None
+    return llamar_binario(clave, metodo, ruta, token=token, timeout=timeout)

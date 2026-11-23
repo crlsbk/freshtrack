@@ -1,0 +1,43 @@
+{
+    email {$ACME_EMAIL:admin@freshtrack.mx}
+}
+
+{$PUBLIC_DOMAIN:localhost} {
+    encode gzip zstd
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    handle /api/v1/auth* {
+        reverse_proxy svc_auth:5001
+    }
+    handle /api/v1/catalog* {
+        reverse_proxy svc_catalog:5002
+    }
+    handle /api/v1/inventory* {
+        reverse_proxy svc_inventory:5003
+    }
+    handle /api/v1/commercial* {
+        reverse_proxy svc_commercial:5004
+    }
+    handle /api/v1/asn* {
+        reverse_proxy svc_asn:5005
+    }
+    handle /api/v1/planning* {
+        reverse_proxy svc_planning:5006
+    }
+    handle /api/v1/alerts* {
+        reverse_proxy svc_alerts:5007
+    }
+    handle /api/v1/audit* {
+        reverse_proxy svc_audit:5008
+    }
+    handle {
+        reverse_proxy app:5000
+    }
+}

@@ -52,7 +52,7 @@ def _login_por_svc_auth(email: str, password: str):
     )
     if status != 200:
         if status == 0:
-            return None, None, None, "El servicio de autenticación (svc-auth) no está disponible."
+            return None, None, None, "El módulo de autenticación no está disponible en este momento."
         return None, None, None, (r or {}).get("mensaje") or "Correo o contraseña incorrectos."
     u = r["usuario"]
     rol = one("SELECT nombre_rol FROM operacion.rol WHERE clave = :c", c=u["rol"]) or {}

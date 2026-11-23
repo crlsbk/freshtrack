@@ -33,6 +33,7 @@ from app.services.cache_service import (
     esta_jwt_revocado,
     obtener_sesion_redis,
     revocar_jwt,
+    sesion_activa,
 )
 
 MAX_INTENTOS_DEFECTO = 5
@@ -244,8 +245,35 @@ def crear_token(usuario: dict, ip: str | None = None, user_agent: str | None = N
     return token, jti
 
 
+def verificar_sesion_respaldo_bd(jti: str) -> bool:
+    """
+    Verificación Fail-Closed en PostgreSQL cuando Redis no está disponible.
+    Devuelve True únicamente si la sesión existe, no está revocada, no expiró
+    y la cuenta del usuario sigue activa. Ante cualquier fallo devuelve False.
+    """
+    if not jti:
+        return False
+    try:
+        vigente = one(
+            """
+            SELECT s.revocado, s.expira_en, u.estado_activo
+            FROM operacion.sesion_usuario s
+            JOIN operacion.usuario u ON u.id_usuario = s.id_usuario
+            WHERE s.jti = :jti
+            """,
+            jti=jti,
+        )
+    except Exception:
+        return False
+    if vigente is None or vigente["revocado"] or not vigente["estado_activo"]:
+        return False
+    if vigente["expira_en"] <= _ahora():
+        return False
+    return True
+
+
 def decodificar_token(token: str) -> dict | None:
-    """Valida firma y expiración, y comprueba que la sesión siga vigente."""
+    """Valida firma y expiración, y comprueba que la sesión siga vigente (Fail-Closed)."""
     try:
         payload = jwt.decode(
             token, Config.JWT_SECRET_KEY, algorithms=[Config.JWT_ALGORITHM]
@@ -261,13 +289,7 @@ def decodificar_token(token: str) -> dict | None:
     if esta_jwt_revocado(jti):
         return None
 
-    vigente = one(
-        "SELECT revocado, expira_en FROM operacion.sesion_usuario WHERE jti = :jti",
-        jti=jti,
-    )
-    if vigente is None or vigente["revocado"]:
-        return None
-    if vigente["expira_en"] < _ahora():
+    if not verificar_sesion_respaldo_bd(jti):
         return None
     return payload
 
@@ -350,13 +372,21 @@ def login_required(f):
                 return jsonify({"error": "no_autenticado"}), 401
             return redirect(url_for("auth.login", next=request.path))
 
-        # Verificar revocación en Redis en caso de logout o bloqueo desde otra sesión
+        # Verificar revocación en Redis (o respaldo Fail-Closed en PostgreSQL si Redis cae)
         jti = session.get("jti")
-        if jti and esta_jwt_revocado(jti):
-            session.clear()
-            if request.path.startswith("/api/"):
-                return jsonify({"error": "sesion_revocada"}), 401
-            return redirect(url_for("auth.login", next=request.path))
+        if jti:
+            revocado_redis = esta_jwt_revocado(jti)
+            estado_redis = sesion_activa(jti)
+            invalida = (
+                revocado_redis
+                or estado_redis is False
+                or (estado_redis is None and not verificar_sesion_respaldo_bd(jti))
+            )
+            if invalida:
+                session.clear()
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": "sesion_revocada"}), 401
+                return redirect(url_for("auth.login", next=request.path))
 
         return f(*args, **kwargs)
 

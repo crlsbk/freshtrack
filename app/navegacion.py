@@ -24,6 +24,7 @@ ICONOS: dict[str, str] = {
     "fefo": '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-12a.75.75 0 00-1.5 0v4.25c0 .2.08.39.22.53l2.5 2.5a.75.75 0 001.06-1.06L10.75 9.94V6z" clip-rule="evenodd"/>',
     "forecast": '<path d="M2 15a1 1 0 001 1h14a1 1 0 100-2H3a1 1 0 00-1 1zm2.7-5.3a1 1 0 011.4 0L8.5 12.1l3.3-4.4a1 1 0 011.5-.1l3.4 3.4a1 1 0 11-1.4 1.4l-2.7-2.7-3.3 4.4a1 1 0 01-1.5.1L6.1 11.1a1 1 0 010-1.4zM13 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 11-2 0V5.41l-2.29 2.3a1 1 0 11-1.42-1.42L14.59 4H14a1 1 0 01-1-1z"/>',
     "replenishment": '<path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>',
+    "triage": '<path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>',
     "transfers": '<path fill-rule="evenodd" d="M4.293 7.707a1 1 0 010-1.414l3-3a1 1 0 011.414 1.414L7.414 6H15a1 1 0 110 2H7.414l1.293 1.293a1 1 0 01-1.414 1.414l-3-3zm11.414 4.586a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L12.586 14H5a1 1 0 110-2h7.586l-1.293-1.293a1 1 0 011.414-1.414l3 3z" clip-rule="evenodd"/>',
     "discounts": '<path fill-rule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2zm7.707 3.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414-1.414l-2-2z" clip-rule="evenodd"/>',
     "shrinkage": '<path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm2 3a1 1 0 011 1v6a2 2 0 002 2h4a2 2 0 002-2V8a1 1 0 112 0v6a4 4 0 01-4 4H8a4 4 0 01-4-4V8a1 1 0 011-1zm5 1a1 1 0 011 1v3.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L9 12.586V9a1 1 0 011-1z" clip-rule="evenodd"/>',
@@ -54,35 +55,29 @@ SECCIONES = [
         "items": [
             {"id": "products", "label": "Productos", "endpoint": "catalogo.productos"},
             {"id": "stores", "label": "Tiendas y CEDIS", "endpoint": "catalogo.locaciones"},
-            {"id": "suppliers", "label": "Proveedores", "endpoint": "catalogo.proveedores"},
+            {"id": "suppliers", "label": "Proveedores y Compras", "endpoint": "catalogo.proveedores"},
         ],
     },
     {
         "label": "Operación",
         "items": [
-            {"id": "batches", "label": "Lotes y Recepción", "endpoint": "operacion.lotes"},
+            {"id": "batches", "label": "Lotes y Salida FEFO", "endpoint": "operacion.lotes"},
             {"id": "inventory", "label": "Inventario", "endpoint": "operacion.inventario"},
-            {"id": "sales", "label": "Ventas", "endpoint": "operacion.ventas"},
-            {"id": "fefo", "label": "Orden de salida (FEFO)", "endpoint": "operacion.fefo"},
-            {"id": "traceability", "label": "Trazabilidad", "endpoint": "operacion.trazabilidad"},
+            {"id": "sales", "label": "Monitor de Ventas", "endpoint": "operacion.ventas"},
         ],
     },
     {
         "label": "Analítica",
         "items": [
             {"id": "forecast", "label": "Pronósticos", "endpoint": "analitica.pronostico"},
+            {"id": "triage", "label": "Triaje y Acción Preventiva", "endpoint": "analitica.triaje"},
             {"id": "replenishment", "label": "Reabastecimiento", "endpoint": "analitica.reabastecimiento"},
-            {"id": "transfers", "label": "Transferencias", "endpoint": "analitica.transferencias"},
-            {"id": "discounts", "label": "Descuentos", "endpoint": "analitica.descuentos"},
-            {"id": "mongo_explorer", "label": "Documentos (MongoDB)", "endpoint": "panel.mongo_explorer"},
         ],
     },
     {
-        "label": "Desperdicio",
+        "label": "Impacto",
         "items": [
-            {"id": "shrinkage", "label": "Mermas", "endpoint": "operacion.mermas"},
-            {"id": "savings", "label": "Desperdicio evitado", "endpoint": "panel.desperdicio_evitado"},
-            {"id": "sustainability", "label": "Sostenibilidad", "endpoint": "panel.sostenibilidad"},
+            {"id": "savings", "label": "Impacto y Sostenibilidad", "endpoint": "panel.desperdicio_evitado"},
         ],
     },
     {
@@ -91,7 +86,6 @@ SECCIONES = [
             {"id": "users", "label": "Usuarios y Roles", "endpoint": "panel.usuarios"},
             {"id": "audit", "label": "Bitácora", "endpoint": "panel.auditoria_bitacora"},
             {"id": "settings", "label": "Configuración", "endpoint": "panel.configuracion"},
-            {"id": "services", "label": "Microservicios", "endpoint": "panel.microservicios"},
         ],
     },
 ]
@@ -102,45 +96,38 @@ SECCIONES = [
 VISTAS_POR_ROL: dict[str, list[str]] = {
     "admin": [
         "dashboard", "alerts", "map", "products", "stores", "suppliers", "batches",
-        "inventory", "sales", "fefo", "traceability", "forecast",
-        "replenishment", "transfers", "discounts", "shrinkage", "savings",
-        "sustainability", "users", "audit", "settings", "mongo_explorer",
-        "services",
+        "inventory", "sales", "forecast", "replenishment", "triage", "savings",
+        "users", "audit", "settings",
     ],
     "buyer": [
-        "dashboard", "alerts", "map", "products", "suppliers", "batches", "inventory",
-        "replenishment", "traceability", "forecast", "mongo_explorer",
+        "dashboard", "alerts", "map", "suppliers", "batches", "inventory",
+        "replenishment", "triage", "forecast",
     ],
     "planner": [
         "dashboard", "alerts", "map", "products", "inventory", "sales", "forecast",
-        "replenishment", "transfers", "discounts", "savings", "sustainability",
-        "traceability", "batches", "mongo_explorer",
+        "replenishment", "triage", "savings", "batches",
     ],
     "store_manager": [
-        # El gerente de tienda es quien aprueba o rechaza lo que el sistema
-        # recomienda (reabastecimiento, transferencias y descuentos), así que
-        # necesita ver esas pantallas además de la operación de su tienda.
-        "dashboard", "alerts", "map", "batches", "inventory", "sales", "fefo",
-        "shrinkage", "discounts", "transfers", "replenishment", "traceability",
-        "mongo_explorer",
+        # El gerente de tienda aprueba o ejecuta las recomendaciones del sistema
+        # (reabastecimiento, traslados, descuentos y mermas) desde el centro de triaje.
+        "dashboard", "alerts", "map", "batches", "inventory", "sales",
+        "triage", "replenishment", "savings",
     ],
     "warehouse": [
-        "dashboard", "alerts", "map", "batches", "inventory", "fefo", "shrinkage",
-        "transfers", "traceability", "mongo_explorer",
+        "dashboard", "alerts", "map", "batches", "inventory", "triage",
     ],
     "supplier": ["dashboard", "products", "batches", "replenishment"],
     "auditor": [
-        "dashboard", "map", "sales", "shrinkage", "sustainability", "audit",
-        "traceability", "savings", "mongo_explorer",
+        "dashboard", "map", "sales", "triage", "audit", "savings",
     ],
 }
 
 VISTA_INICIAL: dict[str, str] = {
     "admin": "dashboard",
-    "buyer": "replenishment",
+    "buyer": "suppliers",
     "planner": "forecast",
     "store_manager": "dashboard",
-    "warehouse": "fefo",
+    "warehouse": "batches",
     "supplier": "replenishment",
     "auditor": "audit",
 }

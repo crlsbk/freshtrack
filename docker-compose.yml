@@ -21,10 +21,16 @@
 
 x-entorno-servicio: &entorno-servicio
   DATABASE_URL: postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  ETL_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_SUPERUSER_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   MONGO_HOST: mongo
   MONGO_PORT: "27017"
+  OBJECT_STORAGE_ENDPOINT: http://minio:9000
+  OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-freshtrack_s3}
+  OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-freshtrack_s3_secret_2026}
+  OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-freshtrack-reportes}
+  OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
   LOG_LEVEL: INFO
 
 x-microservicio: &microservicio
@@ -147,6 +153,7 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       mongo: { condition: service_healthy }
+      minio: { condition: service_healthy }
       svc_auth: { condition: service_healthy }
       svc_catalog: { condition: service_healthy }
       svc_commercial: { condition: service_healthy }
@@ -231,12 +238,40 @@ services:
     ports: ["5005:5005"]
     healthcheck: *salud
 
+  # --- Almacenamiento de objetos compatible S3 (PDFs de Órdenes de Compra) ------
+  minio:
+    image: pgsty/silo:latest
+    container_name: freshtrack_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY:-freshtrack_s3}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY:-freshtrack_s3_secret_2026}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - freshtrack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || mc ready local || mcli ready local || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   # --- Microservicio 6: Planeación de demanda y reabastecimiento -----------------
   svc_planning:
     <<: *microservicio
     build: { context: ., dockerfile: app/services/planning_service/Dockerfile }
     image: ${IMAGE_PREFIX:-freshtrack}/svc-planning:${IMAGE_TAG:-latest}
     container_name: freshtrack_svc_planning
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      minio: { condition: service_healthy }
     environment:
       <<: *entorno-servicio
       PLANNING_SERVICE_PORT: "5006"
@@ -278,3 +313,4 @@ volumes:
   postgres_data:
   mongo_data:
   redis_data:
+  minio_data:

@@ -153,7 +153,10 @@ def test_error_message_por_tipo():
 
     assert error_message(ServiceUnavailable("planning")) == "El servicio planning no está disponible"
     assert error_message(ApiError(403, "acceso_denegado", "x")) == "No tienes permiso para esta acción"
-    assert error_message(XmlContractError("mal")) == "La respuesta no cumple el contrato XML"
+    # status 0: falló la validación local antes de enviar (la petición no cumple su XSD)
+    assert error_message(XmlContractError("No existe el contrato XSD 'login_request.xsd'.")) == (
+        "El XML enviado no cumple su contrato: No existe el contrato XSD 'login_request.xsd'.")
+    assert error_message(XmlContractError("mal", status=200)) == "La respuesta no cumple el contrato XML"
     assert error_message(ApiError(409, "conflicto", "Ya existe")) == "Ya existe"
 
 

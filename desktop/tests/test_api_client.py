@@ -425,3 +425,78 @@ def test_health_401_no_expira_ni_manda_token(settings, fake_http):
     assert "Authorization" not in fake_http.calls[0].headers
     assert api.session is not None and avisos == []
     assert fake_http.calls_to("POST", "/api/v1/auth/refresh") == []
+
+
+# --- enmascarado del token y validación automática de peticiones ---------------------
+def test_inspector_enmascara_token_de_la_respuesta(api, fake_http):
+    vistos: list[Exchange] = []
+    api.listeners.append(vistos.append)
+    fake_http.add("POST", "/api/v1/auth/login", body=auth_xml(token="jwt-secreto"))
+    fake_http.add("POST", "/api/v1/auth/refresh",
+                  body=auth_xml(token="jwt-nuevo").replace(b"</jti>", b"</jti><refresh_token>rt-1</refresh_token>"))
+    api.login("u@freshtrack.mx", "secreta")
+    assert api.session.token == "jwt-secreto"  # la sesión conserva el token real
+    assert api.refresh() and api.session.token == "jwt-nuevo"
+    for ex in vistos:
+        assert "<token>jwt-secreto</token>" not in ex.response_text
+        assert "<token>jwt-nuevo</token>" not in ex.response_text and "rt-1" not in ex.response_text
+        assert "<token>***</token>" in ex.response_text
+    assert "<refresh_token>***</refresh_token>" in vistos[1].response_text
+
+
+def test_call_valida_el_cuerpo_contra_el_xsd_de_su_raiz(api, fake_http):
+    _con_sesion(api)
+    fake_http.add("POST", "/api/v1/planning/replenishment/generate", status=201,
+                  body=b"<resultado><total>0</total></resultado>")
+    api.call("planning", "POST", "/api/v1/planning/replenishment/generate",
+             body={"horizonte": 7}, body_root="replenishment_request")
+    with pytest.raises(XmlContractError) as exc:
+        api.call("planning", "POST", "/api/v1/planning/replenishment/generate",
+                 body={"horizonte": 0}, body_root="replenishment_request")
+    assert exc.value.status == 0 and "replenishment_request.xsd" in exc.value.mensaje
+    assert len(fake_http.calls_to("POST", "/api/v1/planning/replenishment/generate")) == 1
+
+
+def test_call_sin_xsd_para_la_raiz_no_valida(api, fake_http):
+    _con_sesion(api)
+    fake_http.add("POST", "/api/v1/x", body=b"<ok/>")
+    api.call("planning", "POST", "/api/v1/x", body={"a": 1}, body_root="raiz_sin_contrato")
+    assert len(fake_http.calls) == 1
+
+
+@pytest.mark.parametrize("root,cuerpo,malo", [
+    ("purchase_order_request",
+     {"id_proveedor": 2, "lineas": [{"id_sku": 1, "id_locacion_destino": 3, "cantidad_lotes": 2}],
+      "observaciones": "Entrega matutina"},
+     {"id_proveedor": 2, "lineas": []}),
+    ("send_email_request", {"correo": "ventas@proveedor.mx"}, {"correo": "no-es-correo"}),
+    ("newsvendor_request", {"id_sku": 1, "id_locacion": 3, "horizonte": 7}, {"id_sku": 1, "id_locacion": 3}),
+    ("rechazo_request", {"motivo": "Sin espacio en bodega"}, {"motivo": ""}),
+    ("replenishment_request", {"horizonte": 7}, {"horizonte": 91}),
+    ("planning_cycle_request", {"horizonte": 7}, {"horizonte": -1}),
+    ("transfers_detect_request", {"horizonte": 14}, {"horizonte": "x"}),
+    ("discounts_generate_request", {"dias_hasta": 0}, {"dias_hasta": 61}),
+])
+def test_xsd_de_peticion_aceptan_lo_que_envia_la_app(root, cuerpo, malo):
+    from freshtrack_desktop.core.xml_codec import has_xsd, to_xml, validate
+
+    assert has_xsd(root)
+    validate(to_xml(cuerpo, root), root)
+    with pytest.raises(XmlContractError):
+        validate(to_xml(malo, root), root)
+
+
+def test_logout_toma_el_candado_de_sesion(api, fake_http):
+    """Un refresh en curso (con el candado tomado) no puede «resucitar» la sesión tras el logout."""
+    import threading
+
+    _con_sesion(api)
+    fake_http.add("POST", "/api/v1/auth/logout", body=b"")
+    terminado = threading.Event()
+    with api._lock_sesion:
+        hilo = threading.Thread(target=lambda: (api.logout(), terminado.set()))
+        hilo.start()
+        assert not terminado.wait(0.3)  # espera al candado
+        assert api.session is not None
+    hilo.join(2)
+    assert terminado.is_set() and api.session is None

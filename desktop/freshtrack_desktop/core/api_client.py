@@ -2,6 +2,9 @@
 Cliente HTTP de la app: solo XML, con contratos XSD, X-Correlation-Id y sesión JWT.
 
 - Toda respuesta XML cuya raíz tenga `contracts/xsd/<raiz>.xsd` se valida contra él.
+- Todo cuerpo de petición se valida antes de enviarse contra `body_xsd` y, si existe,
+  contra `contracts/xsd/<body_root>.xsd` (status 0 en el XmlContractError: no salió a la red).
+- El Inspector XML recibe la contraseña y el token enmascarados (`***`).
 - Toda petición lleva Accept: application/xml (o application/pdf en `get_bytes`),
   X-Correlation-Id (uuid4 hex) y User-Agent FreshTrack-Desktop/1.0.
 - 401 fuera de /auth/login, /auth/refresh, /auth/logout y /health → un refresh y un
@@ -31,6 +34,7 @@ USER_AGENT = "FreshTrack-Desktop/1.0"
 CT_XML = "application/xml; charset=utf-8"
 _RUTAS_SIN_REFRESH = ("/auth/login", "/auth/refresh")
 _RE_PASSWORD = re.compile(r"(<password>).*?(</password>)", re.S)
+_RE_TOKEN = re.compile(r"(<(token|refresh_token)>).*?(</\2>)", re.S)
 
 
 @dataclass
@@ -70,7 +74,9 @@ class ApiClient:
         except ApiError:
             pass
         finally:
-            self.session = None
+            # Bajo el candado: un refresh en curso no puede «resucitar» la sesión después.
+            with self._lock_sesion:
+                self.session = None
 
     def refresh(self) -> bool:
         """Renueva el JWT. False si no hay sesión, el servidor lo rechaza o auth no responde."""
@@ -102,6 +108,8 @@ class ApiClient:
                 data = to_xml(body, body_root)
             if body_xsd:
                 validate(data, body_xsd)
+            if body_root and body_root != body_xsd and has_xsd(body_root):
+                validate(data, body_root)
         return self._ejecutar(service, method, path, params=params, data=data,
                               expect_root=expect_root, response_xsd=response_xsd)
 
@@ -184,7 +192,7 @@ class ApiClient:
         if "pdf" in ctype.lower() or resp.content.startswith(b"%PDF"):
             texto = f"<{len(resp.content)} bytes {ctype}>"
         else:
-            texto = resp.content.decode("utf-8", errors="replace")
+            texto = _RE_TOKEN.sub(r"\1***\3", resp.content.decode("utf-8", errors="replace"))
         self._notificar(Exchange(method.upper(), url, resp.status_code, self._texto_peticion(data),
                                  texto, cid, elapsed))
         return resp, cid
@@ -270,7 +278,8 @@ class ApiClient:
                 raise
             nueva = Session.from_auth_response(datos)
             if not nueva.token:
-                raise XmlContractError("La renovación del token no devolvió <token>.", ["token vacío"])
+                raise XmlContractError("La renovación del token no devolvió <token>.", ["token vacío"],
+                                       status=200)
             self.session = nueva
             return True
 

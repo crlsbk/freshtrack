@@ -32,6 +32,9 @@ def error_message(exc: BaseException) -> str:
     if isinstance(exc, ServiceUnavailable):
         return f"El servicio {exc.service} no está disponible"
     if isinstance(exc, XmlContractError):
+        if exc.status == 0:  # falló la validación local: la petición no salió a la red
+            return f"El XML enviado no cumple su contrato: {exc.mensaje}" if exc.mensaje else \
+                "El XML enviado no cumple su contrato"
         return "La respuesta no cumple el contrato XML"
     if isinstance(exc, ApiError):
         if exc.status == 403:

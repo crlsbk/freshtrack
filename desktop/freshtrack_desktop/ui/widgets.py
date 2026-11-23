@@ -333,7 +333,7 @@ class DataTable(QWidget):
 
     def selected_rows(self) -> list[dict]:
         filas = sorted({i.row() for i in self.view.selectionModel().selectedRows()})
-        return [self._fila_de_proxy(r) for r in filas]
+        return [self._fila_de_proxy(r) for r in filas] if self._columns else []
 
     def selected_row(self) -> dict | None:
         sel = self.selected_rows()

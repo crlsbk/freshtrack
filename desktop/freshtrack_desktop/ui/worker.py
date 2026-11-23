@@ -32,7 +32,7 @@ class Worker(QRunnable):
         signals = self.signals
         try:
             valor = self.fn(*self.args, **self.kwargs)
-        except BaseException as exc:  # noqa: BLE001 - se entrega al hilo de UI
+        except Exception as exc:  # noqa: BLE001 - se entrega al hilo de UI
             signals.error.emit(exc)
         else:
             signals.result.emit(valor)

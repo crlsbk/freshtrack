@@ -6,7 +6,7 @@ import re
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout,
+    QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout,
 )
 
 from ..core.config import PUERTOS
@@ -20,6 +20,7 @@ DEMO_ACCOUNTS = {
     "buyer": ("buyer@freshtrack.mx", "Compras2026!"),
     "planner": ("planner@freshtrack.mx", "Plan2026!"),
 }
+ROLE_REJECTED_MSG = "Esta aplicación es para compradores y planeadores"
 _RE_CORREO = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ROLE_NAMES = {"buyer": "Comprador", "planner": "Planeador", "admin": "Administrador"}
 
@@ -63,8 +64,8 @@ class ServersDialog(QDialog):
         self.settings.timeout = float(self.timeout.value())
         try:
             self.settings.save()
-        except OSError:
-            pass  # sin permiso de escritura: los cambios valen para esta ejecución
+        except OSError as exc:  # sin permiso de escritura: los cambios valen para esta ejecución
+            QMessageBox.warning(self, "Servidores", f"No se pudo guardar ({exc}); los cambios valen solo para esta sesión.")
         super().accept()
 
 
@@ -166,9 +167,8 @@ class LoginDialog(QDialog):
         self._habilitar(True)
         if session.rol not in Session.DESKTOP_ROLES:
             self.ctx.log.record("LOGIN_RECHAZADO", f"{session.email} con rol {session.rol}", ok=False)
-            self.set_message(
-                f"La cuenta {session.email or self.email.text()} tiene rol «{session.rol}», que no tiene acceso a "
-                "la app de escritorio (solo compradores, planeadores y administradores).")
+            self.set_message(f"{ROLE_REJECTED_MSG}\nLa cuenta {session.email or self.email.text()} tiene rol "
+                             f"«{session.rol}».")
             self.ctx.run(self.ctx.api.logout, on_error=lambda _exc: None)
             return
         self.ctx.log.set_user(session.email)

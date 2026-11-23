@@ -164,6 +164,8 @@ def test_show_error_muestra_correlation_id_y_lo_registra(ctx, qtbot):
         assert dlg.text() == "No tienes permiso para esta acción"
         assert "cid-123" in dlg.informativeText()
         assert "403" in dlg.informativeText()
+        info = dlg.findChild(QLabel, "qt_msgbox_informativelabel")
+        assert info is None or info.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse
     finally:
         dlg.close()
     ultima = ctx.log.tail()[-1]
@@ -352,6 +354,7 @@ def test_login_warehouse_muestra_error_y_no_abre(controller, qtbot, fake_http, c
     qtbot.waitUntil(lambda: ctx.pending == 0, timeout=WAIT)
     assert controller.window is None
     assert dlg.isVisible()
+    assert dlg.message.text().splitlines()[0] == "Esta aplicación es para compradores y planeadores"
     assert "warehouse" in dlg.message.text() and dlg.message.isVisible()
     assert ctx.api.session is None
 

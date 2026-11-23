@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 import shiboken6
 from PySide6.QtCore import QObject, Qt, QThreadPool, Signal
 from PySide6.QtGui import QCursor
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QWidget
 
 from ..core.activity_log import ActivityLog
 from ..core.api_client import ApiClient
@@ -146,6 +146,9 @@ class AppContext(QObject):
         dlg.setText(mensaje)
         dlg.setInformativeText(f"{http} · correlation_id: {cid}")
         dlg.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        info = dlg.findChild(QLabel, "qt_msgbox_informativelabel")  # el cid vive en el texto informativo
+        if info is not None:
+            info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         detalles = getattr(exc, "detalles", None)
         lineas = [f"Tipo: {type(exc).__name__}", f"Código: {getattr(exc, 'error', '-')}",
                   f"Mensaje del servidor: {exc}", f"correlation_id: {cid}"]

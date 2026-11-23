@@ -170,6 +170,7 @@
         <th>Lotes</th>
         <th>MOQ / lote</th>
         <th>Total unidades</th>
+        <th>Recibido</th>
         <th>Precio unitario</th>
         <th>Subtotal</th>
       </tr>
@@ -185,6 +186,11 @@
           <td class="mono" style="font-weight:700;">{{ l.cantidad_lotes }}</td>
           <td class="mono">{{ l.unidades_por_lote | cantidad(2) }} {{ l.unidad_medida }}</td>
           <td class="mono">{{ l.cantidad_unidades | cantidad(2) }} {{ l.unidad_medida }}</td>
+          <td class="mono">
+            <span class="{{ 'text-success' if (l.cantidad_recibida or 0) >= l.cantidad_unidades else '' }}">
+              {{ (l.cantidad_recibida or 0) | cantidad(2) }} {{ l.unidad_medida }}
+            </span>
+          </td>
           <td class="mono">{{ ui.moneda(l.precio_unitario) }}</td>
           <td class="mono" style="font-weight:600;">{{ ui.moneda(l.subtotal) }}</td>
         </tr>
@@ -192,4 +198,39 @@
     </tbody>
   </table>
 </div>
+
+{% if orden.despachos_asn %}
+  <div class="table-wrap" style="margin-top:20px;">
+    <div class="table-header">
+      <div class="table-header-title">Despachos y Hojas QR asociadas ({{ orden.despachos_asn | length }})</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Folio despacho</th>
+          <th>Estado</th>
+          <th>Etiquetas recibidas</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in orden.despachos_asn %}
+          {% set etqs = d.get('etiquetas') or [] %}
+          {% set rec_n = etqs | rejectattr('estado_escaneo', 'equalto', 'PENDIENTE') | list | length %}
+          <tr>
+            <td class="mono" style="font-weight:700;">{{ d.folio_asn }}</td>
+            <td>{{ ui.estado(d.estado) }}</td>
+            <td>{{ rec_n }} / {{ etqs | length }} etiqueta(s)</td>
+            <td>
+              <div style="display:flex;gap:6px;">
+                <a class="btn btn-ghost btn-sm" href="{{ url_for('operacion.despachos', folio=d.folio_asn, tab='historial') }}">Ver QRs</a>
+                <a class="btn btn-primary btn-sm" href="{{ url_for('operacion.despacho_pdf', folio_asn=d.folio_asn, descargar=1) }}">Descargar Hoja QR</a>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
 {% endblock %}

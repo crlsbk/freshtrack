@@ -22,6 +22,7 @@ from sqlalchemy import text
 
 from app.db import a_float, one, query, transaccion
 from app.domain import inventario as dom_inv
+from app.domain import recepcion as dom_recepcion
 from app.domain.ventas import _lotes_para_consumo, repartir_fefo
 from app.services import cache_service
 from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
@@ -372,6 +373,73 @@ def escanear_caducidades():
         status=200,
         root_tag="expiration_scan_response",
     )
+
+
+@app.post("/api/v1/inventory/receive-scan")
+@documentar(
+    "Recepción de lote en muelle de tienda mediante escaneo QR / NFC / RFID",
+    cuerpo={
+        "codigo_etiqueta": "FTL-261123-000142",
+        "id_locacion_recepcion": 3,
+        "cantidad_recibida": 50,
+        "temperatura_registrada_c": 4.2,
+        "resultado_inspeccion": "CONFORME",
+        "accion_calidad": "ACEPTAR_DISPONIBLE",
+        "medio_lectura": "QR",
+    },
+    raiz_xml="receive_scan_request",
+    raiz_respuesta="receive_scan_response",
+    errores=("400", "403", "404", "409"),
+    exito="201",
+)
+@requiere_auth("warehouse", "store_manager")
+def recibir_por_escaneo():
+    """Valida etiqueta QR/ASN e ingresa el lote recibido en PostgreSQL de forma idempotente."""
+    datos = leer_cuerpo("receive_scan_request", requerido=True)
+    codigo = datos.get("codigo_qr_crudo") or datos.get("codigo_etiqueta")
+    if not codigo:
+        return error_response(400, "campos_requeridos", "Debes enviar 'codigo_qr_crudo' o 'codigo_etiqueta'.")
+
+    id_loc_ctx = (getattr(g, "contexto", None) or {}).get("location_id")
+    id_loc = entero(datos, "id_locacion_recepcion", minimo=1) or id_loc_ctx
+    if not id_loc:
+        return error_response(400, "campos_requeridos", "Debes indicar 'id_locacion_recepcion'.")
+    validar_alcance_locacion(id_loc)
+
+    accion = str(datos.get("accion_calidad") or "ACEPTAR_DISPONIBLE").upper()
+    if accion == "RECHAZAR_MUELLE":
+        cant = float(datos.get("cantidad_recibida") or 0)
+    else:
+        cant = decimal_pos(datos, "cantidad_recibida")
+
+    temp = None
+    if datos.get("temperatura_registrada_c") not in (None, ""):
+        try:
+            temp = float(datos["temperatura_registrada_c"])
+        except (TypeError, ValueError) as exc:
+            raise ErrorApi(400, "parametro_invalido", "'temperatura_registrada_c' debe ser numérica.") from exc
+
+    idem_key = request.headers.get("Idempotency-Key") or datos.get("idempotency_key")
+    try:
+        res = dom_recepcion.procesar_recepcion_escaneo(
+            codigo_o_qr=str(codigo),
+            id_locacion_recepcion=id_loc,
+            cantidad_recibida=cant,
+            usuario=usuario_desde_token(),
+            fecha_caducidad_verificada=datos.get("fecha_caducidad_verificada"),
+            temperatura_registrada_c=temp,
+            resultado_inspeccion=str(datos.get("resultado_inspeccion") or "CONFORME"),
+            accion_calidad=accion,
+            medio_lectura=str(datos.get("medio_lectura") or "QR"),
+            observaciones=datos.get("observaciones"),
+            idempotency_key=str(idem_key) if idem_key else None,
+            forzar_desvio=bool(datos.get("forzar_desvio")),
+        )
+    except dom_recepcion.ErrorRecepcion as err:
+        return error_response(err.http_status, err.codigo, str(err), err.detalles or None)
+
+    cache_service.incrementar_contador("inventory", "qr_receive")
+    return render_response(res, status=res.get("codigo_http", 201), root_tag="receive_scan_response")
 
 
 if __name__ == "__main__":

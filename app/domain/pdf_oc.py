@@ -246,21 +246,28 @@ def generar_pdf_orden_compra(orden: dict) -> bytes:
     pdf.texto(566, y_tot + 6, _fmt_moneda(orden.get("total")), size=10.5, bold=True, rgb=(0.06, 0.45, 0.20), align="right")
 
     streams = pdf.cerrar()
-    total_paginas = len(streams)
+    return empaquetar_pdf(streams, folio=str(orden["folio"]), ancho=pdf.ANCHO, alto=pdf.ALTO)
 
-    # Añadir pie de página numerado antes de empaquetar
+
+def empaquetar_pdf(
+    streams: list[bytes],
+    *,
+    folio: str,
+    prefijo_pie: str = "FreshTrack · Documento generado automáticamente",
+    ancho: int = _LienzoPDF.ANCHO,
+    alto: int = _LienzoPDF.ALTO,
+) -> bytes:
+    """Empaqueta páginas de instrucciones PDF 1.4 con pie numerado y tabla xref."""
+    total_paginas = len(streams)
     streams_con_pie: list[bytes] = []
     for idx, st in enumerate(streams, start=1):
         pie = (
             b"\nBT /F1 8.0 Tf 0.450 0.480 0.520 rg 36.0 24.0 Td ("
-            + _ascii_o_winansi(f"FreshTrack · Documento generado automáticamente · Folio {orden['folio']} · Página {idx} de {total_paginas}")
+            + _ascii_o_winansi(f"{prefijo_pie} · Folio {folio} · Página {idx} de {total_paginas}")
             + b") Tj ET"
         )
         streams_con_pie.append(st + pie)
 
-    # Ensamblar objetos PDF 1.4
-    # 1: Catalog, 2: Pages, 3: Font F1 (Helvetica), 4: Font F2 (Helvetica-Bold),
-    # luego por cada página i: obj_page (5 + 2*i), obj_content (6 + 2*i)
     objetos: list[tuple[int, bytes]] = []
     page_ids = [5 + 2 * i for i in range(total_paginas)]
     kids_str = " ".join(f"{pid} 0 R" for pid in page_ids)
@@ -274,7 +281,7 @@ def generar_pdf_orden_compra(orden: dict) -> bytes:
         p_id = 5 + 2 * i
         c_id = p_id + 1
         page_obj = (
-            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pdf.ANCHO} {pdf.ALTO}] "
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {ancho} {alto}] "
             f"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {c_id} 0 R >>"
         ).encode("ascii")
         content_obj = (

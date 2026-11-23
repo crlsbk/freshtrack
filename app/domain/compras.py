@@ -542,6 +542,7 @@ def obtener_orden_compra(id_oc: str) -> dict | None:
         SELECT d.id_detalle::text, d.id_sku, p.nombre AS producto, p.codigo_gtin,
                p.unidad_medida, d.id_locacion_destino, loc.nombre AS locacion_destino,
                d.cantidad_lotes, d.unidades_por_lote, d.cantidad_unidades,
+               COALESCE(d.cantidad_recibida, 0) AS cantidad_recibida,
                d.precio_unitario, d.subtotal, d.sugerencia_newsvendor,
                d.id_orden_reabastecimiento::text
         FROM operacion.orden_compra_detalle d
@@ -561,6 +562,7 @@ def obtener_orden_compra(id_oc: str) -> dict | None:
             "cantidad_lotes": int(l["cantidad_lotes"]),
             "unidades_por_lote": a_float(l["unidades_por_lote"]),
             "cantidad_unidades": a_float(l["cantidad_unidades"]),
+            "cantidad_recibida": a_float(l.get("cantidad_recibida")),
             "precio_unitario": a_float(l["precio_unitario"]),
             "subtotal": a_float(l["subtotal"]),
             "sugerencia_newsvendor": a_float(l["sugerencia_newsvendor"]) if l["sugerencia_newsvendor"] is not None else None,
@@ -589,6 +591,8 @@ def obtener_orden_compra(id_oc: str) -> dict | None:
             "creado_en": cab["documento_creado_en"].isoformat() if cab.get("documento_creado_en") else None,
         }
 
+    from app.services import doc_store
+
     return {
         "id_oc": cab["id_oc"],
         "folio": cab["folio"],
@@ -615,6 +619,7 @@ def obtener_orden_compra(id_oc: str) -> dict | None:
         "documento_pdf": documento_pdf,
         "lineas": lineas,
         "resumen_tiendas": sorted(resumen_map.values(), key=lambda x: x["locacion_destino"]),
+        "despachos_asn": doc_store.listar_asns_por_oc(cab["folio"]),
     }
 
 

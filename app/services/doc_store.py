@@ -116,7 +116,17 @@ def asegurar_indices(db: Database | None = None) -> dict[str, list[str]]:
             [("estado", pymongo.ASCENDING)],
             name="idx_asn_estado",
         )
-        indices_creados["avisos_asn"].extend([r4, r5, r6])
+        r6b = db.avisos_asn.create_index(
+            [("folio_oc", pymongo.ASCENDING)],
+            name="idx_asn_folio_oc",
+            sparse=True,
+        )
+        r6c = db.avisos_asn.create_index(
+            [("etiquetas.codigo_etiqueta", pymongo.ASCENDING)],
+            name="idx_asn_etiqueta",
+            sparse=True,
+        )
+        indices_creados["avisos_asn"].extend([r4, r5, r6, r6b, r6c])
 
         # 3. alertas_operativas
         r7 = db.alertas_operativas.create_index(
@@ -278,8 +288,14 @@ def registrar_aviso_asn(
     fecha_arribo_estimada: datetime | None = None,
     estado: str = "ANUNCIADO",
     evidencias: list[dict] | None = None,
+    folio_oc: str | None = None,
+    id_oc: str | None = None,
+    transporte: dict | None = None,
+    etiquetas: list[dict] | None = None,
+    id_documento_pdf: str | None = None,
+    meta_pdf: dict | None = None,
 ) -> str | None:
-    """Registra un aviso anticipado de embarque (ASN) con documentos embebidos."""
+    """Registra un aviso anticipado de embarque (ASN) con documentos y etiquetas embebidas."""
     db = get_mongo_db()
     if db is None:
         return None
@@ -292,7 +308,7 @@ def registrar_aviso_asn(
     f_embarque = fecha_embarque or datetime.now(timezone.utc)
     f_arribo = fecha_arribo_estimada or (f_embarque + timedelta(days=2))
 
-    documento = {
+    documento: dict[str, Any] = {
         "folio_asn": folio_asn,
         "id_proveedor": int(id_proveedor),
         "fecha_embarque": f_embarque,
@@ -302,6 +318,18 @@ def registrar_aviso_asn(
         "inspecciones": evidencias or [],
         "version_esquema": ESQUEMA_VERSION,
     }
+    if folio_oc:
+        documento["folio_oc"] = str(folio_oc)
+    if id_oc:
+        documento["id_oc"] = str(id_oc)
+    if transporte:
+        documento["transporte"] = dict(transporte)
+    if etiquetas is not None:
+        documento["etiquetas"] = etiquetas
+    if id_documento_pdf:
+        documento["id_documento_pdf"] = str(id_documento_pdf)
+    if meta_pdf:
+        documento["meta_pdf"] = dict(meta_pdf)
 
     try:
         res = db.avisos_asn.insert_one(documento)
@@ -720,3 +748,106 @@ def obtener_contexto_documental_sku(id_sku: int, id_locacion: int) -> dict:
         "alertas_activas": alertas_sku,
         "consultado_en": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def actualizar_pdf_asn(folio_asn: str, id_documento_pdf: str, meta_pdf: dict) -> bool:
+    """Vincula los metadatos del PDF Hoja QR generado con el documento ASN."""
+    db = get_mongo_db()
+    if db is None:
+        return False
+    try:
+        res = db.avisos_asn.update_one(
+            {"folio_asn": folio_asn},
+            {
+                "$set": {
+                    "id_documento_pdf": str(id_documento_pdf),
+                    "meta_pdf": dict(meta_pdf),
+                    "actualizado_en": datetime.now(timezone.utc),
+                }
+            },
+        )
+        return res.matched_count > 0
+    except Exception as exc:
+        logger.error("Error al vincular PDF al ASN %s: %s", folio_asn, exc)
+        return False
+
+
+def obtener_asn_por_etiqueta(codigo: str) -> tuple[dict | None, dict | None]:
+    """Busca un documento ASN y la etiqueta exacta por codigo_etiqueta o codigo_rfid_epc."""
+    db = get_mongo_db()
+    if db is None or not codigo:
+        return None, None
+    c = str(codigo).strip()
+    try:
+        doc = db.avisos_asn.find_one(
+            {"$or": [{"etiquetas.codigo_etiqueta": c}, {"etiquetas.codigo_rfid_epc": c}]}
+        )
+        if not doc:
+            return None, None
+        doc["_id"] = str(doc["_id"])
+        etiqueta = next(
+            (
+                e
+                for e in (doc.get("etiquetas") or [])
+                if e.get("codigo_etiqueta") == c or (e.get("codigo_rfid_epc") and e.get("codigo_rfid_epc") == c)
+            ),
+            None,
+        )
+        return doc, etiqueta
+    except Exception as exc:
+        logger.error("Error al buscar etiqueta %s en MongoDB: %s", c, exc)
+        return None, None
+
+
+def marcar_etiqueta_recibida(folio_asn: str, codigo_etiqueta: str, datos_recepcion: dict) -> bool:
+    """Marca una etiqueta como escaneada/recibida y recalcula el estado global del ASN."""
+    db = get_mongo_db()
+    if db is None:
+        return False
+    try:
+        res = db.avisos_asn.update_one(
+            {"folio_asn": folio_asn, "etiquetas.codigo_etiqueta": codigo_etiqueta},
+            {
+                "$set": {
+                    "etiquetas.$.estado_escaneo": datos_recepcion.get("estado_escaneo", "RECIBIDA"),
+                    "etiquetas.$.recepcion": dict(datos_recepcion),
+                    "actualizado_en": datetime.now(timezone.utc),
+                }
+            },
+        )
+        if res.matched_count == 0:
+            return False
+        doc = db.avisos_asn.find_one({"folio_asn": folio_asn}, {"etiquetas": 1, "estado": 1})
+        etiquetas = (doc or {}).get("etiquetas") or []
+        if etiquetas:
+            estados = [e.get("estado_escaneo", "PENDIENTE") for e in etiquetas]
+            if all(es != "PENDIENTE" for es in estados):
+                nuevo_estado = "REVISION_CALIDAD" if any(es in ("CUARENTENA", "RECHAZADA") for es in estados) else "RECIBIDO"
+                db.avisos_asn.update_one(
+                    {"folio_asn": folio_asn},
+                    {"$set": {"estado": nuevo_estado, "actualizado_en": datetime.now(timezone.utc)}},
+                )
+            elif any(es in ("CUARENTENA", "RECHAZADA") for es in estados):
+                db.avisos_asn.update_one(
+                    {"folio_asn": folio_asn},
+                    {"$set": {"estado": "REVISION_CALIDAD", "actualizado_en": datetime.now(timezone.utc)}},
+                )
+        return True
+    except Exception as exc:
+        logger.error("Error al actualizar etiqueta %s en ASN %s: %s", codigo_etiqueta, folio_asn, exc)
+        return False
+
+
+def listar_asns_por_oc(folio_oc: str) -> list[dict]:
+    """Lista los documentos ASN vinculados a una Orden de Compra."""
+    db = get_mongo_db()
+    if db is None or not folio_oc:
+        return []
+    try:
+        docs = list(db.avisos_asn.find({"folio_oc": folio_oc}).sort([("fecha_embarque", -1)]))
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        return docs
+    except Exception as exc:
+        logger.warning("Error al listar ASNs de OC %s: %s", folio_oc, exc)
+        return []

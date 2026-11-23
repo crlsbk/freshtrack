@@ -12,8 +12,11 @@
 
 <div class="filtros">
   {% if current_role in ['admin', 'warehouse'] %}
-    <button class="btn btn-primary" type="button" onclick="toggleForm('form-recepcion')">
-      + Registrar recepción
+    <button class="btn btn-primary" type="button" onclick="toggleForm('panel-recepcion-qr')">
+      Escanear QR / Recibir Embarque
+    </button>
+    <button class="btn btn-ghost" type="button" onclick="toggleForm('form-recepcion')">
+      + Registrar recepción manual
     </button>
   {% endif %}
   {% if current_role in ['admin', 'warehouse', 'store_manager', 'planner'] %}
@@ -53,6 +56,186 @@
     <a class="btn btn-ghost" href="{{ url_for('operacion.lotes') }}">Limpiar</a>
   </form>
 </div>
+
+{% if current_role in ['admin', 'warehouse'] %}
+{# ── Escáner QR de recepción en muelle ── #}
+<div class="form-card" id="panel-recepcion-qr" style="display:none;border:2px solid #0284c7;">
+  <div class="card-title">Recepción de embarque por código QR / etiqueta de despacho</div>
+  <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;">
+    <div style="flex:1;min-width:260px;">
+      <label class="form-label">Código QR completo o folio de etiqueta (FT1|... o FTL-...)</label>
+      <input class="input mono" id="qr-codigo-input" placeholder="Escanea o pega el código de la Hoja QR…"/>
+    </div>
+    <div>
+      <label class="form-label">Tienda que recibe</label>
+      <select class="input" id="qr-locacion-sel">
+        {% for l in locaciones %}
+          <option value="{{ l.id_locacion }}">{{ l.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="consultarEtiquetaQR()">Validar etiqueta</button>
+    <button type="button" class="btn btn-ghost" onclick="iniciarCamaraQR()">Usar cámara</button>
+    <button type="button" class="btn btn-ghost" onclick="detenerCamaraQR(); toggleForm('panel-recepcion-qr')">Cerrar</button>
+  </div>
+
+  <div id="qr-camara-wrap" style="display:none;margin-bottom:12px;">
+    <video id="qr-video" autoplay playsinline style="max-width:340px;width:100%;border-radius:8px;border:1px solid var(--border);"></video>
+    <div class="text-muted" id="qr-camara-msg" style="font-size:12px;margin-top:4px;">Apunta la cámara al código QR de la hoja del proveedor.</div>
+  </div>
+
+  <div id="qr-estado-msg" style="display:none;margin-bottom:12px;"></div>
+
+  <form method="post" action="{{ url_for('operacion.lotes_recibir_qr') }}" id="form-confirmar-qr" style="display:none;">
+    <input type="hidden" name="codigo_qr_crudo" id="qr-form-codigo"/>
+    <input type="hidden" name="id_locacion_recepcion" id="qr-form-loc"/>
+    <input type="hidden" name="idempotency_key" id="qr-form-idem"/>
+    <div id="qr-detalle-tarjeta" style="padding:12px;background:var(--muted);border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
+    <div class="form-grid">
+      <div>
+        <label class="form-label">Cantidad recibida real *</label>
+        <input class="input" name="cantidad_recibida" id="qr-form-cant" type="number" step="0.01" min="0" required/>
+      </div>
+      <div>
+        <label class="form-label">Temperatura registrada (°C)</label>
+        <input class="input" name="temperatura_registrada_c" type="number" step="0.1" placeholder="Ej. 4.0"/>
+      </div>
+      <div>
+        <label class="form-label">Caducidad verificada</label>
+        <input class="input" name="fecha_caducidad_verificada" id="qr-form-fcad" type="date" required/>
+      </div>
+      <div>
+        <label class="form-label">Resultado de inspección</label>
+        <select class="input" name="resultado_inspeccion">
+          <option value="CONFORME">Conforme</option>
+          <option value="CONFORME_CON_OBSERVACIONES">Conforme con observaciones</option>
+          <option value="NO_CONFORME">No conforme</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Decisión de ingreso</label>
+        <select class="input" name="accion_calidad">
+          <option value="ACEPTAR_DISPONIBLE">Aceptar e ingresar a salida FEFO</option>
+          <option value="ACEPTAR_CUARENTENA">Ingresar en cuarentena (revisión)</option>
+          <option value="RECHAZAR_MUELLE">Rechazar en muelle (no ingresa stock)</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Observaciones de muelle</label>
+        <input class="input" name="observaciones" maxlength="250" placeholder="Opcional"/>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-primary" type="submit" id="qr-btn-confirmar">Confirmar recepción e ingresar lote</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  let camStream = null;
+  let scanTimer = null;
+
+  function nuevoUuid() {
+    return (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('idem-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+  }
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  window.detenerCamaraQR = function () {
+    if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+    if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; }
+    const wrap = document.getElementById('qr-camara-wrap');
+    if (wrap) wrap.style.display = 'none';
+  };
+
+  window.iniciarCamaraQR = async function () {
+    const wrap = document.getElementById('qr-camara-wrap');
+    const video = document.getElementById('qr-video');
+    const msg = document.getElementById('qr-camara-msg');
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      mostrarEstadoQR('error', 'Este navegador no soporta lectura directa de cámara QR; pega el código o usa un lector de mano USB/Bluetooth.');
+      return;
+    }
+    try {
+      detenerCamaraQR();
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = camStream;
+      wrap.style.display = 'block';
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      scanTimer = setInterval(async () => {
+        if (!video || video.readyState < 2) return;
+        try {
+          const res = await detector.detect(video);
+          if (res && res.length && res[0].rawValue) {
+            document.getElementById('qr-codigo-input').value = res[0].rawValue;
+            detenerCamaraQR();
+            consultarEtiquetaQR();
+          }
+        } catch (_e) {}
+      }, 350);
+    } catch (e) {
+      msg.textContent = 'No se pudo acceder a la cámara: ' + e;
+    }
+  };
+
+  function mostrarEstadoQR(tipo, texto) {
+    const box = document.getElementById('qr-estado-msg');
+    box.style.display = 'block';
+    box.className = tipo === 'ok' ? 'flash flash-ok' : 'flash flash-error';
+    box.textContent = texto;
+  }
+
+  window.consultarEtiquetaQR = async function () {
+    const codigo = (document.getElementById('qr-codigo-input').value || '').trim();
+    const loc = document.getElementById('qr-locacion-sel').value;
+    const form = document.getElementById('form-confirmar-qr');
+    form.style.display = 'none';
+    if (!codigo) {
+      mostrarEstadoQR('error', 'Ingresa o escanea un código QR primero.');
+      return;
+    }
+    try {
+      const url = {{ url_for('operacion.lotes_qr_consultar') | tojson }} + '?codigo=' + encodeURIComponent(codigo) + '&id_locacion=' + encodeURIComponent(loc);
+      const resp = await fetch(url);
+      const d = await resp.json();
+      if (!resp.ok || d.error) {
+        mostrarEstadoQR('error', d.error || 'No se pudo validar la etiqueta.');
+        return;
+      }
+      if (d.ya_recibida) {
+        mostrarEstadoQR('error', `Esta etiqueta (${d.codigo_etiqueta}) ya fue recibida anteriormente.`);
+        return;
+      }
+      const alertas = [];
+      if (d.alerta_destino_incorrecto) {
+        alertas.push(`<span class="badge badge-danger">¡ATENCIÓN! Destino esperado: ${esc(d.locacion_destino)}</span>`);
+      }
+      if (d.alerta_vida_util_baja) {
+        alertas.push(`<span class="badge badge-warning">Vida útil residual baja (${esc(d.vida_util_pct)}%)</span>`);
+      }
+      document.getElementById('qr-estado-msg').style.display = 'none';
+      document.getElementById('qr-form-codigo').value = codigo;
+      document.getElementById('qr-form-loc').value = loc;
+      document.getElementById('qr-form-idem').value = nuevoUuid();
+      document.getElementById('qr-form-cant').value = d.cantidad_declarada;
+      document.getElementById('qr-form-fcad').value = d.fecha_caducidad || '';
+      document.getElementById('qr-btn-confirmar').disabled = Boolean(d.alerta_destino_incorrecto);
+      document.getElementById('qr-detalle-tarjeta').innerHTML = `
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+          <strong>${esc(d.producto)}</strong>
+          <div>${alertas.join(' ') || '<span class="badge badge-success">Etiqueta verificada</span>'}</div>
+        </div>
+        <div>Proveedor: <strong>${esc(d.proveedor)}</strong> · Despacho: <span class="mono">${esc(d.folio_asn)}</span> · OC: <span class="mono">${esc(d.folio_oc || '—')}</span></div>
+        <div>Destino asignado: <strong>${esc(d.locacion_destino)}</strong> · Lote proveedor: <span class="mono">${esc(d.lote_proveedor)}</span> · Declarado: <strong>${esc(d.cantidad_declarada)} ${esc(d.unidad_medida)}</strong> · Temp: ${esc(d.rango_temperatura_controlada)}</div>
+      `;
+      form.style.display = 'block';
+    } catch (err) {
+      mostrarEstadoQR('error', 'Error al consultar la etiqueta: ' + err);
+    }
+  };
+})();
+</script>
+{% endif %}
 
 {% if current_role in ['admin', 'warehouse'] %}
 {# ── Formulario de recepción ── #}

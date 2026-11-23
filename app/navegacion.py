@@ -34,6 +34,7 @@ ICONOS: dict[str, str] = {
     "audit": '<path fill-rule="evenodd" d="M10 2a1 1 0 01.78.375l5 6.25A1 1 0 0116 9.25V13a7 7 0 01-6 6.93A7 7 0 014 13V9.25a1 1 0 01.22-.625l5-6.25A1 1 0 0110 2zm0 3.125L6 8.125V13a5 5 0 004 4.9 5 5 0 004-4.9V8.125L10 5.125zm2.707 4.582a1 1 0 010 1.414l-3 3a1 1 0 01-1.414 0l-1.5-1.5a1 1 0 111.414-1.414L9 11.879l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd"/>',
     "traceability": '<path fill-rule="evenodd" d="M4 3a2 2 0 100 4 2 2 0 000-4zm4 2a1 1 0 011-1h6a1 1 0 110 2H9a1 1 0 01-1-1zm8 5a2 2 0 100 4 2 2 0 000-4zm-8 2a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1zm-4 5a2 2 0 100 4 2 2 0 000-4zm4 2a1 1 0 011-1h6a1 1 0 110 2H9a1 1 0 01-1-1z" clip-rule="evenodd"/>',
     "settings": '<path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>',
+    "dispatches": '<path d="M3 3h5v5H3V3zm2 2v1h1V5H5zm7-2h5v5h-5V3zm2 2v1h1V5h-1zM3 12h5v5H3v-5zm2 2v1h1v-1H5zm7 0h2v2h-2v-2zm3-2h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z"/>',
     "services": '<path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 9a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zm3-7.5a1 1 0 100 2 1 1 0 000-2zm0 9a1 1 0 100 2 1 1 0 000-2z"/>',
     "mongo_explorer": '<path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2zm0 6a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2z" clip-rule="evenodd"/>',
 }
@@ -61,6 +62,7 @@ SECCIONES = [
     {
         "label": "Operación",
         "items": [
+            {"id": "dispatches", "label": "Despachos y Etiquetas QR", "endpoint": "operacion.despachos"},
             {"id": "batches", "label": "Lotes y Salida FEFO", "endpoint": "operacion.lotes"},
             {"id": "inventory", "label": "Inventario", "endpoint": "operacion.inventario"},
             {"id": "sales", "label": "Monitor de Ventas", "endpoint": "operacion.ventas"},
@@ -95,12 +97,12 @@ SECCIONES = [
 # ---------------------------------------------------------------------------
 VISTAS_POR_ROL: dict[str, list[str]] = {
     "admin": [
-        "dashboard", "alerts", "map", "products", "stores", "suppliers", "batches",
+        "dashboard", "alerts", "map", "products", "stores", "suppliers", "dispatches", "batches",
         "inventory", "sales", "forecast", "replenishment", "triage", "savings",
         "users", "audit", "settings",
     ],
     "buyer": [
-        "dashboard", "alerts", "map", "suppliers", "batches", "inventory",
+        "dashboard", "alerts", "map", "suppliers", "dispatches", "batches", "inventory",
         "replenishment", "triage", "forecast",
     ],
     "planner": [
@@ -114,9 +116,9 @@ VISTAS_POR_ROL: dict[str, list[str]] = {
         "triage", "replenishment", "savings",
     ],
     "warehouse": [
-        "dashboard", "alerts", "map", "batches", "inventory", "triage",
+        "dashboard", "alerts", "map", "dispatches", "batches", "inventory", "triage",
     ],
-    "supplier": ["dashboard", "products", "batches", "replenishment"],
+    "supplier": ["dashboard", "products", "dispatches", "batches", "replenishment"],
     "auditor": [
         "dashboard", "map", "sales", "triage", "audit", "savings",
     ],

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton
 
 from ...core.xml_codec import as_list, num
 from ..widgets import ask_text, button, confirm  # noqa: F401 - la base los resuelve por módulo
-from .reabastecimiento import DecisionPage, _fijar_ancho, _spin  # noqa: F401
+from .reabastecimiento import NOTA_MOTIVO, DecisionPage, _fijar_ancho, _spin  # noqa: F401
 
 ESTADOS = ("SUGERIDA", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA")
 _VALIDACIONES = {
@@ -59,6 +59,7 @@ class TransferenciasPage(DecisionPage):
                        if isinstance(fila.itemAt(i).widget(), QPushButton)))
         self.body.addLayout(fila)
 
+        self.table.set_empty_text("Sin propuestas. Pulsa «Detectar transferencias» para calcularlas.")
         self.table.set_columns([
             ("producto", "Producto"), ("origen", "Origen"), ("destino", "Destino"), ("cantidad", "Cantidad", "num"),
             ("unidad_medida", "Unidad"), ("estado", "Estado", "status"), ("dias_para_vencer", "Días a vencer", "int"),
@@ -137,7 +138,8 @@ class TransferenciasPage(DecisionPage):
         if not filas:
             self.ctx.notify("Selecciona transferencias SUGERIDA para rechazar")
             return
-        motivo = self._pedir_texto("Rechazar transferencias", f"Motivo del rechazo ({len(filas)} transferencia(s)):")
+        motivo = self._pedir_texto("Rechazar transferencias",
+                                   f"Motivo del rechazo ({len(filas)} transferencia(s)):{NOTA_MOTIVO}")
         if not motivo:
             return
         self._lote(filas, "RECHAZAR_TRANSFERENCIA", f"rechazada (motivo: {motivo})",

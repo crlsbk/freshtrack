@@ -15,13 +15,14 @@ from ...core.errors import ApiError
 from .. import theme
 from ..widgets import DataTable, KpiCard, button, secondary_label
 from .base import BasePage
-from .tablero import _dic, _lista, _num
+from .tablero import _dic, _lista, _num, etiqueta_metodo  # noqa: F401 - etiqueta_metodo se reexporta
 
 METODOS = (("AUTO", "Automático (mejor modelo por serie)"), ("MEDIA_MOVIL", "Media móvil"),
            ("MEDIA_MOVIL_PONDERADA", "Media móvil ponderada"),
            ("SUAVIZACION_EXPONENCIAL", "Suavización exponencial"))
 _ESTADO_DRIFT = {"CONFIABLE": "OK", "VIGILANCIA": "VIGILANCIA", "NO_CONFIABLE": "CRÍTICO", "SIN_DATOS": "INFO"}
 _COLORES = ("primary", "info", "warning", "danger")
+GRAFICA_INICIAL = "Elige tienda y SKU y pulsa «Generar pronóstico»."
 
 
 def _fecha(texto) -> QDateTime:
@@ -201,7 +202,7 @@ class PronosticosPage(BasePage):
         kpis.addStretch(1)
         lay.addLayout(kpis)
 
-        self.grafico = nuevo_grafico("Serie pronosticada")
+        self.grafico = nuevo_grafico(GRAFICA_INICIAL)
         self.tabla = DataTable(empty_text="Aún no hay un pronóstico. Elige tienda y SKU y pulsa Generar.",
                                title="Pronóstico diario")
         self.tabla.set_columns([("fecha", "Fecha"), ("id_sku", "SKU"), ("id_locacion", "Tienda"),
@@ -260,7 +261,7 @@ class PronosticosPage(BasePage):
         self.ctx.log.record("PRONOSTICO", f"{cuerpo.get('metodo')} h={cuerpo.get('horizonte')} "
                             f"sku={cuerpo.get('id_sku', 'todos')} tienda={cuerpo.get('id_locacion', 'todas')} "
                             f"run={d.get('id_run') or '-'}")
-        self.kpi_metodo.set_value(str(d.get("metodo_etiqueta") or d.get("metodo") or "—"),
+        self.kpi_metodo.set_value(str(d.get("metodo_etiqueta") or etiqueta_metodo(d.get("metodo")) or "—"),
                                   sub=str(d.get("locacion") or ""))
         self.kpi_series.set_value(f"{_num(d.get('series')):,.0f}", sub=f"{_num(d.get('duracion_ms')):,.0f} ms")
         for kpi, clave, suf in ((self.kpi_mae, "mae", ""), (self.kpi_wmape, "wmape", " %"),
@@ -271,7 +272,7 @@ class PronosticosPage(BasePage):
         for r in _lista(d.get("resultados")):
             sku, loc = r.get("id_sku"), r.get("id_locacion")
             m = _dic(r.get("metricas"))
-            metricas.append({"id_sku": sku, "id_locacion": loc, "metodo": r.get("metodo_ganador"),
+            metricas.append({"id_sku": sku, "id_locacion": loc, "metodo": etiqueta_metodo(r.get("metodo_ganador")),
                              "mae": m.get("mae"), "wmape": m.get("wmape"), "sesgo": m.get("sesgo"),
                              "mejora": r.get("mejora_vs_naive_pct")})
             puntos = []
@@ -301,7 +302,7 @@ class PronosticosPage(BasePage):
     def _mostrar_ultimo(self, datos) -> None:
         d = _dic(datos)
         m = _dic(d.get("metricas"))
-        self.kpi_metodo.set_value(str(d.get("modelo") or "—"), sub=f"Calculado {str(d.get('fecha_calculo', ''))[:16]}")
+        self.kpi_metodo.set_value(etiqueta_metodo(d.get("modelo")) or "—", sub=f"Calculado {str(d.get('fecha_calculo', ''))[:16]}")
         self.kpi_series.set_value("1")
         for kpi, clave, suf in ((self.kpi_mae, "mae", ""), (self.kpi_wmape, "wmape", " %"),
                                 (self.kpi_sesgo, "sesgo", "")):
@@ -383,7 +384,7 @@ class PronosticosPage(BasePage):
             m = _dic(m)
             mae = _num(m.get("mae"))
             mejora = (naive_mae - mae) / naive_mae * 100 if modelo != "NAIVE" and naive_mae > 0 and m.get("mae") else None
-            filas.append({"modelo": "Ingenuo (NAIVE)" if modelo == "NAIVE" else modelo, "mae": m.get("mae"),
+            filas.append({"modelo": etiqueta_metodo(modelo), "mae": m.get("mae"),
                           "rmse": m.get("rmse"), "wmape": m.get("wmape"), "sesgo": m.get("sesgo"),
                           "puntos": m.get("puntos"), "mejora": mejora})
         self.tabla_bt.set_rows(filas)

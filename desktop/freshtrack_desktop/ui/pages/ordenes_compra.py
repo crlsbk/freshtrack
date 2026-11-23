@@ -224,7 +224,7 @@ class OrdenesCompraPage(BasePage):
         self.btn_csv = self.actions.add_button("Exportar CSV", self.exportar_csv, icon="SP_DialogSaveButton")
         self.btn_correo = self.actions.add_button("Enviar por correo", self.enviar_correo, icon="SP_DialogYesButton")
 
-        self.table = DataTable(empty_text="Sin órdenes de compra. Crea una con «Nueva OC…».",
+        self.table = DataTable(empty_text="Aún no hay órdenes de compra. Crea una con «Nueva OC».",
                                title="Órdenes de compra")
         self.table.set_columns([
             ("folio", "Folio"), ("proveedor", "Proveedor"), ("estado", "Estado", "status"),

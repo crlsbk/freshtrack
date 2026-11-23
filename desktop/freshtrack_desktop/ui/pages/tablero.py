@@ -32,6 +32,23 @@ def _num(valor, defecto: float = 0.0) -> float:
         return defecto
 
 
+_ETIQUETAS_METODO = {
+    "AUTO": "Automático",
+    "MEDIA_MOVIL": "Media móvil",
+    "MEDIA_MOVIL_PONDERADA": "Media móvil ponderada",
+    "SUAVIZACION_EXPONENCIAL": "Suavización exponencial",
+    "NAIVE": "Ingenuo",
+}
+
+
+def etiqueta_metodo(valor) -> str:
+    """Nombre legible de un método de pronóstico (`SUAVIZACION_EXPONENCIAL` → "Suavización exponencial")."""
+    clave = str(valor or "").strip()
+    if not clave:
+        return ""
+    return _ETIQUETAS_METODO.get(clave.upper()) or clave.replace("_", " ").capitalize()
+
+
 def _dic(valor) -> dict:
     return valor if isinstance(valor, dict) else {}
 
@@ -106,7 +123,7 @@ class TableroPage(BasePage):
         con_mae = [m for m in modelos if str(m.get("mae_promedio", "")).strip()]
         if con_mae:
             m = min(con_mae, key=lambda x: _num(x.get("mae_promedio")))
-            self.kpi_mejor.set_value(str(m.get("modelo", "—")), sub=f"MAE {_num(m.get('mae_promedio')):,.2f}",
+            self.kpi_mejor.set_value(etiqueta_metodo(m.get("modelo")) or "—", sub=f"MAE {_num(m.get('mae_promedio')):,.2f}",
                                      tone="success")
         else:
             self.kpi_mejor.set_value("—", sub="Sin corridas")

@@ -428,3 +428,11 @@ def test_error_429_detiene_el_envio_y_marca_no_enviado(ctx, qtbot, fake_http, tm
     assert {r["estado"] for r in page.table_resultados.rows()} == {"NO ENVIADO"}
     assert len(fake_http.calls_to("POST", "/api/v1/commercial/sales/import")) == 1
     assert len(errores) == 1
+
+
+def test_oc_lista_vacia_dice_el_siguiente_paso(ctx, qtbot):
+    from freshtrack_desktop.ui.pages.ordenes_compra import OrdenesCompraPage
+
+    page = OrdenesCompraPage(ctx)
+    qtbot.addWidget(page)
+    assert page.table.empty_label.text() == "Aún no hay órdenes de compra. Crea una con «Nueva OC»."

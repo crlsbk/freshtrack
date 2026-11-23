@@ -22,6 +22,8 @@ from .base import BasePage
 
 POR_PAGINA = 100  # máximo que acepta el servicio
 ESTADOS_ORDEN = ("PENDIENTE", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA")
+# El backend ignora el motivo: solo queda en la bitácora local y, al sincronizar, en svc-audit.
+NOTA_MOTIVO = "\nEl motivo queda en la bitácora de actividad; el servidor no lo guarda."
 
 
 class DecisionPage(BasePage):
@@ -214,6 +216,7 @@ class ReabastecimientoPage(DecisionPage):
     def __init__(self, ctx, parent=None) -> None:
         super().__init__(ctx, parent)
         self._tiendas_cargadas = False
+        self._proveedores: dict[str, str] = {}  # id_proveedor → razón social (catálogo, una vez)
         self.btn_actualizar = self.actions.add_button("Actualizar", self.refresh, icon="SP_BrowserReload")
         self._herramientas_tabla()
 
@@ -255,11 +258,13 @@ class ReabastecimientoPage(DecisionPage):
         _fijar_ancho(self.btn_aprobar, self.btn_rechazar, self.btn_contexto, self.btn_generar, self.btn_ciclo)
         self.body.addLayout(gen)
 
+        self.table.set_empty_text("Sin órdenes. Pulsa «Generar órdenes» o «Ejecutar ciclo de planeación».")
+        # Sin identificadores internos: el proveedor por nombre y el id de la orden en el detalle.
         self.table.set_columns([
-            ("producto", "Producto"), ("locacion", "Tienda"), ("cantidad_sugerida", "Sugerida", "num"),
-            ("cantidad_aprobada", "Aprobada", "num"), ("prioridad", "Prioridad"), ("estado", "Estado", "status"),
-            ("fecha_creacion", "Creada"), ("fecha_decision", "Decisión"), ("id_proveedor", "Proveedor"),
-            ("id_orden", "Id orden"),
+            ("producto", "Producto"), ("locacion", "Tienda"), ("proveedor", "Proveedor"),
+            ("cantidad_sugerida", "Sugerida", "num"), ("cantidad_aprobada", "Aprobada", "num"),
+            ("prioridad", "Prioridad"), ("estado", "Estado", "status"),
+            ("fecha_creacion", "Creada"), ("fecha_decision", "Decisión"),
         ])
         self._pie()
         self._actualizar_botones()
@@ -284,11 +289,30 @@ class ReabastecimientoPage(DecisionPage):
                 tiendas = self.ctx.api.call("catalog", "GET", "/api/v1/catalog/locations", params={"tipo": "TIENDA"})
             except Exception:  # noqa: BLE001 - el filtro de tienda es opcional
                 tiendas = None
-        return {"ordenes": datos, "tiendas": tiendas}
+        proveedores = None
+        if not self._proveedores:
+            try:
+                proveedores = self.ctx.api.call("catalog", "GET", "/api/v1/catalog/suppliers")
+            except Exception:  # noqa: BLE001 - sin catálogo se muestra «Proveedor <id>»
+                proveedores = None
+        return {"ordenes": datos, "tiendas": tiendas, "proveedores": proveedores}
 
     def _filas_de(self, datos: dict) -> list[dict]:
         ordenes = datos["ordenes"] if isinstance(datos["ordenes"], dict) else {}
-        return [f for f in as_list(ordenes.get("ordenes")) if isinstance(f, dict)]
+        provs = datos.get("proveedores")
+        if isinstance(provs, dict):
+            self._proveedores = {str(p.get("id_proveedor", "")): str(p.get("razon_social", ""))
+                                 for p in as_list(provs.get("proveedores"))
+                                 if isinstance(p, dict) and p.get("razon_social")}
+        filas = []
+        for f in as_list(ordenes.get("ordenes")):
+            if not isinstance(f, dict):
+                continue
+            fila = dict(f)
+            idp = str(fila.get("id_proveedor") or "")
+            fila["proveedor"] = fila.get("proveedor") or self._proveedores.get(idp) or (f"Proveedor {idp}" if idp else "")
+            filas.append(fila)
+        return filas
 
     def _despues_de_mostrar(self, datos: dict, filas: list[dict]) -> None:
         ordenes = datos["ordenes"] if isinstance(datos["ordenes"], dict) else {}
@@ -320,7 +344,8 @@ class ReabastecimientoPage(DecisionPage):
         self.btn_contexto.setEnabled(self.table.selected_row() is not None)
 
     def _detalle(self, fila: dict) -> str:
-        return str(fila.get("explicacion") or "Sin explicación del motor.")
+        cabecera = f"Orden {fila.get('id_orden', '')} · {fila.get('proveedor') or 'sin proveedor'}"
+        return cabecera + "\n\n" + str(fila.get("explicacion") or "Sin explicación del motor.")
 
     # ---- acciones
     def _aprobar(self) -> None:
@@ -337,7 +362,8 @@ class ReabastecimientoPage(DecisionPage):
         if not filas:
             self.ctx.notify("Selecciona órdenes PENDIENTE para rechazar")
             return
-        motivo = self._pedir_texto("Rechazar órdenes", f"Motivo del rechazo ({len(filas)} orden(es)):")
+        motivo = self._pedir_texto("Rechazar órdenes",
+                                   f"Motivo del rechazo ({len(filas)} orden(es)):{NOTA_MOTIVO}")
         if not motivo:
             return
         self._lote(filas, "RECHAZAR_ORDEN", f"rechazada (motivo: {motivo})",

@@ -359,3 +359,51 @@ def test_descuentos_estado_y_lote_junto_a_producto(ctx, qtbot, api):
     qtbot.addWidget(page)
     cabeceras = [page.table.model.horizontalHeaderItem(i).text() for i in range(4)]
     assert cabeceras == ["Producto", "Tienda", "Estado", "Lote"]
+
+
+# --- auditoría visual: sin UUID en tablas, proveedor por nombre, estados vacíos ----------
+SUPPLIERS = """<?xml version="1.0" encoding="UTF-8"?>
+<catalogo_proveedores><total>1</total><proveedores><item><id_proveedor>3</id_proveedor><rfc>X</rfc>
+<razon_social>Hortalizas del Bajío</razon_social></item></proveedores></catalogo_proveedores>""".encode()
+
+
+def test_reabastecimiento_muestra_proveedor_por_nombre_y_el_id_en_el_detalle(ctx, qtbot, api):
+    con_sesion(ctx)
+    api.add("GET", "/api/v1/catalog/suppliers", body=SUPPLIERS)
+    page = cargada(qtbot, ReabastecimientoPage, ctx, 5)
+    claves = [c[0] for c in page.table._columns]
+    assert "id_orden" not in claves and "id_proveedor" not in claves and "proveedor" in claves
+    qtbot.waitUntil(lambda: page.table.rows()[0].get("proveedor") == "Hortalizas del Bajío", timeout=WAIT)
+    page.table.view.selectRow(0)
+    texto = page.detail.toPlainText()
+    assert "9a34ffda-47f6-46e3-b9ea-30384f1b7d2c" in texto and "Hortalizas del Bajío" in texto
+    assert len(api.calls_to("GET", "/api/v1/catalog/suppliers")) == 1
+    page.refresh()
+    qtbot.waitUntil(lambda: ctx.pending == 0, timeout=WAIT)
+    assert len(api.calls_to("GET", "/api/v1/catalog/suppliers")) == 1  # se carga una sola vez
+
+
+def test_reabastecimiento_sin_catalogo_de_proveedores_no_muestra_el_id_crudo(ctx, qtbot, api):
+    con_sesion(ctx)  # /catalog/suppliers sin ruta: 404 no XML
+    page = cargada(qtbot, ReabastecimientoPage, ctx, 5)
+    assert page.table.rows()[0]["proveedor"] == "Proveedor 3"
+
+
+def test_estados_vacios_dicen_el_siguiente_paso(ctx, qtbot, api):
+    con_sesion(ctx)
+    reab, trans, desc = ReabastecimientoPage(ctx), TransferenciasPage(ctx), DescuentosPage(ctx)
+    for p in (reab, trans, desc):
+        qtbot.addWidget(p)
+    assert reab.table.empty_label.text() == "Sin órdenes. Pulsa «Generar órdenes» o «Ejecutar ciclo de planeación»."
+    assert trans.table.empty_label.text() == "Sin propuestas. Pulsa «Detectar transferencias» para calcularlas."
+    assert desc.table.empty_label.text() == "Sin propuestas. Pulsa «Generar descuentos» para calcularlas."
+
+
+def test_dialogo_de_rechazo_avisa_que_el_motivo_queda_en_la_bitacora(ctx, qtbot, api, monkeypatch):
+    con_sesion(ctx)
+    etiquetas = []
+    monkeypatch.setattr(reabastecimiento, "ask_text", lambda _p, _t, etiqueta: etiquetas.append(etiqueta) or None)
+    page = cargada(qtbot, ReabastecimientoPage, ctx, 5)
+    page.table.view.selectRow(0)
+    page.btn_rechazar.click()
+    assert etiquetas and "bitácora" in etiquetas[0].lower()

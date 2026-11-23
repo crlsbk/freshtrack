@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton
 
 from ...core.xml_codec import as_list, num
 from ..widgets import ask_text, button, confirm  # noqa: F401 - la base los resuelve por módulo
-from .reabastecimiento import DecisionPage, _fijar_ancho, _spin  # noqa: F401
+from .reabastecimiento import NOTA_MOTIVO, DecisionPage, _fijar_ancho, _spin  # noqa: F401
 
 ESTADOS = ("SUGERIDO", "APROBADO", "RECHAZADO", "APLICADO")
 
@@ -62,6 +62,7 @@ class DescuentosPage(DecisionPage):
                        if isinstance(fila.itemAt(i).widget(), QPushButton)))
         self.body.addLayout(fila)
 
+        self.table.set_empty_text("Sin propuestas. Pulsa «Generar descuentos» para calcularlas.")
         self.table.set_columns([
             ("producto", "Producto"), ("locacion", "Tienda"), ("estado", "Estado", "status"),
             ("codigo_lote_prov", "Lote"), ("descuento_pct", "Descuento", "pct"),
@@ -140,7 +141,8 @@ class DescuentosPage(DecisionPage):
         if not filas:
             self.ctx.notify("Selecciona descuentos SUGERIDO para rechazar")
             return
-        motivo = self._pedir_texto("Rechazar descuentos", f"Motivo del rechazo ({len(filas)} descuento(s)):")
+        motivo = self._pedir_texto("Rechazar descuentos",
+                                   f"Motivo del rechazo ({len(filas)} descuento(s)):{NOTA_MOTIVO}")
         if not motivo:
             return
         self._lote(filas, "RECHAZAR_DESCUENTO", f"rechazado (motivo: {motivo})",

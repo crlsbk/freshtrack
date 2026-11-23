@@ -68,7 +68,7 @@ def test_tablero_refresh_muestra_kpis_y_alertas(ctx, qtbot, fake_http):
     page.refresh()
     _esperar(ctx, qtbot)
     assert page.kpi_modelos.value_label.text() == "60"
-    assert page.kpi_mejor.value_label.text() == "SUAVIZACION_EXPONENCIAL"
+    assert page.kpi_mejor.value_label.text() == "Suavización exponencial"
     assert page.kpi_alertas.value_label.text() == "312"
     assert page.kpi_criticas.value_label.text() == "33"
     assert page.kpi_riesgo.value_label.text() == "$16,117.91"
@@ -157,7 +157,7 @@ def test_pronosticos_resultado_con_series(ctx, qtbot, fake_http):
     page.generar()
     _esperar(ctx, qtbot)
     assert len(page.tabla.rows()) == 2
-    assert page.tabla_series.rows()[0]["metodo"] == "MEDIA_MOVIL"
+    assert page.tabla_series.rows()[0]["metodo"] == "Media móvil"
     assert page.kpi_mae.value_label.text() == "5.00"
     assert len(page.grafico.chart().series()) == 1
     # con "todas" no se mandan id_sku/id_locacion
@@ -207,6 +207,7 @@ def test_pronosticos_ultimo_guardado(ctx, qtbot, fake_http):
     _esperar(ctx, qtbot)
     assert len(page.tabla.rows()) == 2
     assert len(page.grafico.chart().series()) == 3
+    assert page.kpi_metodo.value_label.text() == "Media móvil"
 
 
 def test_pronosticos_backtest_y_drift(ctx, qtbot, fake_http):
@@ -219,8 +220,9 @@ def test_pronosticos_backtest_y_drift(ctx, qtbot, fake_http):
     _esperar(ctx, qtbot)
     filas = {f["modelo"]: f for f in page.tabla_bt.rows()}
     assert len(filas) == 5
-    assert filas["AUTO"]["mejora"] == pytest.approx((10.0229 - 6.355) / 10.0229 * 100)
-    assert filas["Ingenuo (NAIVE)"]["mejora"] is None
+    assert set(filas) == {"Automático", "Media móvil", "Media móvil ponderada", "Suavización exponencial", "Ingenuo"}
+    assert filas["Automático"]["mejora"] == pytest.approx((10.0229 - 6.355) / 10.0229 * 100)
+    assert filas["Ingenuo"]["mejora"] is None
     assert len(page.grafico_bt.chart().series()) == 1  # una serie de barras con 2 conjuntos
     assert page.kpi_no_conf.value_label.text() == "5"
     drift = page.tabla_drift.rows()
@@ -263,3 +265,19 @@ def test_newsvendor_sin_seleccion_no_envia(ctx, qtbot, fake_http):
     page.evaluar()
     assert "Elige un SKU" in page.lbl_estado.text()
     assert not fake_http.calls
+
+
+def test_etiqueta_metodo_legible():
+    from freshtrack_desktop.ui.pages.pronosticos import etiqueta_metodo
+
+    assert etiqueta_metodo("SUAVIZACION_EXPONENCIAL") == "Suavización exponencial"
+    assert etiqueta_metodo("MEDIA_MOVIL_PONDERADA") == "Media móvil ponderada"
+    assert etiqueta_metodo("NAIVE") == "Ingenuo"
+    assert etiqueta_metodo("CROSTON_SBA") == "Croston sba"  # desconocido: legible igual
+    assert etiqueta_metodo("") == "" and etiqueta_metodo(None) == ""
+
+
+def test_pronosticos_grafica_inicial_dice_el_siguiente_paso(ctx, qtbot):
+    page = PronosticosPage(ctx)
+    qtbot.addWidget(page)
+    assert page.grafico.chart().title() == "Elige tienda y SKU y pulsa «Generar pronóstico»."

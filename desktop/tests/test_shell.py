@@ -457,3 +457,11 @@ def test_smoke_lanzador_desde_la_raiz(tmp_path):
     r = subprocess.run([sys.executable, "desktop/run_desktop.py", "--smoke"], cwd=raiz,
                        env=_entorno(tmp_path), capture_output=True, timeout=60)
     assert r.returncode == 0, r.stderr.decode(errors="replace")
+
+
+def test_format_value_fecha_iso_en_hora_local():
+    from freshtrack_desktop.ui.widgets import format_value
+    assert format_value("2026-11-23T05:44:38.234314+00:00").count(":") == 1
+    assert len(format_value("2026-11-23T05:44:38.234314+00:00")) == 16
+    assert format_value("2026-11-23") == "2026-11-23"
+    assert format_value("no es fecha") == "no es fecha"

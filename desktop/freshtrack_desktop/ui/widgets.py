@@ -102,7 +102,23 @@ def format_value(v: Any, fmt: str | Callable[[Any], str] | None = None) -> str:
         return "Sí" if v else "No"
     if isinstance(v, (list, tuple)):
         return ", ".join(str(x) for x in v)
+    if isinstance(v, str) and _RE_ISO_DT.match(v):
+        return format_datetime(v)
     return str(v)
+
+
+_RE_ISO_DT = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$")
+
+
+def format_datetime(v: str) -> str:
+    """'2026-11-23T05:44:38.23+00:00' → '2026-11-22 23:44' en la hora local del equipo."""
+    try:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    except ValueError:
+        return v
+    if dt.tzinfo is not None:
+        dt = dt.astimezone()
+    return dt.strftime("%Y-%m-%d %H:%M")
 
 
 def button(text: str, slot: Callable | None = None, *, variant: str = "", icon: str = "",

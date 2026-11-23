@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-planning POST /api/v1/planning/newsvendor/evaluate (la app de escritorio lo valida antes de enviar).
+     Solo SKU, tienda y horizonte: los costos de faltante y excedente los deriva el servidor del catálogo. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="newsvendor_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="id_sku" type="xs:positiveInteger"/>
+        <xs:element name="id_locacion" type="xs:positiveInteger"/>
+        <xs:element name="horizonte">
+          <xs:simpleType><xs:restriction base="xs:positiveInteger"><xs:maxInclusive value="365"/></xs:restriction></xs:simpleType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

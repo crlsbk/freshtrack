@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-planning POST /api/v1/planning/cycle/run (la app de escritorio lo valida antes de enviar) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="planning_cycle_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="horizonte">
+          <xs:simpleType><xs:restriction base="xs:integer"><xs:minInclusive value="1"/><xs:maxInclusive value="90"/></xs:restriction></xs:simpleType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

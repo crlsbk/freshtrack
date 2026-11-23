@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-planning POST /api/v1/planning/{replenishment/orders|transfers|discounts}/<id>/reject
+     (la app de escritorio lo valida antes de enviar). El servidor hoy ignora el motivo:
+     queda en la bitácora local de la app y en svc-audit. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="rechazo_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="motivo">
+          <xs:simpleType><xs:restriction base="xs:string"><xs:minLength value="1"/><xs:maxLength value="500"/></xs:restriction></xs:simpleType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

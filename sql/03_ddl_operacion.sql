@@ -103,13 +103,17 @@ CREATE TABLE IF NOT EXISTS operacion.producto (
     precio_venta         numeric(12,2) NOT NULL DEFAULT 0,
     stock_seguridad      numeric(12,2) NOT NULL DEFAULT 0,
     punto_reorden        numeric(12,2) NOT NULL DEFAULT 0,
+    moq_lote             numeric(12,2),
     perecedero           boolean      NOT NULL DEFAULT true,
     activo               boolean      NOT NULL DEFAULT true,
     fecha_alta           timestamptz  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_vida_util     CHECK (vida_util_estandar > 0),
     CONSTRAINT chk_precio_venta  CHECK (precio_venta >= 0),
-    CONSTRAINT chk_precio_costo  CHECK (precio_costo >= 0)
+    CONSTRAINT chk_precio_costo  CHECK (precio_costo >= 0),
+    CONSTRAINT chk_prod_moq_lote CHECK (moq_lote IS NULL OR moq_lote > 0)
 );
+
+ALTER TABLE operacion.producto ADD COLUMN IF NOT EXISTS moq_lote numeric(12,2);
 
 CREATE INDEX IF NOT EXISTS idx_producto_activo    ON operacion.producto (activo);
 CREATE INDEX IF NOT EXISTS idx_producto_categoria ON operacion.producto (categoria);
@@ -361,21 +365,100 @@ CREATE INDEX IF NOT EXISTS idx_merma_causa   ON operacion.merma (causa_merma);
 CREATE INDEX IF NOT EXISTS idx_merma_lote    ON operacion.merma (id_lote);
 CREATE INDEX IF NOT EXISTS idx_merma_locacion ON operacion.merma (id_locacion);
 
+-- -----------------------------------------------------------------------------
+-- Metadatos de reportes y documentos PDF en Cloud Object Storage
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS operacion.reporte_documento (
+    id_documento     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tipo_reporte     varchar(40) NOT NULL,
+    referencia_tipo  varchar(40) NOT NULL,
+    referencia_id    uuid        NOT NULL,
+    folio            varchar(40) NOT NULL,
+    nombre_archivo   varchar(180) NOT NULL,
+    content_type     varchar(80) NOT NULL DEFAULT 'application/pdf',
+    storage_provider varchar(30) NOT NULL DEFAULT 's3',
+    bucket           varchar(120) NOT NULL,
+    object_key       varchar(300) NOT NULL,
+    etag             varchar(120),
+    sha256           char(64)    NOT NULL,
+    tamano_bytes     bigint      NOT NULL,
+    id_usuario       uuid REFERENCES operacion.usuario(id_usuario),
+    metadatos        jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    creado_en        timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_repdoc_tamano CHECK (tamano_bytes > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_repdoc_ref   ON operacion.reporte_documento (referencia_tipo, referencia_id);
+CREATE INDEX IF NOT EXISTS idx_repdoc_fecha ON operacion.reporte_documento (tipo_reporte, creado_en DESC);
+
+-- -----------------------------------------------------------------------------
+-- Órdenes de compra emitidas por proveedor y enrutadas por lotes hacia tiendas
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS operacion.orden_compra (
+    id_oc                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    folio                  varchar(32) NOT NULL UNIQUE,
+    id_proveedor           integer NOT NULL REFERENCES operacion.proveedor(id_proveedor),
+    id_usuario             uuid    NOT NULL REFERENCES operacion.usuario(id_usuario),
+    id_documento_pdf       uuid REFERENCES operacion.reporte_documento(id_documento),
+    estado                 varchar(20) NOT NULL DEFAULT 'EMITIDA',
+    total_lotes            integer NOT NULL DEFAULT 0,
+    total_unidades         numeric(12,2) NOT NULL DEFAULT 0,
+    subtotal               numeric(14,2) NOT NULL DEFAULT 0,
+    total                  numeric(14,2) NOT NULL DEFAULT 0,
+    fecha_entrega_estimada date,
+    correo_envio           varchar(200),
+    fecha_envio_correo     timestamptz,
+    estado_envio_correo    varchar(30) NOT NULL DEFAULT 'NO_ENVIADO',
+    observaciones          text,
+    fecha_creacion         timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_oc_estado CHECK (estado IN (
+        'EMITIDA', 'ENVIADA', 'RECIBIDA_PARCIAL', 'RECIBIDA', 'CANCELADA'
+    )),
+    CONSTRAINT chk_oc_correo_est CHECK (estado_envio_correo IN (
+        'NO_ENVIADO', 'ENVIADO_SMTP', 'REGISTRADO_SIN_SMTP'
+    ))
+);
+
+CREATE INDEX IF NOT EXISTS idx_oc_proveedor ON operacion.orden_compra (id_proveedor, fecha_creacion DESC);
+CREATE INDEX IF NOT EXISTS idx_oc_fecha     ON operacion.orden_compra (fecha_creacion DESC);
+
+CREATE TABLE IF NOT EXISTS operacion.orden_compra_detalle (
+    id_detalle                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_oc                      uuid    NOT NULL REFERENCES operacion.orden_compra(id_oc) ON DELETE CASCADE,
+    id_sku                     integer NOT NULL REFERENCES operacion.producto(id_sku),
+    id_locacion_destino        integer NOT NULL REFERENCES operacion.locacion(id_locacion),
+    cantidad_lotes             integer NOT NULL,
+    unidades_por_lote          numeric(12,2) NOT NULL,
+    cantidad_unidades          numeric(12,2) NOT NULL,
+    precio_unitario            numeric(12,2) NOT NULL DEFAULT 0,
+    subtotal                   numeric(14,2) NOT NULL DEFAULT 0,
+    sugerencia_newsvendor      numeric(12,2),
+    id_orden_reabastecimiento  uuid REFERENCES analitica.orden_reabastecimiento(id_orden),
+    CONSTRAINT chk_ocd_lotes    CHECK (cantidad_lotes > 0),
+    CONSTRAINT chk_ocd_moq      CHECK (unidades_por_lote > 0),
+    CONSTRAINT chk_ocd_unidades CHECK (cantidad_unidades > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocd_oc ON operacion.orden_compra_detalle (id_oc);
+
 -- =============================================================================
 -- TRIGGERS DE AUDITORÍA
 -- El argumento del trigger define el nombre de la acción:
 --   CREATE_PRODUCT, UPDATE_PRODUCT, CREATE_BATCH, CREATE_SALE,
 --   CREATE_SHRINKAGE, CREATE_USER, ...
 -- =============================================================================
-DROP TRIGGER IF EXISTS trg_aud_producto   ON operacion.producto;
-DROP TRIGGER IF EXISTS trg_aud_proveedor  ON operacion.proveedor;
-DROP TRIGGER IF EXISTS trg_aud_locacion   ON operacion.locacion;
-DROP TRIGGER IF EXISTS trg_aud_lote       ON operacion.lote;
-DROP TRIGGER IF EXISTS trg_aud_existencia ON operacion.existencia;
-DROP TRIGGER IF EXISTS trg_aud_venta      ON operacion.venta;
-DROP TRIGGER IF EXISTS trg_aud_venta_det  ON operacion.venta_detalle;
-DROP TRIGGER IF EXISTS trg_aud_merma      ON operacion.merma;
-DROP TRIGGER IF EXISTS trg_aud_usuario    ON operacion.usuario;
+DROP TRIGGER IF EXISTS trg_aud_producto         ON operacion.producto;
+DROP TRIGGER IF EXISTS trg_aud_proveedor        ON operacion.proveedor;
+DROP TRIGGER IF EXISTS trg_aud_locacion         ON operacion.locacion;
+DROP TRIGGER IF EXISTS trg_aud_lote             ON operacion.lote;
+DROP TRIGGER IF EXISTS trg_aud_existencia       ON operacion.existencia;
+DROP TRIGGER IF EXISTS trg_aud_venta            ON operacion.venta;
+DROP TRIGGER IF EXISTS trg_aud_venta_det        ON operacion.venta_detalle;
+DROP TRIGGER IF EXISTS trg_aud_merma            ON operacion.merma;
+DROP TRIGGER IF EXISTS trg_aud_usuario          ON operacion.usuario;
+DROP TRIGGER IF EXISTS trg_aud_reporte_doc      ON operacion.reporte_documento;
+DROP TRIGGER IF EXISTS trg_aud_orden_compra     ON operacion.orden_compra;
+DROP TRIGGER IF EXISTS trg_aud_orden_compra_det ON operacion.orden_compra_detalle;
 
 CREATE TRIGGER trg_aud_producto   AFTER INSERT OR UPDATE OR DELETE ON operacion.producto
     FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('PRODUCT');
@@ -395,6 +478,12 @@ CREATE TRIGGER trg_aud_merma      AFTER INSERT OR UPDATE OR DELETE ON operacion.
     FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('SHRINKAGE');
 CREATE TRIGGER trg_aud_usuario    AFTER INSERT OR UPDATE OR DELETE ON operacion.usuario
     FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('USER');
+CREATE TRIGGER trg_aud_reporte_doc      AFTER INSERT OR UPDATE OR DELETE ON operacion.reporte_documento
+    FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('REPORT_DOCUMENT');
+CREATE TRIGGER trg_aud_orden_compra     AFTER INSERT OR UPDATE OR DELETE ON operacion.orden_compra
+    FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('PURCHASE_ORDER');
+CREATE TRIGGER trg_aud_orden_compra_det AFTER INSERT OR UPDATE OR DELETE ON operacion.orden_compra_detalle
+    FOR EACH ROW EXECUTE FUNCTION auditoria.fn_registrar_auditoria('PURCHASE_ORDER_LINE');
 
 -- =============================================================================
 -- PERMISOS

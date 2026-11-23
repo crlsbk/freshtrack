@@ -74,6 +74,7 @@ def pronostico():
 @bp.post("/pronostico/ejecutar")
 @login_required
 @requiere_vista("forecast")
+@requiere_rol("admin", "planner")
 def pronostico_ejecutar():
     metodo = (request.form.get("metodo") or "AUTO").upper()
     horizonte = a_int(request.form.get("horizonte"), 0) or a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
@@ -565,7 +566,7 @@ def triaje_accion_lote():
 # ===========================================================================
 @bp.post("/planeacion/ciclo")
 @login_required
-@requiere_rol("admin", "planner", "buyer", "store_manager")
+@requiere_rol("admin", "planner", "store_manager")
 def planeacion_ciclo():
     origen = request.form.get("origen")
     destino = (

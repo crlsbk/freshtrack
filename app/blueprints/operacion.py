@@ -69,6 +69,9 @@ def lotes():
     usuario = usuario_actual()
 
     if request.method == "POST":
+        if usuario["rol_clave"] not in ("admin", "warehouse"):
+            flash("Solo el personal de almacén o el administrador puede registrar recepciones de mercancía.", "error")
+            return redirect(url_for("operacion.lotes"))
         try:
             resultado = dom_inv.registrar_recepcion(
                 id_sku=int(request.form["id_sku"]),
@@ -117,6 +120,9 @@ def lotes():
 @login_required
 @requiere_vista("batches")
 def lotes_cambiar_estado(id_lote: str):
+    if usuario_actual()["rol_clave"] not in ("admin", "warehouse", "store_manager", "planner"):
+        flash("Tu rol es de solo consulta sobre lotes y prioridad FEFO.", "error")
+        return redirect(url_for("operacion.lotes"))
     nuevo_estado = request.form.get("estado", "")
     motivo = request.form.get("motivo")
     if clientes.activo():
@@ -149,6 +155,9 @@ def lotes_cambiar_estado(id_lote: str):
 @login_required
 @requiere_vista("batches")
 def lotes_escanear_caducidad():
+    if usuario_actual()["rol_clave"] not in ("admin", "warehouse", "store_manager", "planner"):
+        flash("Tu rol es de solo consulta sobre lotes y prioridad FEFO.", "error")
+        return redirect(url_for("operacion.lotes"))
     if clientes.activo():
         status, r = clientes.como_usuario("inventory", "POST", "/api/v1/inventory/expiration/scan", {"dias_critico": 2})
         if status == 200:

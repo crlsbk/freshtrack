@@ -55,7 +55,7 @@ SECCIONES = [
         "items": [
             {"id": "products", "label": "Productos", "endpoint": "catalogo.productos"},
             {"id": "stores", "label": "Tiendas y CEDIS", "endpoint": "catalogo.locaciones"},
-            {"id": "suppliers", "label": "Proveedores", "endpoint": "catalogo.proveedores"},
+            {"id": "suppliers", "label": "Proveedores y Compras", "endpoint": "catalogo.proveedores"},
         ],
     },
     {
@@ -100,7 +100,7 @@ VISTAS_POR_ROL: dict[str, list[str]] = {
         "users", "audit", "settings",
     ],
     "buyer": [
-        "dashboard", "alerts", "map", "products", "suppliers", "batches", "inventory",
+        "dashboard", "alerts", "map", "suppliers", "batches", "inventory",
         "replenishment", "triage", "forecast",
     ],
     "planner": [
@@ -124,7 +124,7 @@ VISTAS_POR_ROL: dict[str, list[str]] = {
 
 VISTA_INICIAL: dict[str, str] = {
     "admin": "dashboard",
-    "buyer": "replenishment",
+    "buyer": "suppliers",
     "planner": "forecast",
     "store_manager": "dashboard",
     "warehouse": "batches",

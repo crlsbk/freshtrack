@@ -26,6 +26,7 @@
 </div>
 
 {# ── Control simple de actualización por tienda ── #}
+{% if current_role in ['admin', 'planner'] %}
 <div class="form-card" style="margin-bottom:20px;">
   <div class="card-title">Actualización automática por tienda</div>
   <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}"
@@ -65,6 +66,11 @@
     La selección de estrategia se realiza automáticamente dentro de cada tienda eligiendo el patrón de menor error histórico y estacionalidad semanal, sin ajustes manuales.
   </div>
 </div>
+{% else %}
+<div class="form-note" style="margin-bottom:20px;">
+  Vista de solo consulta: la actualización o recalibración de los modelos predictivos por tienda está reservada para Planeación y Administración.
+</div>
+{% endif %}
 
 {# ── Tabla principal: salud y deriva por tienda ── #}
 <div class="table-wrap" style="margin-bottom:20px;">
@@ -145,14 +151,16 @@
           </td>
           <td style="min-width:170px;">
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}">
-                <input type="hidden" name="id_locacion" value="{{ t.id_locacion }}"/>
-                <input type="hidden" name="metodo" value="AUTO"/>
-                <input type="hidden" name="horizonte" value="{{ t.horizonte_dias or horizonte_defecto }}"/>
-                <button class="btn {{ 'btn-primary' if t.requiere_reemplazo else 'btn-ghost' }} btn-sm" type="submit" style="width:100%;">
-                  Recalibrar tienda
-                </button>
-              </form>
+              {% if current_role in ['admin', 'planner'] %}
+                <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}">
+                  <input type="hidden" name="id_locacion" value="{{ t.id_locacion }}"/>
+                  <input type="hidden" name="metodo" value="AUTO"/>
+                  <input type="hidden" name="horizonte" value="{{ t.horizonte_dias or horizonte_defecto }}"/>
+                  <button class="btn {{ 'btn-primary' if t.requiere_reemplazo else 'btn-ghost' }} btn-sm" type="submit" style="width:100%;">
+                    Recalibrar tienda
+                  </button>
+                </form>
+              {% endif %}
               <a class="btn btn-ghost btn-sm" href="{{ url_for('analitica.pronostico', locacion=t.id_locacion) }}">
                 Ver productos
               </a>

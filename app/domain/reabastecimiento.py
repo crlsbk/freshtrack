@@ -288,7 +288,7 @@ def analizar_sku_locacion(
                p.precio_venta, p.stock_seguridad, p.punto_reorden, p.vida_util_estandar,
                p.id_proveedor, pr.razon_social AS proveedor,
                COALESCE(pr.lead_time_dias, 3) AS lead_time_dias,
-               COALESCE(pr.moq, 1)            AS moq
+               COALESCE(p.moq_lote, pr.moq, 1) AS moq
         FROM operacion.producto p
         LEFT JOIN operacion.proveedor pr ON pr.id_proveedor = p.id_proveedor
         WHERE p.id_sku = :sku

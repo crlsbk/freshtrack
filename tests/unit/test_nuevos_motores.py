@@ -205,3 +205,89 @@ def test_newsvendor_descuenta_traslados_entrantes(monkeypatch):
     con_descuento = reab.analizar_sku_locacion(1, 4, horizonte=7)
     assert con_descuento["cantidad_sugerida"] == 0.0
     assert any("Compra detenida por triaje local" in a for a in con_descuento["advertencias"])
+
+
+def test_generar_pdf_orden_compra_valido_y_multipagina():
+    from app.domain.pdf_oc import generar_pdf_orden_compra
+
+    lineas = [
+        {
+            "locacion_destino": f"Tienda {(i % 3) + 1}",
+            "producto": f"Producto Orgánico #{i}",
+            "unidad_medida": "kg",
+            "cantidad_lotes": 2,
+            "unidades_por_lote": 10.0,
+            "cantidad_unidades": 20.0,
+            "precio_unitario": 25.0,
+            "subtotal": 500.0,
+        }
+        for i in range(1, 41)
+    ]
+    orden = {
+        "folio": "OC-20261122-0001",
+        "estado": "EMITIDA",
+        "fecha_creacion": "2026-11-22T12:00:00",
+        "fecha_entrega_estimada": "2026-11-25",
+        "lead_time_dias": 3,
+        "proveedor": "Lácteos Frescos de México S.A.",
+        "rfc": "LFM190101XYZ",
+        "contacto_email": "ventas@lacteos.mx",
+        "telefono": "8110002200",
+        "comprador": "Ana Compras",
+        "comprador_email": "buyer@freshtrack.mx",
+        "total_lotes": 80,
+        "total_unidades": 800.0,
+        "total": 20000.0,
+        "observaciones": "Entregar en rampa refrigerada con temperatura controlada.",
+        "resumen_tiendas": [
+            {"locacion_destino": "Tienda 1", "lotes": 28, "unidades": 280.0, "subtotal": 7000.0},
+            {"locacion_destino": "Tienda 2", "lotes": 26, "unidades": 260.0, "subtotal": 6500.0},
+            {"locacion_destino": "Tienda 3", "lotes": 26, "unidades": 260.0, "subtotal": 6500.0},
+        ],
+        "lineas": lineas,
+    }
+    pdf = generar_pdf_orden_compra(orden)
+    assert pdf.startswith(b"%PDF-1.4")
+    assert b"%%EOF" in pdf[-32:]
+    assert b"OC-20261122-0001" in pdf
+    assert b"/Type /Page" in pdf and b"/Count 2" in pdf
+
+
+def test_object_storage_firma_y_fallback_local(monkeypatch):
+    import tempfile
+    from pathlib import Path
+    from app.services import object_storage
+
+    assert len(object_storage._signing_key("secret", "20261122", "us-east-1")) == 32
+
+    with tempfile.TemporaryDirectory() as td:
+        monkeypatch.setattr(object_storage, "FALLBACK_DIR", Path(td))
+        monkeypatch.setattr(object_storage, "_peticion_s3", lambda *a, **k: (0, b"", {}))
+
+        meta = object_storage.subir_pdf("ordenes/demo.pdf", b"%PDF-1.4 demo-ok")
+        assert meta["storage_provider"] == "local_fallback"
+        assert meta["tamano_bytes"] == 16
+        assert len(meta["sha256"]) == 64
+        recuperado = object_storage.descargar_pdf("ordenes/demo.pdf", bucket=meta["bucket"], storage_provider="local_fallback")
+        assert recuperado == b"%PDF-1.4 demo-ok"
+
+        # Simular S3 disponible
+        monkeypatch.setattr(
+            object_storage,
+            "_peticion_s3",
+            lambda metodo, ruta, **k: (200, b"%PDF-1.4 s3-ok", {"etag": '"etag123"'}),
+        )
+        meta_s3 = object_storage.subir_pdf("ordenes/s3.pdf", b"%PDF-1.4 s3-ok")
+        assert meta_s3["storage_provider"] == "s3"
+        assert meta_s3["etag"] == "etag123"
+        assert object_storage.descargar_pdf("ordenes/s3.pdf", bucket=meta_s3["bucket"], storage_provider="s3") == b"%PDF-1.4 s3-ok"
+
+
+def test_rbac_comprador_y_proveedor():
+    from app.navegacion import VISTAS_POR_ROL, VISTA_INICIAL
+
+    assert VISTA_INICIAL["buyer"] == "suppliers"
+    assert "suppliers" in VISTAS_POR_ROL["buyer"]
+    assert "products" not in VISTAS_POR_ROL["buyer"]
+    assert "products" in VISTAS_POR_ROL["supplier"]
+    assert VISTA_INICIAL["supplier"] == "replenishment"

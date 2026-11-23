@@ -24,26 +24,30 @@ def _stock(id_lote: str) -> tuple[float, float]:
 
 # --- svc-catalog ----------------------------------------------------------------
 def test_crud_de_producto_con_xml_y_cache(svc, tokens):
-    h = bearer(tokens["buyer"])
+    h_sup = bearer(tokens["supplier"])
+    h_buy = bearer(tokens["buyer"])
     nombre = f"PYTEST Fresa {uuid.uuid4().hex[:6]}"
     xml = (
         f"<producto_request><nombre>{nombre}</nombre><categoria>Frutas</categoria>"
-        "<precio_costo>20</precio_costo><precio_venta>35.5</precio_venta><vida_util_estandar>5</vida_util_estandar></producto_request>"
+        "<precio_costo>20</precio_costo><precio_venta>35.5</precio_venta>"
+        "<vida_util_estandar>5</vida_util_estandar><moq_lote>12</moq_lote></producto_request>"
     )
-    r = svc["catalog"].post("/api/v1/catalog/products", data=xml, content_type="application/xml", headers={**h, "Accept": "application/xml"})
+    assert svc["catalog"].post("/api/v1/catalog/products", data=xml, content_type="application/xml", headers=h_buy).status_code == 403
+    r = svc["catalog"].post("/api/v1/catalog/products", data=xml, content_type="application/xml", headers={**h_sup, "Accept": "application/xml"})
     assert r.status_code == 201 and b"<producto_creado>" in r.data
     id_sku = one("SELECT id_sku FROM operacion.producto WHERE nombre = :n", n=nombre)["id_sku"]
 
-    assert svc["catalog"].get(f"/api/v1/catalog/products/{id_sku}").get_json()["precio_venta"] == 35.5
-    r = svc["catalog"].patch(f"/api/v1/catalog/products/{id_sku}", json={"precio_venta": 30}, headers=h)
+    prod_get = svc["catalog"].get(f"/api/v1/catalog/products/{id_sku}").get_json()
+    assert prod_get["precio_venta"] == 35.5 and prod_get["moq_lote"] == 12.0
+    r = svc["catalog"].patch(f"/api/v1/catalog/products/{id_sku}", json={"precio_venta": 30}, headers=h_sup)
     assert r.status_code == 200 and r.get_json()["precio_venta"] == 30
-    r = svc["catalog"].put(f"/api/v1/catalog/products/{id_sku}", json={"precio_venta": 31}, headers=h)
+    r = svc["catalog"].put(f"/api/v1/catalog/products/{id_sku}", json={"precio_venta": 31}, headers=h_sup)
     assert r.status_code == 400  # PUT exige el recurso completo
-    r = svc["catalog"].patch(f"/api/v1/catalog/products/{id_sku}", json={"precio_venta": 5}, headers=h)
+    r = svc["catalog"].patch(f"/api/v1/catalog/products/{id_sku}", json={"precio_venta": 5}, headers=h_sup)
     assert r.status_code == 409  # regla de negocio: venta < costo
 
-    assert svc["catalog"].delete(f"/api/v1/catalog/products/{id_sku}", headers=h).status_code == 403  # solo admin
-    assert svc["catalog"].delete(f"/api/v1/catalog/products/{id_sku}", headers=bearer(tokens["admin"])).status_code == 200
+    assert svc["catalog"].delete(f"/api/v1/catalog/products/{id_sku}", headers=h_buy).status_code == 403
+    assert svc["catalog"].delete(f"/api/v1/catalog/products/{id_sku}", headers=h_sup).status_code == 200
     assert one("SELECT activo FROM operacion.producto WHERE id_sku = :s", s=id_sku)["activo"] is False
     assert svc["catalog"].get("/api/v1/catalog/products/99999999").status_code == 404
 
@@ -183,14 +187,16 @@ def test_escaneo_y_atencion_de_alertas(svc, tokens):
 
 
 def test_planeacion_ordenes_y_contexto_hibrido(svc, tokens):
-    h = bearer(tokens["buyer"])
-    r = svc["planning"].get("/api/v1/planning/replenishment/orders?por_pagina=5", headers=h)
+    h_buy = bearer(tokens["buyer"])
+    h_plan = bearer(tokens["planner"])
+    r = svc["planning"].get("/api/v1/planning/replenishment/orders?por_pagina=5", headers=h_buy)
     assert r.status_code == 200 and "paginacion" in r.get_json()
     falso = str(uuid.uuid4())
-    assert svc["planning"].post(f"/api/v1/planning/replenishment/orders/{falso}/approve", json={}, headers=h).status_code == 404
-    ctx = svc["planning"].get("/api/v1/planning/sku/1/full-context?id_locacion=3", headers=h).get_json()
+    assert svc["planning"].post(f"/api/v1/planning/replenishment/orders/{falso}/approve", json={}, headers=h_buy).status_code == 404
+    ctx = svc["planning"].get("/api/v1/planning/sku/1/full-context?id_locacion=3", headers=h_buy).get_json()
     assert ctx["producto_postgres"]["id_sku"] == 1 and "contexto_mongo" in ctx
-    assert svc["planning"].post("/api/v1/planning/forecast/run", json={"metodo": "NO_EXISTE"}, headers=h).status_code == 400
+    assert svc["planning"].post("/api/v1/planning/forecast/run", json={"metodo": "AUTO"}, headers=h_buy).status_code == 403
+    assert svc["planning"].post("/api/v1/planning/forecast/run", json={"metodo": "NO_EXISTE"}, headers=h_plan).status_code == 400
 
 
 def test_auditoria_registra_con_identidad_del_jwt(svc, tokens):

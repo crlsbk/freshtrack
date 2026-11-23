@@ -239,7 +239,7 @@ def api_merma():
 
 @bp.post("/pronostico/ejecutar")
 @token_requerido
-@rol_en_token("admin", "planner", "buyer")
+@rol_en_token("admin", "planner")
 def api_pronostico_ejecutar():
     datos = request.get_json(silent=True) or request.form
     try:

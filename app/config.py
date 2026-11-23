@@ -86,6 +86,21 @@ class Config:
     VENTANA_MEDIA_MOVIL = int(os.getenv("VENTANA_MEDIA_MOVIL", "28"))
     ALPHA_SUAVIZACION = float(os.getenv("ALPHA_SUAVIZACION", "0.30"))
 
+    # --- Cloud Object Storage (S3 / MinIO) ---------------------------------
+    OBJECT_STORAGE_ENDPOINT = os.getenv("OBJECT_STORAGE_ENDPOINT", "http://127.0.0.1:9000").rstrip("/")
+    OBJECT_STORAGE_ACCESS_KEY = os.getenv("OBJECT_STORAGE_ACCESS_KEY", "freshtrack_s3")
+    OBJECT_STORAGE_SECRET_KEY = os.getenv("OBJECT_STORAGE_SECRET_KEY", "freshtrack_s3_secret_2026")
+    OBJECT_STORAGE_BUCKET = os.getenv("OBJECT_STORAGE_BUCKET", "freshtrack-reportes")
+    OBJECT_STORAGE_REGION = os.getenv("OBJECT_STORAGE_REGION", "us-east-1")
+
+    # --- Correo saliente (SMTP opcional) -----------------------------------
+    SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER", "").strip()
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM = os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "compras@freshtrack.mx")).strip()
+    SMTP_TLS = os.getenv("SMTP_TLS", "true").lower() not in ("0", "false", "no")
+
     # --- Entorno -----------------------------------------------------------
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     APP_HOST = os.getenv("APP_HOST", "127.0.0.1")

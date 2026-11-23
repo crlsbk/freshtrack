@@ -19,12 +19,19 @@
       Antes de sugerir compras al proveedor, el sistema asegura los modelos por tienda y descuenta los traslados aprobados o sugeridos en <a href="{{ url_for('analitica.triaje') }}">Triaje Preventivo</a>.
     </div>
   </div>
-  {% if current_role in ['admin', 'planner', 'buyer', 'store_manager'] %}
-    <form method="post" action="{{ url_for('analitica.planeacion_ciclo') }}" style="display:flex;gap:8px;align-items:center;">
-      <input type="hidden" name="origen" value="reabastecimiento"/>
-      <button class="btn btn-primary" type="submit">Actualizar plan del día</button>
-    </form>
-  {% endif %}
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    {% if current_role in ['admin', 'buyer'] %}
+      <a class="btn btn-primary" href="{{ url_for('catalogo.proveedores', tab='pedir') }}">
+        Emitir orden por proveedor y lotes &rarr;
+      </a>
+    {% endif %}
+    {% if current_role in ['admin', 'planner', 'store_manager'] %}
+      <form method="post" action="{{ url_for('analitica.planeacion_ciclo') }}" style="display:flex;gap:8px;align-items:center;">
+        <input type="hidden" name="origen" value="reabastecimiento"/>
+        <button class="btn {% if current_role in ['admin', 'buyer'] %}btn-ghost{% else %}btn-primary{% endif %}" type="submit">Actualizar plan del día</button>
+      </form>
+    {% endif %}
+  </div>
 </div>
 
 {# Los contadores enlazan a su lista: al decidir una orden, ésta sale de

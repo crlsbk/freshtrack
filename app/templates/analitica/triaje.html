@@ -20,7 +20,7 @@
       <strong>Paso 2 (<a href="{{ url_for('analitica.reabastecimiento') }}">Reabastecimiento</a>):</strong> calcula compras al proveedor descontando automáticamente los traslados entrantes.
     </div>
   </div>
-  {% if current_role in ['admin', 'planner', 'buyer', 'store_manager'] %}
+  {% if current_role in ['admin', 'planner', 'store_manager'] %}
     <form method="post" action="{{ url_for('analitica.planeacion_ciclo') }}" style="display:flex;gap:8px;align-items:center;">
       <input type="hidden" name="origen" value="triaje"/>
       {% if id_locacion %}<input type="hidden" name="id_locacion" value="{{ id_locacion }}"/>{% endif %}

@@ -199,3 +199,36 @@ def reenviar(clave: str, metodo: str, ruta: str, consulta: str, cuerpo: bytes | 
     except (urllib.error.URLError, TimeoutError, OSError):
         cuerpo_error = json.dumps({"error": "servicio_no_disponible", "mensaje": f"{nombre(clave)} no respondió."}).encode()
         return 502, cuerpo_error, "application/json", ""
+
+
+def llamar_binario(
+    clave: str,
+    metodo: str,
+    ruta: str,
+    *,
+    token: str | None = None,
+    timeout: float = 20.0,
+) -> tuple[int, bytes, dict[str, str]]:
+    """Petición binaria (p. ej. descarga de PDF) hacia un microservicio interno."""
+    req = urllib.request.Request(url_interna(clave) + ruta, method=metodo)
+    req.add_header("Accept", "*/*")
+    req.add_header("User-Agent", "freshtrack-web")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            hdrs = {k.lower(): v for k, v in resp.headers.items()}
+            return resp.status, resp.read(), hdrs
+    except urllib.error.HTTPError as err:
+        hdrs = {k.lower(): v for k, v in err.headers.items()} if err.headers else {}
+        return err.code, err.read(), hdrs
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return 0, b"", {}
+
+
+def como_usuario_binario(clave: str, metodo: str, ruta: str, timeout: float = 20.0) -> tuple[int, bytes, dict[str, str]]:
+    """Reenvía el JWT de sesión para recuperar respuestas binarias de un microservicio."""
+    from flask import has_request_context, session
+
+    token = session.get("token") if has_request_context() else None
+    return llamar_binario(clave, metodo, ruta, token=token, timeout=timeout)

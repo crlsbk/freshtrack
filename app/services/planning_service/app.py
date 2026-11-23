@@ -16,9 +16,10 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from flask import g, request
+from flask import Response, g, request
 
 from app.db import a_float, one, query
+from app.domain import compras as dom_compras
 from app.domain import descuentos as dom_desc
 from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as dom_reab
@@ -36,6 +37,7 @@ from app.services.common.response import (
     meta_paginacion,
     paginacion,
     render_response,
+    requerir_campos,
     validar_uuid,
 )
 from app.services.common.servicio import crear_servicio, ejecutar
@@ -60,7 +62,7 @@ ESTADOS_ORDEN = {"PENDIENTE", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA"}
     raiz_respuesta="forecast_run_result",
     errores=("400",),
 )
-@requiere_auth("planner", "buyer")
+@requiere_auth("planner")
 def ejecutar_pronostico():
     """Calcula un modelo independiente por tienda; guarda la corrida relacional y la serie detallada."""
     datos = leer_cuerpo("forecast_request")
@@ -580,7 +582,7 @@ def ejecutar_triaje_api():
     errores=("400", "403"),
     exito="201",
 )
-@requiere_auth("planner", "buyer", "store_manager")
+@requiere_auth("planner", "store_manager")
 def ejecutar_ciclo_planeacion_api():
     """Actualiza modelos por tienda si vencieron, ejecuta triaje preventivo y genera compras netas."""
     datos = leer_cuerpo()
@@ -605,6 +607,168 @@ def ejecutar_ciclo_planeacion_api():
         },
     )
     return render_response(res, status=201, root_tag="planning_cycle_result")
+
+
+# =============================================================================
+# Abastecimiento por Proveedor y Órdenes de Compra por Lotes (PDF + Object Storage + Correo)
+# =============================================================================
+@app.get("/api/v1/planning/procurement/suppliers")
+@documentar(
+    "Lista proveedores activos con resumen de necesidad de reposición",
+    raiz_respuesta="procurement_suppliers",
+)
+@requiere_auth("buyer")
+def listar_proveedores_compra_api():
+    resumen = dom_compras.resumen_necesidad_por_proveedor()
+    provs = query(
+        """
+        SELECT id_proveedor, rfc, razon_social, lead_time_dias, moq,
+               contacto_email, telefono
+        FROM operacion.proveedor
+        WHERE activo = true
+        ORDER BY razon_social ASC
+        """
+    )
+    salida = []
+    for p in provs:
+        r = resumen.get(p["id_proveedor"], {})
+        salida.append(
+            {
+                **p,
+                "moq": a_float(p["moq"]),
+                "productos_activos": r.get("productos_activos", 0),
+                "ordenes_pendientes": r.get("ordenes_pendientes", 0),
+                "urgentes": r.get("urgentes", 0),
+                "unidades_sugeridas": r.get("unidades_sugeridas", 0.0),
+            }
+        )
+    return render_response({"total": len(salida), "proveedores": salida}, status=200, root_tag="procurement_suppliers")
+
+
+@app.get("/api/v1/planning/procurement/suppliers/<int:id_proveedor>/catalog")
+@documentar(
+    "Catálogo de compra del proveedor con MOQ por producto y sugerencia Newsvendor por tienda",
+    consulta=[("horizonte", "integer", "Horizonte de días opcional")],
+    raiz_respuesta="supplier_procurement_catalog",
+    errores=("404",),
+)
+@requiere_auth("buyer")
+def catalogo_compra_proveedor_api(id_proveedor: int):
+    horizonte = entero(request.args, "horizonte", minimo=1)
+    try:
+        res = dom_compras.catalogo_compra_proveedor(id_proveedor, horizonte=horizonte)
+    except ValueError as err:
+        return error_response(404, "no_encontrado", str(err))
+    return render_response(res, status=200, root_tag="supplier_procurement_catalog")
+
+
+@app.post("/api/v1/planning/purchase-orders")
+@documentar(
+    "Registra una Orden de Compra multi-tienda por lotes y genera su PDF en Cloud Object Storage",
+    cuerpo={"id_proveedor": 1, "lineas": [{"id_sku": 1, "id_locacion_destino": 3, "cantidad_lotes": 2}], "observaciones": "Entrega matutina"},
+    raiz_xml="purchase_order_request",
+    raiz_respuesta="purchase_order",
+    errores=("400", "403", "409"),
+    exito="201",
+)
+@requiere_auth("buyer")
+def crear_orden_compra_api():
+    datos = leer_cuerpo(requerido=True)
+    requerir_campos(datos, "id_proveedor", "lineas")
+    id_proveedor = entero(datos, "id_proveedor", minimo=1)
+    lineas = datos.get("lineas")
+    if isinstance(lineas, dict):
+        lineas = list(lineas.values())
+    if not isinstance(lineas, list) or not lineas:
+        raise ErrorApi(400, "parametro_invalido", "'lineas' debe contener al menos una partida de compra.")
+    try:
+        orden = dom_compras.registrar_orden_compra(
+            id_proveedor=id_proveedor,
+            lineas=lineas,
+            usuario=usuario_desde_token(),
+            observaciones=datos.get("observaciones"),
+        )
+    except ValueError as err:
+        return error_response(400, "regla_negocio", str(err))
+    return render_response(orden, status=201, root_tag="purchase_order")
+
+
+@app.get("/api/v1/planning/purchase-orders")
+@documentar(
+    "Lista órdenes de compra emitidas con metadatos de su PDF en Cloud Object Storage",
+    consulta=[("id_proveedor", "integer", "Filtro por proveedor"), ("estado", "string", "Estado OC"), ("limite", "integer", "Máximo")],
+    raiz_respuesta="purchase_orders_list",
+)
+@requiere_auth("buyer", "supplier", "warehouse", "auditor")
+def listar_ordenes_compra_api():
+    id_prov = entero(request.args, "id_proveedor", minimo=1)
+    estado = (request.args.get("estado") or "").upper() or None
+    limite = min(entero(request.args, "limite", minimo=1, defecto=50) or 50, 200)
+    ordenes = dom_compras.listar_ordenes_compra(id_proveedor=id_prov, estado=estado, limite=limite)
+    return render_response({"total": len(ordenes), "ordenes": ordenes}, status=200, root_tag="purchase_orders_list")
+
+
+@app.get("/api/v1/planning/purchase-orders/<id_oc>")
+@documentar("Detalle completo de una Orden de Compra", raiz_respuesta="purchase_order", errores=("400", "404"))
+@requiere_auth("buyer", "supplier", "warehouse", "auditor")
+def detalle_orden_compra_api(id_oc: str):
+    id_oc = validar_uuid(id_oc, "id_oc")
+    orden = dom_compras.obtener_orden_compra(id_oc)
+    if orden is None:
+        return error_response(404, "no_encontrado", f"Orden de compra {id_oc} no encontrada.")
+    return render_response(orden, status=200, root_tag="purchase_order")
+
+
+@app.get("/api/v1/planning/purchase-orders/<id_oc>/pdf")
+@documentar(
+    "Descarga o visualiza el PDF de la Orden de Compra desde Cloud Object Storage",
+    consulta=[("download", "integer", "1 para forzar descarga como adjunto")],
+    errores=("400", "404"),
+)
+@requiere_auth("buyer", "supplier", "warehouse", "auditor")
+def pdf_orden_compra_api(id_oc: str):
+    id_oc = validar_uuid(id_oc, "id_oc")
+    try:
+        pdf_bytes, orden = dom_compras.obtener_pdf_orden_compra(id_oc, usuario=usuario_desde_token())
+    except ValueError as err:
+        return error_response(404, "no_encontrado", str(err))
+    disp = "attachment" if request.args.get("download") == "1" else "inline"
+    return Response(
+        pdf_bytes,
+        status=200,
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'{disp}; filename="{orden["folio"]}.pdf"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.post("/api/v1/planning/purchase-orders/<id_oc>/send-email")
+@documentar(
+    "Envía la Orden de Compra (con PDF adjunto desde Cloud Object Storage) por correo electrónico",
+    cuerpo={"correo": "ventas@proveedor.mx", "mensaje": "Favor confirmar recepción"},
+    raiz_xml="send_email_request",
+    raiz_respuesta="send_email_result",
+    errores=("400", "404"),
+)
+@requiere_auth("buyer")
+def enviar_orden_compra_correo_api(id_oc: str):
+    id_oc = validar_uuid(id_oc, "id_oc")
+    datos = leer_cuerpo(requerido=True)
+    requerir_campos(datos, "correo")
+    try:
+        res = dom_compras.enviar_orden_compra_correo(
+            id_oc=id_oc,
+            correo_destino=str(datos["correo"]),
+            usuario=usuario_desde_token(),
+            mensaje_extra=datos.get("mensaje"),
+        )
+    except ValueError as err:
+        msg = str(err)
+        codigo = 404 if "no existe" in msg.lower() else 400
+        return error_response(codigo, "regla_negocio", msg)
+    return render_response(res, status=200, root_tag="send_email_result")
 
 
 if __name__ == "__main__":

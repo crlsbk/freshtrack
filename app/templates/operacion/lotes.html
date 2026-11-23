@@ -11,12 +11,16 @@
 ) }}
 
 <div class="filtros">
-  <button class="btn btn-primary" type="button" onclick="toggleForm('form-recepcion')">
-    + Registrar recepción
-  </button>
-  <form method="post" action="{{ url_for('operacion.lotes_escanear_caducidad') }}">
-    <button class="btn btn-ghost" type="submit">Escanear y bloquear caducados</button>
-  </form>
+  {% if current_role in ['admin', 'warehouse'] %}
+    <button class="btn btn-primary" type="button" onclick="toggleForm('form-recepcion')">
+      + Registrar recepción
+    </button>
+  {% endif %}
+  {% if current_role in ['admin', 'warehouse', 'store_manager', 'planner'] %}
+    <form method="post" action="{{ url_for('operacion.lotes_escanear_caducidad') }}">
+      <button class="btn btn-ghost" type="submit">Escanear y bloquear caducados</button>
+    </form>
+  {% endif %}
   <form method="get" action="{{ url_for('operacion.lotes') }}"
         style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex:1;">
     <div class="campo campo-ancho">
@@ -50,6 +54,7 @@
   </form>
 </div>
 
+{% if current_role in ['admin', 'warehouse'] %}
 {# ── Formulario de recepción ── #}
 <div class="form-card" id="form-recepcion" style="display:none;">
   <div class="card-title">Registrar recepción de mercancía</div>
@@ -126,6 +131,7 @@
     </div>
   </form>
 </div>
+{% endif %}
 
 {# ── Listado de lotes ── #}
 <div class="table-wrap">
@@ -188,6 +194,7 @@
           <td class="mono">{{ (l.existencia_total) | cantidad(2) }}</td>
           <td>
             {{ ui.estado(l.estado) }}
+            {% if current_role in ['admin', 'warehouse', 'store_manager', 'planner'] %}
             <form method="post" action="{{ url_for('operacion.lotes_cambiar_estado', id_lote=l.id_lote) }}"
                   style="display:flex;gap:4px;margin-top:4px;">
               <select class="input" name="estado" style="padding:2px 6px;font-size:11px;min-width:105px;">
@@ -197,6 +204,7 @@
               </select>
               <button class="btn btn-ghost btn-sm" type="submit" style="padding:2px 6px;font-size:11px;">Aplicar</button>
             </form>
+            {% endif %}
           </td>
           <td>{{ ui.riesgo(l.clasificacion) }}</td>
           <td>

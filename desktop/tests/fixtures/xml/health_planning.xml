@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<service_health><service>svc-planning</service><status>HEALTHY</status><version>1.0.0</version><dependencies><postgres>true</postgres><mongo>true</mongo><redis>true</redis></dependencies></service_health>

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -38,6 +39,13 @@ import requests  # noqa: E402
 from requests.structures import CaseInsensitiveDict  # noqa: E402
 
 from freshtrack_desktop.core.config import Settings  # noqa: E402
+
+FIXTURES_XML = Path(__file__).parent / "fixtures" / "xml"
+
+
+def muestra(nombre: str) -> bytes:
+    """XML real de un servicio guardado en tests/fixtures/xml/<nombre>.xml."""
+    return (FIXTURES_XML / f"{nombre}.xml").read_bytes()
 
 
 @dataclass

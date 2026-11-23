@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<error_response><error>acceso_denegado</error><mensaje>El rol 'planner' no tiene permiso para esta operación.</mensaje><status>403</status><correlation_id>9dc5af9d417540468003942a8ed14a55</correlation_id><detalles><roles_permitidos><item>admin</item><item>auditor</item><item>buyer</item><item>supplier</item><item>warehouse</item></roles_permitidos></detalles></error_response>

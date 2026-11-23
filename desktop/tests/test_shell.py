@@ -14,6 +14,7 @@ import requests
 from PySide6.QtCore import QThread, Qt
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
+from conftest import muestra
 from freshtrack_desktop.core.activity_log import ActivityLog
 from freshtrack_desktop.core.api_client import ApiClient
 from freshtrack_desktop.core.errors import ApiError, ServiceUnavailable, XmlContractError
@@ -41,7 +42,6 @@ def error_xml(status: int, codigo: str, mensaje: str = "Mensaje del servidor") -
 <correlation_id>cid-servidor</correlation_id></error_response>""".encode()
 
 
-HEALTH_OK = (Path(__file__).resolve().parents[2] / ".superpowers/sdd/2026-11-22-app-escritorio/samples/health_planning.xml")
 HEALTH_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 <service_health><service>svc-x</service><status>HEALTHY</status><version>1.0.0</version>
 <dependencies><postgres>true</postgres><mongo>true</mongo><redis>true</redis></dependencies></service_health>"""
@@ -249,7 +249,7 @@ def test_all_pages_orden_y_roles():
 def test_estado_page_marca_servicio_caido_y_degradado(ctx, qtbot, fake_http):
     from freshtrack_desktop.ui.pages.estado import EstadoPage
 
-    fake_http.add("GET", "/health", body=HEALTH_OK.read_bytes())
+    fake_http.add("GET", "/health", body=muestra("health_planning"))
     fake_http.add_error("GET", "localhost:5003/health", requests.ConnectionError("apagado"))
     fake_http.add("GET", "localhost:5007/health", status=503, body=HEALTH_DEGRADED)
     page = EstadoPage(ctx)

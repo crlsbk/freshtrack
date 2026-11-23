@@ -142,6 +142,8 @@ class TableroPage(BasePage):
         for a in _lista(_dic(datos).get("alertas")):
             fila = dict(a)
             fila["criticidad"] = _CRITICIDAD.get(str(a.get("criticidad", "")).upper(), a.get("criticidad", ""))
+            tipo = str(a.get("tipo", ""))
+            fila["tipo"] = tipo.replace("_", " ").capitalize().replace("pre merma", "pre-merma") if tipo else ""
             filas.append(fila)
         self.table.set_rows(filas)
         self._marca()

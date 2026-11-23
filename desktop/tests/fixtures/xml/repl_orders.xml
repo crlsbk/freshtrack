@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<replenishment_orders><paginacion><pagina>1</pagina><por_pagina>5</por_pagina><total>41</total><total_paginas>9</total_paginas></paginacion><ordenes><item><id_orden>9a34ffda-47f6-46e3-b9ea-30384f1b7d2c</id_orden><id_sku>10</id_sku><producto>Zanahoria kg</producto><id_locacion>5</id_locacion><locacion>Tienda Valle Oriente</locacion><id_proveedor>3</id_proveedor><cantidad_sugerida>480.0</cantidad_sugerida><cantidad_aprobada /><prioridad>MEDIA</prioridad><estado>PENDIENTE</estado><explicacion>Producto: Zanahoria kg
+Tienda: Tienda Valle Oriente
+
+Demanda prevista 7 días         646.62
+Inventario físico                      190.00
+Inventario próximo a vencer              0.00
+Inventario útil                        190.00
+Stock de seguridad                      60.00
+Entradas confirmadas (total)             0.00
+  · Órdenes en curso                     0.00
+  · Traslados entrantes (triaje)         0.00
+Lead time                                   1 días
+MOQ                                     80.00
+
+Necesidad neta (Newsvendor)            465.08
+
+Modelo Newsvendor:
+  Costo de faltante (Cu)           $     4.50
+  Costo de excedente (Co)          $     3.75
+  Fractil crítico Cu/(Cu+Co)           0.5455
+  Cantidad óptima Newsvendor           465.08
+  Política simple (referencia)         516.62
+  Ahorro esperado en costo         $    55.05
+
+Recomendación: ordenar 480 Kg</explicacion><fecha_creacion>2026-11-23T05:44:38.234314+00:00</fecha_creacion><fecha_decision /></item><item><id_orden>612b4b36-06a3-4e3c-b900-23e82b7fcc6e</id_orden><id_sku>10</id_sku><producto>Zanahoria kg</producto><id_locacion>7</id_locacion><locacion>Tienda Sur</locacion><id_proveedor>3</id_proveedor><cantidad_sugerida>400.0</cantidad_sugerida><cantidad_aprobada /><prioridad>MEDIA</prioridad><estado>PENDIENTE</estado><explicacion>Producto: Zanahoria kg
+Tienda: Tienda Sur
+
+Demanda prevista 7 días         670.43
+Inventario físico                      312.16
+Inventario próximo a vencer              0.00
+Inventario útil                        312.16
+Stock de seguridad                      60.00
+Entradas confirmadas (total)             0.00
+  · Órdenes en curso                     0.00
+  · Traslados entrantes (triaje)         0.00
+Lead time                                   1 días
+MOQ                                     80.00
+
+Necesidad neta (Newsvendor)            366.56
+
+Modelo Newsvendor:
+  Costo de faltante (Cu)           $     4.50
+  Costo de excedente (Co)          $     3.75
+  Fractil crítico Cu/(Cu+Co)           0.5455
+  Cantidad óptima Newsvendor           366.56
+  Política simple (referencia)         418.27
+  Ahorro esperado en costo         $    56.36
+
+Recomendación: ordenar 400 Kg</explicacion><fecha_creacion>2026-11-23T05:44:38.206032+00:00</fecha_creacion><fecha_decision /></item><item><id_orden>9204182c-4c45-44d3-9940-1fe384330d68</id_orden><id_sku>10</id_sku><producto>Zanahoria kg</producto><id_locacion>3</id_locacion><locacion>Tienda San Pedro</locacion><id_proveedor>3</id_proveedor><cantidad_sugerida>320.0</cantidad_sugerida><cantidad_aprobada /><prioridad>MEDIA</prioridad><estado>PENDIENTE</estado><explicacion>Producto: Zanahoria kg
+Tienda: Tienda San Pedro
+
+Demanda prevista 7 días         651.48
+Inventario físico                      344.89
+Inventario próximo a vencer              0.00
+Inventario útil                        344.89
+Stock de seguridad                      60.00
+Entradas confirmadas (total)             0.00
+  · Órdenes en curso                     0.00
+  · Traslados entrantes (triaje)         0.00
+Lead time                                   1 días
+MOQ                                     80.00
+
+Necesidad neta (Newsvendor)            315.77
+
+Modelo Newsvendor:
+  Costo de faltante (Cu)           $     4.50
+  Costo de excedente (Co)          $     3.75
+  Fractil crítico Cu/(Cu+Co)           0.5455
+  Cantidad óptima Newsvendor           315.77
+  Política simple (referencia)         366.59
+  Ahorro esperado en costo         $    49.73
+
+Recomendación: ordenar 320 Kg</explicacion><fecha_creacion>2026-11-23T05:44:38.180676+00:00</fecha_creacion><fecha_decision /></item><item><id_orden>9d9d18f5-d3c7-4138-aacc-1e9f9e6a6a06</id_orden><id_sku>10</id_sku><producto>Zanahoria kg</producto><id_locacion>4</id_locacion><locacion>Tienda Cumbres</locacion><id_proveedor>3</id_proveedor><cantidad_sugerida>266.0</cantidad_sugerida><cantidad_aprobada /><prioridad>MEDIA</prioridad><estado>PENDIENTE</estado><explicacion>Producto: Zanahoria kg
+Tienda: Tienda Cumbres
+
+Demanda prevista 7 días         644.14
+Inventario físico                      386.70
+Inventario próximo a vencer              0.00
+Inventario útil                        386.70
+Stock de seguridad                      60.00
+Entradas confirmadas (total)             0.00
+  · Órdenes en curso                     0.00
+  · Traslados entrantes (triaje)         0.00
+Lead time                                   1 días
+MOQ                                     80.00
+
+Necesidad neta (Newsvendor)            265.61
+
+Modelo Newsvendor:
+  Costo de faltante (Cu)           $     4.50
+  Costo de excedente (Co)          $     3.75
+  Fractil crítico Cu/(Cu+Co)           0.5455
+  Cantidad óptima Newsvendor           265.61
+  Política simple (referencia)         317.44
+  Ahorro esperado en costo         $    57.37
+
+Recomendación: ordenar 266 Kg</explicacion><fecha_creacion>2026-11-23T05:44:38.139168+00:00</fecha_creacion><fecha_decision /></item><item><id_orden>cc376e86-3854-4cc2-b989-5c635cbfee13</id_orden><id_sku>10</id_sku><producto>Zanahoria kg</producto><id_locacion>6</id_locacion><locacion>Tienda Centro</locacion><id_proveedor>3</id_proveedor><cantidad_sugerida>591.0</cantidad_sugerida><cantidad_aprobada /><prioridad>ALTA</prioridad><estado>PENDIENTE</estado><explicacion>Producto: Zanahoria kg
+Tienda: Tienda Centro
+
+Demanda prevista 7 días         598.89
+Inventario físico                       16.23
+Inventario próximo a vencer              0.00
+Inventario útil                         16.23
+Stock de seguridad                      60.00
+Entradas confirmadas (total)             0.00
+  · Órdenes en curso                     0.00
+  · Traslados entrantes (triaje)         0.00
+Lead time                                   1 días
+MOQ                                     80.00
+
+Necesidad neta (Newsvendor)            591.18
+
+Modelo Newsvendor:
+  Costo de faltante (Cu)           $     4.50
+  Costo de excedente (Co)          $     3.75
+  Fractil crítico Cu/(Cu+Co)           0.5455
+  Cantidad óptima Newsvendor           591.18
+  Política simple (referencia)         642.66
+  Ahorro esperado en costo         $    54.52
+
+Recomendación: ordenar 591 Kg
+
+Advertencias:
+  · El inventario útil cubre 0.2 días y el proveedor tarda 1 días en surtir: hay riesgo de faltante si no se pide ahora.</explicacion><fecha_creacion>2026-11-23T05:44:38.089110+00:00</fecha_creacion><fecha_decision /></item></ordenes></replenishment_orders>

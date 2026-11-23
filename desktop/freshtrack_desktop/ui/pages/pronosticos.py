@@ -123,7 +123,6 @@ class PronosticosPage(BasePage):
 
     def __init__(self, ctx, parent=None) -> None:
         super().__init__(ctx, parent)
-        self._catalogos_ok = False
         self.btn_actualizar = self.actions.add_button("Actualizar catálogos", self.refresh,
                                                       icon="SP_BrowserReload", shortcut="Ctrl+R")
 
@@ -283,7 +282,10 @@ class PronosticosPage(BasePage):
         self.tabla.set_rows(filas)
         self.tabla_series.set_rows(metricas)
         graficar_lineas(self.grafico, "Demanda pronosticada", series)
-        self.lbl_estado.setText(f"Pronóstico generado: {len(metricas)} serie(s).")
+        msg = f"Pronóstico generado: {len(metricas)} serie(s)."
+        if len(series) > 4:
+            msg += f" Mostrando 4 de {len(series)} series; filtra por tienda o SKU para ver otra."
+        self.lbl_estado.setText(msg)
 
     def ver_ultimo(self) -> None:
         sku, loc = self._seleccion()
@@ -473,7 +475,6 @@ class PronosticosPage(BasePage):
                         for x in locs if str(x.get("activo", "true")).lower() != "false"])
         self._rellenar(self.cmb_sku, "Todos los SKU",
                        [(int(_num(x.get("id_sku"))), f"{x.get('nombre')} (#{x.get('id_sku')})") for x in prods])
-        self._catalogos_ok = True
 
     @staticmethod
     def _rellenar(combo: QComboBox, todos: str, items: list[tuple[int, str]]) -> None:

@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<forecast_run_result><id_run /><id_locacion>1</id_locacion><locacion>CEDIS Central</locacion><metodo>SUAVIZACION_EXPONENCIAL</metodo><metodo_etiqueta>Suavización exponencial</metodo_etiqueta><horizonte>7</horizonte><series>0</series><mae /><rmse /><wmape /><sesgo /><naive_mae /><naive_wmape /><estrategia_dominante /><distribucion_estrategias /><salud_modelo /><resultados /><duracion_ms>0</duracion_ms><tiendas_procesadas>0</tiendas_procesadas><modelos_por_tienda /></forecast_run_result>

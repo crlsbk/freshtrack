@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 import requests
 from lxml import etree
 from PySide6.QtWidgets import QApplication
 
+from conftest import muestra
 from freshtrack_desktop.core.activity_log import ActivityLog
 from freshtrack_desktop.core.api_client import ApiClient
 from freshtrack_desktop.core.session import Session
@@ -17,7 +16,6 @@ from freshtrack_desktop.ui.pages.newsvendor import NewsvendorPage, validar_param
 from freshtrack_desktop.ui.pages.pronosticos import PronosticosPage
 from freshtrack_desktop.ui.pages.tablero import TableroPage
 
-SAMPLES = Path(__file__).resolve().parents[2] / ".superpowers/sdd/2026-11-22-app-escritorio/samples"
 WAIT = 5000
 
 ALERTAS = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -27,10 +25,6 @@ ALERTAS = b"""<?xml version="1.0" encoding="UTF-8"?>
 <item><_id>a2</_id><tipo>EXCESO_COBERTURA</tipo><criticidad>WARNING</criticidad><mensaje>Exceso</mensaje>
 <generada_en>2026-11-22T09:00:00</generada_en><id_sku>2</id_sku><id_locacion>4</id_locacion></item>
 </alertas></alertas_activas>"""
-
-
-def muestra(nombre: str) -> bytes:
-    return (SAMPLES / f"{nombre}.xml").read_bytes()
 
 
 @pytest.fixture
@@ -80,6 +74,7 @@ def test_tablero_refresh_muestra_kpis_y_alertas(ctx, qtbot, fake_http):
     assert page.kpi_riesgo.value_label.text() == "$16,117.91"
     filas = page.table.rows()
     assert [f["criticidad"] for f in filas] == ["CRÍTICO", "ADVERTENCIA"]
+    assert filas[0]["tipo"] == "Riesgo pre-merma"
     assert page.aviso.isHidden()
 
 

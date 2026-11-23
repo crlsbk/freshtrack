@@ -43,6 +43,7 @@ def _api_con_sesion(settings) -> ApiClient:
 def test_sync_remote_envia_pendientes(tmp_path, settings, fake_http):
     fake_http.add("POST", "/api/v1/audit/log", status=201, body=AUTH_OK)
     log = ActivityLog(tmp_path / "a.log")
+    log.set_user("b@f.mx")
     log.record("exportar csv!", "x" * 800)
     log.record("ok", "")
     api = _api_con_sesion(settings)
@@ -63,6 +64,7 @@ def test_sync_remote_no_propaga_errores(tmp_path, settings, fake_http):
 
     fake_http.add_error("POST", "/api/v1/audit/log", requests.ConnectionError("apagado"))
     log = ActivityLog(tmp_path / "a.log")
+    log.set_user("b@f.mx")
     log.record("login", "x")
     log.sync_remote(_api_con_sesion(settings))  # no lanza
     log.close()
@@ -74,6 +76,7 @@ def test_sync_remote_descarta_rechazos_definitivos(tmp_path, settings, fake_http
     fake_http.add("POST", "/api/v1/audit/log", status=400, body=error)
     fake_http.add("POST", "/api/v1/audit/log", status=201, body=AUTH_OK)
     log = ActivityLog(tmp_path / "a.log")
+    log.set_user("b@f.mx")
     log.record("uno", "rechazado")
     log.record("dos", "aceptado")
     assert log.sync_remote(_api_con_sesion(settings)) == 1
@@ -89,7 +92,28 @@ def test_sync_remote_conserva_pendientes_si_servicio_caido(tmp_path, settings, f
     fake_http.add_error("POST", "/api/v1/audit/log", requests.ConnectionError("apagado"))
     fake_http.add("POST", "/api/v1/audit/log", status=201, body=AUTH_OK)
     log = ActivityLog(tmp_path / "a.log")
+    log.set_user("b@f.mx")
     log.record("login", "x")
     assert log.sync_remote(_api_con_sesion(settings)) == 0
     assert log.sync_remote(_api_con_sesion(settings)) == 1
+    log.close()
+
+
+def test_sync_remote_solo_envia_las_acciones_del_usuario_de_la_sesion(tmp_path, settings, fake_http):
+    """Planner con token revocado → login de buyer: lo del planner no se registra a nombre de buyer."""
+    fake_http.add("POST", "/api/v1/audit/log", status=201, body=AUTH_OK)
+    log = ActivityLog(tmp_path / "a.log")
+    log.set_user("planner@f.mx")
+    log.record("APROBAR_ORDEN", "aprobada: orden 1")
+    log.set_user(None)
+    log.record("LOGIN", "intento fallido")
+    log.set_user("B@F.mx")
+    log.record("LOGIN", "Inicio de sesión como buyer")
+    assert log.sync_remote(_api_con_sesion(settings)) == 1  # sesión de b@f.mx
+    (call,) = fake_http.calls_to("POST", "/api/v1/audit/log")
+    assert "Inicio de sesión como buyer" in call.text
+    # Las otras se descartan de la cola (no se reintentan) pero siguen en el archivo local.
+    assert log.sync_remote(_api_con_sesion(settings)) == 0
+    assert len(fake_http.calls_to("POST", "/api/v1/audit/log")) == 1
+    assert [f["usuario"] for f in log.tail()] == ["planner@f.mx", "", "B@F.mx"]
     log.close()

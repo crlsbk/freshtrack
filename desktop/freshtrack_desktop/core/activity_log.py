@@ -2,7 +2,9 @@
 Bitácora local de actividad del usuario (JSON por línea, 1 MB × 3 archivos).
 
 Las acciones registradas en esta ejecución quedan pendientes y `sync_remote(api)`
-las envía a svc-audit (`POST /api/v1/audit/log`, raíz `audit_log_request`).
+las envía a svc-audit (`POST /api/v1/audit/log`, raíz `audit_log_request`). svc-audit toma
+el usuario del JWT, así que solo se envían las del usuario de la sesión vigente; las de
+otros usuarios (p. ej. el planner cuya sesión fue revocada) se quedan solo en el archivo local.
 """
 
 from __future__ import annotations
@@ -83,14 +85,19 @@ class ActivityLog:
 
     def sync_remote(self, api: Any) -> int:
         """Envía las acciones pendientes a svc-audit. Nunca lanza; devuelve cuántas se enviaron."""
-        if getattr(api, "session", None) is None:
+        sesion = getattr(api, "session", None)
+        if sesion is None:
             return 0
+        dueño = str(getattr(sesion, "email", "") or "").lower()
         enviados = 0
         while True:
             with self._lock:
                 if not self._pendientes:
                     break
                 entrada = self._pendientes[0]
+                if not dueño or str(entrada.get("usuario") or "").lower() != dueño:
+                    self._pendientes.pop(0)  # de otro usuario: no se registra con este JWT
+                    continue
             descripcion = (entrada.get("detalle") or entrada.get("accion") or "-")
             if not entrada.get("ok", True):
                 descripcion = f"[ERROR] {descripcion}"

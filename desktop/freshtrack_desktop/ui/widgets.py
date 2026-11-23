@@ -44,6 +44,9 @@ STATUS_TONES: dict[str, str] = {
     "CAÍDO": "danger", "CRÍTICO": "danger", "CRITICO": "danger", "ERROR": "danger",
     "RECHAZADO": "danger", "RECHAZADA": "danger", "VENCIDO": "danger",
     "INFO": "info", "ENVIADA": "info", "ENVIADO": "info",
+    "SUGERIDA": "info", "SUGERIDO": "info", "ANUNCIADO": "info", "EN_TRANSITO": "info",
+    "APLICADO": "success", "APLICADA": "success", "RECIBIDA": "success", "RECIBIDO": "success",
+    "NO_CONFIABLE": "warning", "CANCELADA": "danger", "CANCELADO": "danger",
 }
 _TONE_ICON = {"success": "SP_DialogApplyButton", "warning": "SP_MessageBoxWarning",
               "danger": "SP_MessageBoxCritical", "info": "SP_MessageBoxInformation"}

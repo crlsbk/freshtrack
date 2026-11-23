@@ -433,7 +433,7 @@ CREATE TABLE IF NOT EXISTS operacion.orden_compra_detalle (
     precio_unitario            numeric(12,2) NOT NULL DEFAULT 0,
     subtotal                   numeric(14,2) NOT NULL DEFAULT 0,
     sugerencia_newsvendor      numeric(12,2),
-    id_orden_reabastecimiento  uuid REFERENCES analitica.orden_reabastecimiento(id_orden),
+    id_orden_reabastecimiento  uuid,
     CONSTRAINT chk_ocd_lotes    CHECK (cantidad_lotes > 0),
     CONSTRAINT chk_ocd_moq      CHECK (unidades_por_lote > 0),
     CONSTRAINT chk_ocd_unidades CHECK (cantidad_unidades > 0)

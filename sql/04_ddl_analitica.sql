@@ -258,6 +258,22 @@ ALTER TABLE analitica.desperdicio_evitado
 
 CREATE INDEX IF NOT EXISTS idx_de_fecha ON analitica.desperdicio_evitado (fecha_registro DESC);
 
+-- Referencia cruzada desde operacion.orden_compra_detalle hacia analitica.orden_reabastecimiento
+-- (se agrega aquí porque 03_ddl_operacion.sql corre antes de crear el esquema analitica).
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_ocd_orden_reabastecimiento'
+    ) THEN
+        ALTER TABLE operacion.orden_compra_detalle
+            ADD CONSTRAINT fk_ocd_orden_reabastecimiento
+            FOREIGN KEY (id_orden_reabastecimiento)
+            REFERENCES analitica.orden_reabastecimiento(id_orden)
+            ON DELETE SET NULL;
+    END IF;
+END
+$$;
+
 -- =============================================================================
 -- TRIGGERS DE AUDITORÍA sobre el esquema analítico
 -- =============================================================================

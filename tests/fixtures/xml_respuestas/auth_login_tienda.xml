@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<auth_response><token>eyJ.x.y</token><jti>a1b2c3</jti><token_type>Bearer</token_type><expira_en_segundos>28799</expira_en_segundos><usuario><id_usuario>6f1c2a7e-4d55-4b8e-9a0b-1d2e3f405162</id_usuario><email>buyer@freshtrack.mx</email><nombre>Carlos Vega</nombre><rol>buyer</rol><id_locacion>3</id_locacion></usuario></auth_response>

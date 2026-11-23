@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-catalog GET /api/v1/catalog/products (respuesta) -->
+<!--
+  Contrato abierto: la raíz acepta cualquier hijo (xs:any processContents="lax") para que la app
+  no se rompa si el backend agrega campos. Los elementos globales de abajo fijan el tipo de los
+  campos clave donde sea que aparezcan (raíz, <item>, <detalle>, ...). Un elemento vacío
+  (<campo /> = None en el servidor) siempre es válido.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="catalogo_productos">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="pagina" type="conteo_o_vacio"/>
+  <xs:element name="por_pagina" type="conteo_o_vacio"/>
+  <xs:element name="total" type="conteo_o_vacio"/>
+  <xs:element name="total_paginas" type="conteo_o_vacio"/>
+  <xs:element name="id_sku" type="id_o_vacio"/>
+  <xs:element name="id_proveedor" type="id_o_vacio"/>
+  <xs:element name="vida_util_estandar" type="conteo_o_vacio"/>
+  <xs:element name="stock_seguridad" type="numero_o_vacio"/>
+  <xs:element name="punto_reorden" type="numero_o_vacio"/>
+  <xs:element name="moq_lote" type="numero_o_vacio"/>
+  <xs:element name="precio_costo" type="numero_o_vacio"/>
+  <xs:element name="precio_venta" type="numero_o_vacio"/>
+  <xs:element name="perecedero" type="booleano_o_vacio"/>
+  <xs:element name="activo" type="booleano_o_vacio"/>
+
+  <xs:simpleType name="conteo_o_vacio">
+    <xs:union memberTypes="xs:nonNegativeInteger">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="id_o_vacio">
+    <xs:union memberTypes="xs:positiveInteger">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <!-- Número (entero, decimal o notación científica que emite str(float) de Python) o vacío (None). -->
+  <xs:simpleType name="numero_o_vacio">
+    <xs:union memberTypes="xs:decimal xs:double">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value=""/>
+          <xs:enumeration value="nan"/>
+          <xs:enumeration value="inf"/>
+          <xs:enumeration value="-inf"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="booleano_o_vacio">
+    <xs:union memberTypes="xs:boolean">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+</xs:schema>

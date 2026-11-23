@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-planning GET /api/v1/planning/procurement/suppliers/{id_proveedor}/catalog (respuesta) -->
+<!--
+  Contrato abierto: la raíz acepta cualquier hijo (xs:any processContents="lax") para que la app
+  no se rompa si el backend agrega campos. Los elementos globales de abajo fijan el tipo de los
+  campos clave donde sea que aparezcan (raíz, <item>, <detalle>, ...). Un elemento vacío
+  (<campo /> = None en el servidor) siempre es válido.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="supplier_procurement_catalog">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="id_proveedor" type="id_o_vacio"/>
+  <xs:element name="id_locacion" type="id_o_vacio"/>
+  <xs:element name="id_sku" type="id_o_vacio"/>
+  <xs:element name="lead_time_dias" type="conteo_o_vacio"/>
+  <xs:element name="horizonte" type="conteo_o_vacio"/>
+  <xs:element name="total_lotes_sugeridos" type="conteo_o_vacio"/>
+  <xs:element name="total_productos" type="conteo_o_vacio"/>
+  <xs:element name="lotes_sugeridos" type="conteo_o_vacio"/>
+  <xs:element name="vida_util_estandar" type="conteo_o_vacio"/>
+  <xs:element name="moq" type="numero_o_vacio"/>
+  <xs:element name="moq_lote" type="numero_o_vacio"/>
+  <xs:element name="precio_costo" type="numero_o_vacio"/>
+  <xs:element name="precio_venta" type="numero_o_vacio"/>
+  <xs:element name="costo_por_lote" type="numero_o_vacio"/>
+  <xs:element name="total_unidades_sugeridas" type="numero_o_vacio"/>
+  <xs:element name="inventario_util" type="numero_o_vacio"/>
+  <xs:element name="inventario_riesgo" type="numero_o_vacio"/>
+  <xs:element name="demanda_horizonte" type="numero_o_vacio"/>
+  <xs:element name="entradas_confirmadas" type="numero_o_vacio"/>
+  <xs:element name="entradas_traslados" type="numero_o_vacio"/>
+  <xs:element name="necesidad_neta" type="numero_o_vacio"/>
+  <xs:element name="cantidad_sugerida" type="numero_o_vacio"/>
+  <xs:element name="unidades_sugeridas_lote" type="numero_o_vacio"/>
+  <xs:element name="subtotal_sugerido" type="numero_o_vacio"/>
+  <xs:element name="monto_sugerido" type="numero_o_vacio"/>
+  <xs:element name="activo" type="booleano_o_vacio"/>
+  <xs:element name="prioridad" type="prioridad"/>
+  <xs:element name="prioridad_max" type="prioridad"/>
+
+  <xs:simpleType name="id_o_vacio">
+    <xs:union memberTypes="xs:positiveInteger">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="conteo_o_vacio">
+    <xs:union memberTypes="xs:nonNegativeInteger">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <!-- Número (entero, decimal o notación científica que emite str(float) de Python) o vacío (None). -->
+  <xs:simpleType name="numero_o_vacio">
+    <xs:union memberTypes="xs:decimal xs:double">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value=""/>
+          <xs:enumeration value="nan"/>
+          <xs:enumeration value="inf"/>
+          <xs:enumeration value="-inf"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="booleano_o_vacio">
+    <xs:union memberTypes="xs:boolean">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="prioridad">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value=""/>
+      <xs:enumeration value="ALTA"/>
+      <xs:enumeration value="MEDIA"/>
+      <xs:enumeration value="BAJA"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>

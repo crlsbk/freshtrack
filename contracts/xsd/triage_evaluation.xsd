@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-planning GET /api/v1/planning/triage (respuesta) -->
+<!--
+  Contrato abierto: la raíz acepta cualquier hijo (xs:any processContents="lax") para que la app
+  no se rompa si el backend agrega campos. Los elementos globales de abajo fijan el tipo de los
+  campos clave donde sea que aparezcan (raíz, <item>, <detalle>, ...). Un elemento vacío
+  (<campo /> = None en el servidor) siempre es válido.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="triage_evaluation">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="total_evaluados" type="conteo_o_vacio"/>
+  <xs:element name="TRASLADO" type="conteo_o_vacio"/>
+  <xs:element name="DESCUENTO" type="conteo_o_vacio"/>
+  <xs:element name="MERMA" type="conteo_o_vacio"/>
+  <xs:element name="NORMAL" type="conteo_o_vacio"/>
+  <xs:element name="id_sku" type="id_o_vacio"/>
+  <xs:element name="id_locacion" type="id_o_vacio"/>
+  <xs:element name="id_locacion_destino" type="id_o_vacio"/>
+  <xs:element name="valor_rescatable_estimado" type="numero_o_vacio"/>
+  <xs:element name="cantidad_disponible" type="numero_o_vacio"/>
+  <xs:element name="unidades_en_riesgo" type="numero_o_vacio"/>
+  <xs:element name="valor_traslado_neto" type="numero_o_vacio"/>
+  <xs:element name="valor_descuento_neto" type="numero_o_vacio"/>
+  <xs:element name="costo_merma_potencial" type="numero_o_vacio"/>
+  <xs:element name="cantidad_propuesta" type="numero_o_vacio"/>
+  <xs:element name="descuento_pct" type="numero_o_vacio"/>
+  <xs:element name="precio_normal" type="numero_o_vacio"/>
+  <xs:element name="precio_nuevo" type="numero_o_vacio"/>
+  <xs:element name="cantidad" type="numero_o_vacio"/>
+  <xs:element name="ingreso_potencial" type="numero_o_vacio"/>
+  <xs:element name="faltante_destino" type="numero_o_vacio"/>
+  <xs:element name="demanda_diaria_destino" type="numero_o_vacio"/>
+  <xs:element name="costo_logistico_total" type="numero_o_vacio"/>
+  <xs:element name="margen_neto_estimado" type="numero_o_vacio"/>
+  <xs:element name="dias_restantes" type="entero_o_vacio"/>
+  <xs:element name="requiere_bloqueo" type="booleano_o_vacio"/>
+  <xs:element name="accion" type="accion_triaje"/>
+
+  <xs:simpleType name="conteo_o_vacio">
+    <xs:union memberTypes="xs:nonNegativeInteger">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="id_o_vacio">
+    <xs:union memberTypes="xs:positiveInteger">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <!-- Número (entero, decimal o notación científica que emite str(float) de Python) o vacío (None). -->
+  <xs:simpleType name="numero_o_vacio">
+    <xs:union memberTypes="xs:decimal xs:double">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value=""/>
+          <xs:enumeration value="nan"/>
+          <xs:enumeration value="inf"/>
+          <xs:enumeration value="-inf"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="entero_o_vacio">
+    <xs:union memberTypes="xs:integer">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="booleano_o_vacio">
+    <xs:union memberTypes="xs:boolean">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+  <xs:simpleType name="accion_triaje">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value=""/>
+      <xs:enumeration value="TRASLADO"/>
+      <xs:enumeration value="DESCUENTO"/>
+      <xs:enumeration value="MERMA"/>
+      <xs:enumeration value="NORMAL"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>

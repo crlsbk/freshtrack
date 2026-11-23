@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-alerts GET /api/v1/alerts/active (respuesta) -->
+<!--
+  Contrato abierto: la raíz acepta cualquier hijo (xs:any processContents="lax") para que la app
+  no se rompa si el backend agrega campos. Los elementos globales de abajo fijan el tipo de los
+  campos clave donde sea que aparezcan (raíz, <item>, <detalle>, ...). Un elemento vacío
+  (<campo /> = None en el servidor) siempre es válido.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="alertas_activas">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="total" type="conteo_o_vacio"/>
+
+  <xs:simpleType name="conteo_o_vacio">
+    <xs:union memberTypes="xs:nonNegativeInteger">
+      <xs:simpleType><xs:restriction base="xs:string"><xs:length value="0"/></xs:restriction></xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+</xs:schema>

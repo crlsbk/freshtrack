@@ -1,6 +1,7 @@
 """
 Cliente HTTP de la app: solo XML, con contratos XSD, X-Correlation-Id y sesión JWT.
 
+- Toda respuesta XML cuya raíz tenga `contracts/xsd/<raiz>.xsd` se valida contra él.
 - Toda petición lleva Accept: application/xml (o application/pdf en `get_bytes`),
   X-Correlation-Id (uuid4 hex) y User-Agent FreshTrack-Desktop/1.0.
 - 401 fuera de /auth/login, /auth/refresh, /auth/logout y /health → un refresh y un
@@ -28,8 +29,6 @@ from .xml_codec import has_xsd, parse_xml, to_xml, validate
 
 USER_AGENT = "FreshTrack-Desktop/1.0"
 CT_XML = "application/xml; charset=utf-8"
-# Raíces de respuesta que se validan contra su XSD cuando el archivo existe.
-_RAICES_CON_XSD = ("error_response", "auth_response", "service_health")
 _RUTAS_SIN_REFRESH = ("/auth/login", "/auth/refresh")
 _RE_PASSWORD = re.compile(r"(<password>).*?(</password>)", re.S)
 
@@ -217,9 +216,10 @@ class ApiClient:
                 status=status, correlation_id=cid,
             ) from exc
 
-        if raiz in _RAICES_CON_XSD and has_xsd(raiz):
+        # Toda respuesta cuya raíz tenga contracts/xsd/<raiz>.xsd se valida contra él.
+        if has_xsd(raiz):
             self._validar_respuesta(resp.content, raiz, status, cid)
-        if response_xsd:
+        if response_xsd and response_xsd != raiz:
             self._validar_respuesta(resp.content, response_xsd, status, cid)
 
         if raiz == "error_response":

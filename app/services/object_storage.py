@@ -146,17 +146,32 @@ def asegurar_bucket(bucket: str | None = None) -> bool:
     return False
 
 
+def _proveedor_storage(endpoint: str) -> str:
+    """Identifica el proveedor S3-compatible a partir del endpoint configurado."""
+    return "gcs" if "storage.googleapis.com" in endpoint.lower() else "s3"
+
+
 def subir_pdf(object_key: str, contenido: bytes, bucket: str | None = None) -> dict:
     """
-    Sube un PDF al Cloud Object Storage y retorna sus metadatos de ubicación e integridad.
-    Si el servidor remoto no está accesible, utiliza respaldo local determinista.
+    Sube un PDF al Cloud Object Storage (GCS HMAC o S3/Silo) y retorna sus metadatos.
+    Intenta PUT directo primero para evitar requerir permisos de listado/cabecera sobre el bucket
+    en cuentas GCS con privilegio mínimo; si recibe 404 intenta crear el bucket local.
     """
-    bkt = bucket or _config_actual()["bucket"]
+    cfg = _config_actual()
+    bkt = bucket or cfg["bucket"]
     key = object_key.lstrip("/")
     sha256 = hashlib.sha256(contenido).hexdigest()
     tamano = len(contenido)
+    provider = _proveedor_storage(cfg["endpoint"])
 
-    if asegurar_bucket(bkt):
+    status, _, hdrs = _peticion_s3(
+        "PUT",
+        f"{bkt}/{key}",
+        cuerpo=contenido,
+        content_type="application/pdf",
+        timeout=12.0,
+    )
+    if status == 404 and asegurar_bucket(bkt):
         status, _, hdrs = _peticion_s3(
             "PUT",
             f"{bkt}/{key}",
@@ -164,17 +179,18 @@ def subir_pdf(object_key: str, contenido: bytes, bucket: str | None = None) -> d
             content_type="application/pdf",
             timeout=12.0,
         )
-        if status in (200, 201, 204):
-            etag = (hdrs.get("etag") or "").strip('"') or sha256[:32]
-            return {
-                "storage_provider": "s3",
-                "bucket": bkt,
-                "object_key": key,
-                "etag": etag,
-                "sha256": sha256,
-                "tamano_bytes": tamano,
-                "content_type": "application/pdf",
-            }
+
+    if status in (200, 201, 204):
+        etag = (hdrs.get("etag") or "").strip('"') or sha256[:32]
+        return {
+            "storage_provider": provider,
+            "bucket": bkt,
+            "object_key": key,
+            "etag": etag,
+            "sha256": sha256,
+            "tamano_bytes": tamano,
+            "content_type": "application/pdf",
+        }
 
     destino_local = FALLBACK_DIR / bkt / key
     destino_local.parent.mkdir(parents=True, exist_ok=True)
@@ -211,10 +227,14 @@ def descargar_pdf(
 
 
 def verificar_salud() -> bool:
-    """Comprueba que el servicio de Cloud Object Storage responda en /minio/health/live."""
+    """Comprueba conectividad hacia Cloud Object Storage (S3/Silo local o GCS HMAC)."""
     cfg = _config_actual()
+    if _proveedor_storage(cfg["endpoint"]) == "gcs":
+        status, _, _ = _peticion_s3("HEAD", cfg["bucket"], timeout=4.0)
+        return status in (200, 403)
     try:
         with urllib.request.urlopen(f"{cfg['endpoint']}/minio/health/live", timeout=2.5) as r:
             return r.status == 200
     except Exception:
-        return False
+        status, _, _ = _peticion_s3("HEAD", cfg["bucket"], timeout=2.5)
+        return status == 200

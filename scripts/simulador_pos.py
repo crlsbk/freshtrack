@@ -38,6 +38,11 @@ def pedir(
 def main() -> int:
     ap = argparse.ArgumentParser(description="Emulador externo de ventas POS (JSON/XML)")
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument(
+        "--base-url",
+        default=None,
+        help="URL base HTTPS/HTTP vía reverse proxy (ej. https://34.x.x.x.nip.io)",
+    )
     ap.add_argument("--email", default="admin@freshtrack.mx")
     ap.add_argument("--password", default="Admin2026!")
     ap.add_argument("--cantidad", type=int, default=5, help="Número de tickets POS a emitir")
@@ -46,9 +51,22 @@ def main() -> int:
     ap.add_argument("--locacion", type=int, default=None, help="Filtrar a una tienda específica")
     args = ap.parse_args()
 
+    base = args.base_url.rstrip("/") if args.base_url else None
+    url_auth = f"{base}/api/v1/auth/login" if base else f"http://{args.host}:5001/api/v1/auth/login"
+    url_stock = (
+        f"{base}/api/v1/inventory/stock?por_pagina=200"
+        if base
+        else f"http://{args.host}:5003/api/v1/inventory/stock?por_pagina=200"
+    )
+    url_checkout = (
+        f"{base}/api/v1/commercial/checkout"
+        if base
+        else f"http://{args.host}:5004/api/v1/commercial/checkout"
+    )
+
     # 1. Autenticación contra el servicio de identidad
     st, raw = pedir(
-        f"http://{args.host}:5001/api/v1/auth/login",
+        url_auth,
         "POST",
         json.dumps({"email": args.email, "password": args.password}).encode("utf-8"),
         {"Content-Type": "application/json"},
@@ -60,7 +78,7 @@ def main() -> int:
     auth_h = {"Authorization": f"Bearer {token}"}
 
     # 2. Consultar existencias vigentes elegibles en tiendas
-    st, raw = pedir(f"http://{args.host}:5003/api/v1/inventory/stock?por_pagina=200", headers=auth_h)
+    st, raw = pedir(url_stock, headers=auth_h)
     if st != 200:
         print(f"[ERR] No se pudo consultar stock ({st}): {raw}")
         return 1
@@ -77,7 +95,7 @@ def main() -> int:
         print("[ERR] No se encontró inventario elegible en tiendas para simular ventas.")
         return 1
 
-    print(f"Emitiendo {args.cantidad} ventas POS (formato={args.formato}) hacia http://{args.host}:5004 ...")
+    print(f"Emitiendo {args.cantidad} ventas POS (formato={args.formato}) hacia {url_checkout} ...")
     ok_count = 0
     for i in range(1, args.cantidad + 1):
         elegido = random.choice(existencias)
@@ -106,7 +124,7 @@ def main() -> int:
             ct = "application/json"
 
         st_v, raw_v = pedir(
-            f"http://{args.host}:5004/api/v1/commercial/checkout",
+            url_checkout,
             "POST",
             body,
             {**auth_h, "Content-Type": ct, "Accept": "application/json"},

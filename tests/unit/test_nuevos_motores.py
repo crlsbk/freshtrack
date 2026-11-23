@@ -291,3 +291,81 @@ def test_rbac_comprador_y_proveedor():
     assert "products" not in VISTAS_POR_ROL["buyer"]
     assert "products" in VISTAS_POR_ROL["supplier"]
     assert VISTA_INICIAL["supplier"] == "replenishment"
+
+
+def test_object_storage_gcs_put_directo_y_creacion_404(monkeypatch):
+    import os
+    from unittest.mock import patch
+    from app.services import object_storage
+
+    llamadas: list[tuple[str, str]] = []
+
+    def fake_peticion(metodo: str, ruta: str, **kwargs):
+        llamadas.append((metodo, ruta))
+        if metodo == "PUT" and "/" in ruta:
+            return 200, b"", {"etag": '"gcs-etag-01"'}
+        if metodo == "HEAD":
+            # Simula Service Account sin permiso storage.buckets.get pero bucket existente
+            return 403, b"", {}
+        return 404, b"", {}
+
+    monkeypatch.setattr(object_storage, "_peticion_s3", fake_peticion)
+    with patch.dict(
+        os.environ,
+        {
+            "OBJECT_STORAGE_ENDPOINT": "https://storage.googleapis.com",
+            "OBJECT_STORAGE_BUCKET": "freshtrack-reportes-gcp",
+            "OBJECT_STORAGE_REGION": "auto",
+        },
+    ):
+        meta = object_storage.subir_pdf("ordenes_compra/oc-gcs.pdf", b"%PDF-1.4 gcs")
+        assert meta["storage_provider"] == "gcs"
+        assert meta["etag"] == "gcs-etag-01"
+        assert llamadas == [("PUT", "freshtrack-reportes-gcp/ordenes_compra/oc-gcs.pdf")]
+        assert object_storage.verificar_salud() is True
+
+    # Caso Silo/MinIO local con bucket inexistente al primer PUT (404 -> crea bucket -> PUT 200)
+    secuencia: list[tuple[str, str]] = []
+    estado = {"creado": False}
+
+    def fake_peticion_404(metodo: str, ruta: str, **kwargs):
+        secuencia.append((metodo, ruta))
+        if metodo == "PUT" and "/" in ruta:
+            return (200, b"", {"etag": '"local-ok"'}) if estado["creado"] else (404, b"", {})
+        if metodo == "HEAD":
+            return 404, b"", {}
+        if metodo == "PUT" and "/" not in ruta:
+            estado["creado"] = True
+            return 200, b"", {}
+        return 500, b"", {}
+
+    monkeypatch.setattr(object_storage, "_peticion_s3", fake_peticion_404)
+    with patch.dict(
+        os.environ,
+        {
+            "OBJECT_STORAGE_ENDPOINT": "http://127.0.0.1:9000",
+            "OBJECT_STORAGE_BUCKET": "freshtrack-reportes",
+        },
+    ):
+        meta_silo = object_storage.subir_pdf("ordenes_compra/nuevo.pdf", b"%PDF-1.4 silo")
+        assert meta_silo["storage_provider"] == "s3"
+        assert ("PUT", "freshtrack-reportes") in secuencia
+        assert secuencia[-1] == ("PUT", "freshtrack-reportes/ordenes_compra/nuevo.pdf")
+
+
+def test_proxy_fix_y_cookie_secure_produccion():
+    import os
+    from unittest.mock import patch
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    from app import create_app
+
+    with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "true", "TRUST_PROXY": "true"}):
+        app_prod = create_app()
+        assert app_prod.config["SESSION_COOKIE_SECURE"] is True
+        assert app_prod.config["PREFERRED_URL_SCHEME"] == "https"
+        assert isinstance(app_prod.wsgi_app, ProxyFix)
+
+    with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "false", "TRUST_PROXY": "false"}):
+        app_dev = create_app()
+        assert app_dev.config["SESSION_COOKIE_SECURE"] is False
+        assert not isinstance(app_dev.wsgi_app, ProxyFix)

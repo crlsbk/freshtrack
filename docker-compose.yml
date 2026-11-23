@@ -21,6 +21,7 @@
 
 x-entorno-servicio: &entorno-servicio
   DATABASE_URL: postgresql+psycopg://app_backend:${APP_BACKEND_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  ETL_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_SUPERUSER_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   MONGO_HOST: mongo

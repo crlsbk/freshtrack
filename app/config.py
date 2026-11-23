@@ -40,6 +40,9 @@ class Config:
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    PREFERRED_URL_SCHEME = "https" if SESSION_COOKIE_SECURE else "http"
+    TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() == "true"
     PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.getenv("JWT_HORAS_VIGENCIA", "8")))
     MAX_CONTENT_LENGTH = 4 * 1024 * 1024  # 4 MB
 

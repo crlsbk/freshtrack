@@ -355,6 +355,7 @@ def escanear_caducidades():
                cantidad_disponible, dias_restantes, clasificacion, estado_lote
         FROM operacion.v_inventario_lote
         WHERE cantidad_disponible > 0 AND dias_restantes <= :d
+          AND fecha_caducidad <= CURRENT_DATE + CAST(:d AS integer)  -- sargable (idx_lote_caducidad)
         ORDER BY fecha_caducidad ASC
         LIMIT 100
         """,

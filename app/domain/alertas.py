@@ -112,6 +112,7 @@ def generar_alertas(usuario: dict | None = None) -> dict:
                 FROM operacion.v_inventario_lote
                 WHERE cantidad_disponible > 0
                   AND dias_restantes <= :ventana
+                  AND fecha_caducidad <= CURRENT_DATE + CAST(:ventana AS integer)  -- sargable
                 ORDER BY dias_restantes ASC
                 """
             ),
@@ -184,6 +185,7 @@ def generar_alertas(usuario: dict | None = None) -> dict:
                        ON d.id_sku = v.id_sku AND d.id_locacion = v.id_locacion
                 WHERE v.cantidad_disponible > 0
                   AND v.dias_restantes BETWEEN 0 AND :ventana
+                  AND v.fecha_caducidad BETWEEN CURRENT_DATE AND CURRENT_DATE + CAST(:ventana AS integer)  -- sargable
                 """
             ),
             {"ventana": dias_ventana},

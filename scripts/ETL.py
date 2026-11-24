@@ -494,6 +494,19 @@ def main() -> int:
 
         conn.commit()
 
+        # La carga desactiva triggers (replica): refrescar la demanda diaria
+        # materializada de sql/08_optimizacion.sql para que la historia cargada
+        # sea visible en analitica.v_demanda_diaria.
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regprocedure('analitica.fn_refrescar_agregados()') IS NOT NULL")
+                if cur.fetchone()[0]:
+                    cur.execute("SELECT analitica.fn_refrescar_agregados()")
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — la carga ya quedó confirmada
+            conn.rollback()
+            print(f"[ETL] AVISO: no se pudo refrescar la demanda materializada: {e}")
+
     print("[ETL] Carga histórica completada.")
     return 0
 

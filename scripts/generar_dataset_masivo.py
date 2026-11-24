@@ -996,6 +996,29 @@ def _cargar_mongodb(
     return {"pronosticos_demanda": ins_pron, "avisos_asn": ins_asn, "alertas_operativas": ins_al}
 
 
+
+def _refrescar_agregados(conn) -> None:
+    """
+    Refresca la demanda diaria materializada (sql/08_optimizacion.sql).
+
+    La carga usa session_replication_role=replica, así que el trigger que marca
+    el histórico como "sucio" no se dispara: sin este refresco, las ventas
+    cargadas no aparecerían en analitica.v_demanda_diaria (pronóstico, alertas,
+    reabastecimiento). Si la base aún no tiene 08_optimizacion.sql, no hace nada.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regprocedure('analitica.fn_refrescar_agregados()') IS NOT NULL")
+            if not cur.fetchone()[0]:
+                return
+            cur.execute("SELECT analitica.fn_refrescar_agregados()")
+            ms = cur.fetchone()[0]
+        conn.commit()
+        print(f"[MASIVO] Demanda diaria materializada refrescada en {ms} ms.")
+    except psycopg.Error as e:
+        conn.rollback()
+        print(f"[MASIVO] AVISO: no se pudo refrescar la demanda materializada: {e}")
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Generador masivo multi-perfil para FreshTrack")
     ap.add_argument("--modo", choices=("demo-rapida", "masivo", "rubrica"), default="masivo")
@@ -1076,6 +1099,7 @@ def main() -> int:
                 ("operacion", "idx_vd_fecha", "operacion.venta_detalle (fecha_transaccion DESC)"),
                 ("operacion", "idx_vd_lote", "operacion.venta_detalle (id_lote)"),
                 ("operacion", "idx_vd_loc_fecha", "operacion.venta_detalle (id_locacion, fecha_transaccion DESC)"),
+                ("operacion", "idx_vd_venta", "operacion.venta_detalle (id_venta)"),
                 ("operacion", "idx_mov_lote", "operacion.movimiento_inventario (id_lote, fecha DESC)"),
                 ("operacion", "idx_mov_fecha", "operacion.movimiento_inventario (fecha DESC)"),
                 ("operacion", "idx_mov_tipo", "operacion.movimiento_inventario (tipo, fecha DESC)"),
@@ -1267,6 +1291,7 @@ def main() -> int:
                 "analitica.orden_reabastecimiento, auditoria.bitacora_eventos"
             )
         conn.commit()
+        _refrescar_agregados(conn)
 
     t_mongo0 = time.perf_counter()
     mongo_res = {"pronosticos_demanda": 0, "avisos_asn": 0, "alertas_operativas": 0}

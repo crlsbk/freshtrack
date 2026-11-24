@@ -151,6 +151,12 @@ def create_app() -> Flask:
     app.register_blueprint(bp_api)
     app.register_blueprint(bp_monitoreo)
 
+    # Mantiene al día la demanda diaria materializada (sql/08_optimizacion.sql)
+    # sin depender de un cron en la VM. Desactivable con AGREGADOS_AUTO_REFRESCO=false.
+    from app.domain.agregados import iniciar_mantenimiento_en_segundo_plano
+
+    iniciar_mantenimiento_en_segundo_plano()
+
     import time
     from datetime import datetime, timezone
 

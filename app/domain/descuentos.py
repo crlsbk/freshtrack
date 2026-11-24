@@ -43,6 +43,7 @@ def sugerir_descuentos(*, usuario: dict, dias_hasta: int | None = None) -> dict:
         WHERE v.cantidad_disponible > 0
           AND v.estado_lote = 'DISPONIBLE'
           AND v.dias_restantes BETWEEN 0 AND :dias
+          AND v.fecha_caducidad BETWEEN CURRENT_DATE AND CURRENT_DATE + CAST(:dias AS integer)  -- sargable
           AND v.clasificacion IN ('VIGILANCIA', 'CRITICO')
         ORDER BY v.fecha_caducidad ASC
         """,

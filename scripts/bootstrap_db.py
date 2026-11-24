@@ -47,6 +47,7 @@ SCRIPTS = [
     "05_funciones_negocio.sql",
     "06_views.sql",
     "07_seed_base.sql",
+    "08_optimizacion.sql",
 ]
 
 

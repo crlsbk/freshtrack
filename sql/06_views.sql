@@ -151,6 +151,16 @@ LEFT JOIN operacion.regla_riesgo r_def ON r_def.es_default = true;
 -- Serie de demanda diaria: Venta → Tienda → Producto → Cantidad → Fecha
 -- Es el insumo del pronóstico. Nada aquí está simulado.
 -- -----------------------------------------------------------------------------
+-- Versión base (sin materializar). 08_optimizacion.sql la redefine como
+-- histórico materializado ∪ día en curso; si esa versión ya existe (re-ejecución
+-- en caliente de este archivo) NO se pisa, para no volver al Seq Scan completo.
+DO $vdd$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_matviews
+        WHERE schemaname = 'analitica' AND matviewname = 'mv_demanda_diaria_hist'
+    ) THEN
+        EXECUTE $v$
 CREATE OR REPLACE VIEW analitica.v_demanda_diaria AS
 SELECT
     vd.id_sku,
@@ -159,10 +169,13 @@ SELECT
     SUM(vd.cantidad)           AS cantidad,
     SUM(vd.subtotal)           AS ingreso
 FROM operacion.venta_detalle vd
-GROUP BY vd.id_sku, vd.id_locacion, vd.fecha_transaccion::date;
-
-COMMENT ON VIEW analitica.v_demanda_diaria IS
-    'Serie histórica real usada por el motor de pronóstico (agregada por día).';
+GROUP BY vd.id_sku, vd.id_locacion, vd.fecha_transaccion::date
+        $v$;
+        COMMENT ON VIEW analitica.v_demanda_diaria IS
+            'Serie histórica real usada por el motor de pronóstico (agregada por día).';
+    END IF;
+END
+$vdd$;
 
 -- -----------------------------------------------------------------------------
 -- Bitácora de auditoría con nombres legibles

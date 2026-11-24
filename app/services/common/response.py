@@ -142,6 +142,11 @@ def error_response(
     }
     if detalles is not None:
         cuerpo["detalles"] = detalles
+    if status >= 500:
+        # «Último error registrado» del panel /ops/status (lista acotada en Redis).
+        from app.services.registro_errores import registrar_desde_respuesta
+
+        registrar_desde_respuesta(status, codigo, mensaje, cuerpo["correlation_id"])
     return render_response(cuerpo, status=status, root_tag="error_response", headers=headers)
 
 

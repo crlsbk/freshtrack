@@ -354,6 +354,7 @@
               <th>Bucket</th>
               <th>Respuesta</th>
               <th>Errores</th>
+              <th>Último error registrado</th>
               <th>Disponibilidad</th>
             </tr>
           </thead>
@@ -398,6 +399,20 @@
                 <td class="mono">
                   <strong>{{ s.errores }}</strong>
                   <div class="meta">5xx:{{ s.errores_detalle.http_5xx }} · 4xx:{{ s.errores_detalle.http_4xx }}</div>
+                </td>
+                <td>
+                  {% set ue = s.ultimo_error %}
+                  {% if not s.ultimo_error_disponible %}
+                    <span class="badge badge-muted">sin datos</span>
+                  {% elif not ue %}
+                    <span class="meta">Sin errores registrados</span>
+                  {% else %}
+                    <span class="badge badge-bad">{{ ue.code }}{% if ue.status %} · {{ ue.status }}{% endif %}</span>
+                    <div class="meta mono">{{ ue.timestamp[:19] | replace('T', ' ') }} UTC{% if ue.repeticiones and ue.repeticiones > 1 %} · ×{{ ue.repeticiones }}{% endif %}</div>
+                    <div class="meta mono">{{ ue.endpoint }}</div>
+                    <div class="meta">{{ ue.message }}</div>
+                    {% if ue.correlation_id %}<div class="meta mono">cid {{ ue.correlation_id }}</div>{% endif %}
+                  {% endif %}
                 </td>
                 <td>
                   <strong class="mono">{{ s.disponibilidad_pct }}%</strong>
@@ -596,6 +611,22 @@
           const ed = s.errores_detalle || {};
           tdErr.appendChild(el("div", "meta", `5xx:${ed.http_5xx ?? 0} · 4xx:${ed.http_4xx ?? 0}`));
           tr.appendChild(tdErr);
+
+          const tdUlt = el("td");
+          const ue = s.ultimo_error;
+          if (!s.ultimo_error_disponible) {
+            tdUlt.appendChild(el("span", "badge badge-muted", "sin datos"));
+          } else if (!ue) {
+            tdUlt.appendChild(el("span", "meta", "Sin errores registrados"));
+          } else {
+            tdUlt.appendChild(el("span", "badge badge-bad", ue.status ? `${ue.code} · ${ue.status}` : ue.code));
+            const rep = ue.repeticiones > 1 ? ` · ×${ue.repeticiones}` : "";
+            tdUlt.appendChild(el("div", "meta mono", `${String(ue.timestamp || "").slice(0, 19).replace("T", " ")} UTC${rep}`));
+            tdUlt.appendChild(el("div", "meta mono", ue.endpoint || ""));
+            tdUlt.appendChild(el("div", "meta", ue.message || ""));
+            if (ue.correlation_id) tdUlt.appendChild(el("div", "meta mono", `cid ${ue.correlation_id}`));
+          }
+          tr.appendChild(tdUlt);
 
           const tdDisp = el("td");
           tdDisp.appendChild(el("strong", "mono", `${s.disponibilidad_pct ?? 0}%`));

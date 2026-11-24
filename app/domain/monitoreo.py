@@ -2,7 +2,8 @@
 Motor de monitoreo centralizado de microservicios y dependencias.
 
 Consulta `/health` de los 8 microservicios en paralelo, consolida errores
-registrados en Redis y mantiene un historial reciente de disponibilidad en
+registrados en Redis (contadores y el «último error registrado» de
+app/services/registro_errores.py) y mantiene un historial reciente de disponibilidad en
 Redis (con respaldo thread-safe en memoria por si Redis no responde).
 """
 
@@ -14,9 +15,10 @@ from datetime import datetime, timezone
 import json
 import threading
 import time
+import uuid
 from typing import Any
 
-from app.services import cache_service, clientes
+from app.services import cache_service, clientes, registro_errores
 
 DEPENDENCIAS_CLAVE: tuple[str, ...] = ("postgres", "mongo", "redis", "bucket")
 DEPENDENCIAS_ETIQUETAS: dict[str, str] = {
@@ -132,6 +134,25 @@ def _normalizar_dependencias(raw: Any, respondio: bool) -> dict[str, bool | None
     return deps
 
 
+def _registrar_health_fallido(svc: dict[str, Any], status: int, estado: str, deps_caidas: list[str]) -> None:
+    if deps_caidas:
+        codigo, mensaje = "dependencia_caida", f"Dependencias con falla: {', '.join(deps_caidas)}"
+    elif estado == "DOWN":
+        codigo = "servicio_sin_respuesta"
+        mensaje = f"El health check respondió HTTP {status}." if status else "El servicio no respondió al health check."
+    else:
+        codigo, mensaje = "servicio_degradado", f"El health check respondió {estado} (HTTP {status})."
+    registro_errores.registrar_error(
+        svc["nombre"],
+        endpoint="GET /health",
+        codigo=codigo,
+        mensaje=mensaje,
+        status=status or None,
+        correlation_id=uuid.uuid4().hex,
+        origen="monitor",
+    )
+
+
 def _consultar_servicio(svc: dict[str, Any], ahora_iso: str) -> dict[str, Any]:
     inicio = time.perf_counter()
     status, cuerpo = clientes.llamar(svc["clave"], "GET", "/health", timeout=4.0)
@@ -166,6 +187,10 @@ def _consultar_servicio(svc: dict[str, Any], ahora_iso: str) -> dict[str, Any]:
         else None
     )
     tiempo_respuesta_ms = float(resp_ms) if resp_ms is not None else (latencia_red_ms if status else None)
+
+    # Un health check fallido también cuenta como «último error» del servicio.
+    if estado != "HEALTHY":
+        _registrar_health_fallido(svc, status, estado, deps_caidas)
     checked_at = (cuerpo.get("checked_at") if respondio_valido else None) or ahora_iso
 
     return {
@@ -305,6 +330,10 @@ def verificar_plataforma(*, guardar_historial: bool = True) -> dict[str, Any]:
             "http_5xx": err_svc["http_5xx"],
             "http_4xx": err_svc["http_4xx"],
         }
+        recientes = registro_errores.ultimos_errores(nombre, limite=5)
+        s["errores_recientes"] = recientes or []
+        s["ultimo_error"] = recientes[0] if recientes else None
+        s["ultimo_error_disponible"] = recientes is not None  # False = Redis caído («sin datos»)
 
     servicios_degradados = [
         {

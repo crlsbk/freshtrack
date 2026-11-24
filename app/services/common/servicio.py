@@ -3,7 +3,8 @@ Fábrica común de microservicios FreshTrack.
 
 Cada servicio se crea con `crear_servicio(...)`, que le da el mismo esqueleto:
 
-- /health con el estado real de sus dependencias (PostgreSQL, MongoDB, Redis).
+- /health con el estado real de sus dependencias (PostgreSQL, MongoDB, Redis)
+  y el último error 5xx registrado (last_error, si hay).
 - Manejo estandarizado de errores HTTP (400/401/403/404/405/409/415/429/500)
   en JSON o XML, sin exponer trazas internas.
 - Registro de actividad: cada petición se escribe en el log con método, ruta,
@@ -180,6 +181,14 @@ def crear_servicio(
         deps = _estado_dependencias(dependencias)
         response_time_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         sano = all(deps.values())
+        cuerpo_extra = {}
+        from app.services.registro_errores import ultimo_error
+
+        ultimo = ultimo_error(nombre)
+        if ultimo:
+            cuerpo_extra["last_error"] = {
+                k: ultimo.get(k) for k in ("timestamp", "source", "endpoint", "status", "code", "message", "correlation_id")
+            }
         return render_response(
             {
                 "service": nombre,
@@ -194,6 +203,7 @@ def crear_servicio(
                 "response_time_ms": response_time_ms,
                 "checked_at": datetime.now(timezone.utc).isoformat(),
                 "dependencies": deps,
+                **cuerpo_extra,
             },
             status=200 if sano else 503,
             root_tag="service_health",

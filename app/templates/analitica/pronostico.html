@@ -167,7 +167,14 @@
         <tbody>
           {% for a in salud.anomalias_sku[:25] %}
             <tr>
-              <td><strong>{{ a.producto }}</strong></td>
+              <td>
+                <strong>{{ a.producto }}</strong>
+                {% if a.perfil_demanda %}
+                  <div style="margin-top:3px;">
+                    <span class="badge badge-neutral" style="font-size:10px;">{{ a.perfil_demanda | legible }}</span>
+                  </div>
+                {% endif %}
+              </td>
               <td>{{ a.locacion }}</td>
               <td class="mono">{{ a.media_base | cantidad(1) }} → {{ a.media_reciente | cantidad(1) }} {{ a.unidad_medida }}/d</td>
               <td class="mono" style="font-size:12px;">

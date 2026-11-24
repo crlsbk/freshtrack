@@ -17,16 +17,57 @@ inventado y pasa a ser un cálculo explicable:
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
+import os
+
 from sqlalchemy import text
 
 from app.db import a_float, a_int, one, query, transaccion
+from app.services import cache_service
+
+
+def _normalizar_cache(obj):
+    """Convierte Decimal y fechas para serializar limpio a Redis sin cambiar tipos numéricos."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _normalizar_cache(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_normalizar_cache(v) for v in obj]
+    return obj
+
+
+def _con_cache_web(clave: str, ttl: int, fn):
+    """
+    Cache-Aside en Redis para agregaciones pesadas de la plataforma web.
+    Controlable mediante CACHE_WEB_ACTIVA=false y tolerante a caídas de Redis.
+    """
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json(clave)
+        if cached is not None:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+        datos = _normalizar_cache(fn())
+        cache_service.set_json(clave, datos, ttl_segundos=ttl)
+        return datos
+    return fn()
 
 
 # ---------------------------------------------------------------------------
 # Panel principal
 # ---------------------------------------------------------------------------
 def panel_principal() -> dict:
-    """Métricas del tablero empresarial."""
+    """Métricas del tablero empresarial (con Cache-Aside en Redis)."""
+    return _con_cache_web("web:kpis:panel_principal", 60, _panel_principal_db)
+
+
+def _panel_principal_db() -> dict:
+    """Consulta directa a PostgreSQL del tablero empresarial."""
     inventario = one(
         """
         SELECT COALESCE(SUM(cantidad_disponible), 0) AS unidades,
@@ -47,18 +88,35 @@ def panel_principal() -> dict:
         """
     ) or {}
 
-    ventas = one(
+    ventas_cab = one(
         """
-        SELECT COALESCE(SUM(cantidad), 0) AS unidades,
-               COALESCE(SUM(subtotal), 0) AS ingreso,
-               COUNT(DISTINCT id_venta)   AS tickets,
-               COALESCE(SUM(CASE WHEN fecha_transaccion >= CURRENT_DATE - 7
+        SELECT COUNT(*) AS tickets,
+               COALESCE(SUM(total), 0) AS ingreso
+        FROM operacion.venta
+        """
+    ) or {}
+    ventas_rec = one(
+        """
+        SELECT COALESCE(SUM(CASE WHEN fecha_transaccion >= CURRENT_DATE - 7
                                  THEN cantidad END), 0) AS unidades_7d,
-               COALESCE(SUM(CASE WHEN fecha_transaccion >= CURRENT_DATE - 30
-                                 THEN cantidad END), 0) AS unidades_30d
+               COALESCE(SUM(cantidad), 0) AS unidades_30d
+        FROM operacion.venta_detalle
+        WHERE fecha_transaccion >= CURRENT_DATE - 30
+        """
+    ) or {}
+    ventas_tot = one(
+        """
+        SELECT COALESCE(SUM(cantidad), 0) AS unidades
         FROM operacion.venta_detalle
         """
     ) or {}
+    ventas = {
+        "unidades": ventas_tot.get("unidades", 0),
+        "ingreso": ventas_cab.get("ingreso", 0),
+        "tickets": ventas_cab.get("tickets", 0),
+        "unidades_7d": ventas_rec.get("unidades_7d", 0),
+        "unidades_30d": ventas_rec.get("unidades_30d", 0),
+    }
 
     merma = one(
         """
@@ -163,7 +221,11 @@ def lotes_criticos(limite: int = 12) -> list[dict]:
 
 
 def serie_mensual(meses: int = 6) -> list[dict]:
-    """Ventas y merma por mes, para las gráficas del panel."""
+    """Ventas y merma por mes, para las gráficas del panel (con Cache-Aside en Redis)."""
+    return _con_cache_web(f"web:kpis:serie:{int(meses)}", 120, lambda: _serie_mensual_db(meses))
+
+
+def _serie_mensual_db(meses: int = 6) -> list[dict]:
     return query(
         """
         WITH meses AS (
@@ -175,12 +237,16 @@ def serie_mensual(meses: int = 6) -> list[dict]:
         v AS (
             SELECT to_char(date_trunc('month', fecha_transaccion), 'YYYY-MM') AS mes,
                    SUM(cantidad) AS unidades, SUM(subtotal) AS ingreso
-            FROM operacion.venta_detalle GROUP BY 1
+            FROM operacion.venta_detalle
+            WHERE fecha_transaccion >= date_trunc('month', CURRENT_DATE - ((:meses - 1) || ' months')::interval)
+            GROUP BY 1
         ),
         m AS (
             SELECT to_char(date_trunc('month', fecha_registro), 'YYYY-MM') AS mes,
                    SUM(cantidad) AS unidades, SUM(valor_merma) AS valor
-            FROM operacion.merma GROUP BY 1
+            FROM operacion.merma
+            WHERE fecha_registro >= date_trunc('month', CURRENT_DATE - ((:meses - 1) || ' months')::interval)
+            GROUP BY 1
         )
         SELECT to_char(mm.inicio, 'YYYY-MM') AS mes,
                COALESCE(v.unidades, 0) AS ventas_unidades,
@@ -231,6 +297,13 @@ def inventario_por_locacion() -> list[dict]:
 
 def metricas_por_locacion(dias: int = 30) -> list[dict]:
     """
+    Indicadores de cada tienda y CEDIS activos para el mapa (con Cache-Aside en Redis).
+    """
+    return _con_cache_web(f"web:kpis:mapa:{int(dias)}", 60, lambda: _metricas_por_locacion_db(dias))
+
+
+def _metricas_por_locacion_db(dias: int = 30) -> list[dict]:
+    """
     Indicadores de cada tienda y CEDIS activos para el mapa: ubicación,
     inventario y riesgo actuales, ventas y merma de los últimos `dias`, alertas
     abiertas, órdenes pendientes y los lotes en riesgo de mayor valor.
@@ -268,11 +341,19 @@ def metricas_por_locacion(dias: int = 30) -> list[dict]:
     ventas = por_id(query(
         """
         SELECT id_locacion,
-               SUM(subtotal)            AS ingreso,
-               SUM(cantidad)            AS unidades,
-               COUNT(DISTINCT id_venta) AS tickets
+               SUM(subtotal) AS ingreso,
+               SUM(cantidad) AS unidades
         FROM operacion.venta_detalle
         WHERE fecha_transaccion >= CURRENT_DATE - :dias
+        GROUP BY id_locacion
+        """,
+        dias=dias,
+    ))
+    tickets_loc = por_id(query(
+        """
+        SELECT id_locacion, COUNT(*) AS tickets
+        FROM operacion.venta
+        WHERE fecha_venta >= CURRENT_DATE - :dias
         GROUP BY id_locacion
         """,
         dias=dias,
@@ -359,7 +440,7 @@ def metricas_por_locacion(dias: int = 30) -> list[dict]:
             "ventas": {
                 "ingreso": a_float(ven.get("ingreso")),
                 "unidades": a_float(ven.get("unidades")),
-                "tickets": a_int(ven.get("tickets")),
+                "tickets": a_int(tickets_loc.get(i, {}).get("tickets")),
             },
             "merma": {
                 "unidades": merma_unidades,
@@ -411,11 +492,21 @@ def tasa_merma(dias: int | None = 180) -> dict:
 
 def metricas_periodo(dias: int | None = 30) -> dict:
     """
+    Calcula métricas de ventas, merma y tasa porcentual para cualquier ventana
+    (con Cache-Aside en Redis).
+    """
+    sufijo = int(dias) if dias is not None else "all"
+    return _con_cache_web(f"web:kpis:periodo:{sufijo}", 60, lambda: _metricas_periodo_db(dias))
+
+
+def _metricas_periodo_db(dias: int | None = 30) -> dict:
+    """
     Calcula dinámicamente en tiempo real contra PostgreSQL las métricas de ventas,
     merma y tasa porcentual para cualquier ventana de días especificada (o histórico completo).
     """
     if dias is not None:
         filtro_v = "WHERE fecha_transaccion >= CURRENT_DATE - :dias"
+        filtro_vc = "WHERE fecha_venta >= CURRENT_DATE - :dias"
         filtro_m = "WHERE fecha_registro >= CURRENT_DATE - :dias"
         params = {"dias": dias}
         if dias == 30:
@@ -428,6 +519,7 @@ def metricas_periodo(dias: int | None = 30) -> dict:
             etiqueta = f"Últimos {dias} días"
     else:
         filtro_v = ""
+        filtro_vc = ""
         filtro_m = ""
         params = {}
         etiqueta = "Histórico completo"
@@ -435,13 +527,21 @@ def metricas_periodo(dias: int | None = 30) -> dict:
     ventas = one(
         f"""
         SELECT COALESCE(SUM(cantidad), 0) AS unidades,
-               COALESCE(SUM(subtotal), 0) AS ingreso,
-               COUNT(DISTINCT id_venta)   AS tickets
+               COALESCE(SUM(subtotal), 0) AS ingreso
         FROM operacion.venta_detalle
         {filtro_v}
         """,
         **params,
-    ) or {"unidades": 0, "ingreso": 0, "tickets": 0}
+    ) or {"unidades": 0, "ingreso": 0}
+    tickets_row = one(
+        f"""
+        SELECT COUNT(*) AS tickets
+        FROM operacion.venta
+        {filtro_vc}
+        """,
+        **params,
+    ) or {"tickets": 0}
+    ventas["tickets"] = tickets_row.get("tickets", 0)
 
     merma = one(
         f"""

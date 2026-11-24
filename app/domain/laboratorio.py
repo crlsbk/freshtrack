@@ -202,6 +202,7 @@ def evaluar_modelos_laboratorio(
     alpha: float = 0.30,
     dias_historia: int = 120,
     min_dias_historia: int = 14,
+    max_series: int = 400,
 ) -> dict[str, Any]:
     """
     Etapa 2: evalúa todos los modelos en walk-forward y ejecuta la simulación Newsvendor.
@@ -209,13 +210,13 @@ def evaluar_modelos_laboratorio(
     """
     from datetime import date
 
-    fecha_fin = escalar("SELECT max(fecha) FROM analitica.v_demanda_diaria") or date.today()
+    fecha_fin = escalar("SELECT MAX(fecha_transaccion)::date FROM operacion.venta_detalle") or date.today()
     fecha_inicio = fecha_fin - timedelta(days=dias_historia)
 
-    condiciones = ["v.fecha >= :inicio", "loc.activo = true", "p.activo = true"]
+    condiciones = ["vd.fecha_transaccion >= :inicio", "loc.activo = true", "p.activo = true"]
     params: dict[str, Any] = {"inicio": fecha_inicio}
     if id_locacion:
-        condiciones.append("v.id_locacion = :id_locacion")
+        condiciones.append("vd.id_locacion = :id_locacion")
         params["id_locacion"] = id_locacion
     if categoria:
         condiciones.append("p.categoria = :categoria")
@@ -223,14 +224,19 @@ def evaluar_modelos_laboratorio(
 
     filas = query(
         f"""
-        SELECT v.id_sku, v.id_locacion, v.fecha, v.cantidad,
+        SELECT vd.id_sku, vd.id_locacion,
+               vd.fecha_transaccion::date AS fecha,
+               SUM(vd.cantidad) AS cantidad,
                p.nombre AS producto, p.categoria, p.precio_venta, p.precio_costo,
                p.vida_util_estandar, loc.nombre AS locacion
-        FROM analitica.v_demanda_diaria v
-        JOIN operacion.producto p   ON p.id_sku = v.id_sku
-        JOIN operacion.locacion loc ON loc.id_locacion = v.id_locacion
+        FROM operacion.venta_detalle vd
+        JOIN operacion.producto p   ON p.id_sku = vd.id_sku
+        JOIN operacion.locacion loc ON loc.id_locacion = vd.id_locacion
         WHERE {' AND '.join(condiciones)}
-        ORDER BY v.id_sku, v.id_locacion, v.fecha
+        GROUP BY vd.id_sku, vd.id_locacion, vd.fecha_transaccion::date,
+                 p.nombre, p.categoria, p.precio_venta, p.precio_costo,
+                 p.vida_util_estandar, loc.nombre
+        ORDER BY vd.id_sku, vd.id_locacion, vd.fecha_transaccion::date
         """,
         **params,
     )
@@ -250,6 +256,12 @@ def evaluar_modelos_laboratorio(
                 "vida_util_dias": a_int(f["vida_util_estandar"], 7),
             }
 
+    claves = sorted(grupos.keys())
+    series_totales = len(claves)
+    if max_series > 0 and len(claves) > max_series:
+        step = len(claves) / max_series
+        claves = [claves[int(i * step)] for i in range(max_series)]
+
     modelos_eval = (*MODELOS_LABORATORIO, "NAIVE")
     acum: dict[str, dict[str, Any]] = {
         m: {
@@ -268,7 +280,8 @@ def evaluar_modelos_laboratorio(
     }
 
     series_evaluadas = 0
-    for key, filas_serie in grupos.items():
+    for key in claves:
+        filas_serie = grupos[key]
         serie = pronostico._serie_completa(filas_serie, fecha_inicio, fecha_fin)
         if sum(1 for _, v in serie if v > 0) < min_dias_historia:
             continue
@@ -402,6 +415,7 @@ def evaluar_modelos_laboratorio(
             "categoria": categoria or "Todas",
             "horizonte": horizonte,
             "series_evaluadas": series_evaluadas,
+            "series_totales": series_totales,
             "periodo_inicio": fecha_inicio.isoformat(),
             "periodo_fin": fecha_fin.isoformat(),
         },

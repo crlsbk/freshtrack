@@ -114,9 +114,11 @@ CREATE TABLE IF NOT EXISTS operacion.producto (
 );
 
 ALTER TABLE operacion.producto ADD COLUMN IF NOT EXISTS moq_lote numeric(12,2);
+ALTER TABLE operacion.producto ADD COLUMN IF NOT EXISTS perfil_demanda varchar(30);
 
 CREATE INDEX IF NOT EXISTS idx_producto_activo    ON operacion.producto (activo);
 CREATE INDEX IF NOT EXISTS idx_producto_categoria ON operacion.producto (categoria);
+CREATE INDEX IF NOT EXISTS idx_producto_perfil    ON operacion.producto (perfil_demanda) WHERE perfil_demanda IS NOT NULL;
 
 -- -----------------------------------------------------------------------------
 -- Reglas de clasificación de riesgo de vencimiento
@@ -303,6 +305,7 @@ CREATE TABLE IF NOT EXISTS operacion.movimiento_inventario (
 CREATE INDEX IF NOT EXISTS idx_mov_lote    ON operacion.movimiento_inventario (id_lote, fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_mov_fecha   ON operacion.movimiento_inventario (fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_mov_tipo    ON operacion.movimiento_inventario (tipo, fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_mov_loc_fecha ON operacion.movimiento_inventario (id_locacion, fecha DESC);
 
 -- -----------------------------------------------------------------------------
 -- Ventas
@@ -338,6 +341,7 @@ CREATE TABLE IF NOT EXISTS operacion.venta_detalle (
 CREATE INDEX IF NOT EXISTS idx_vd_serie ON operacion.venta_detalle (id_sku, id_locacion, fecha_transaccion);
 CREATE INDEX IF NOT EXISTS idx_vd_fecha ON operacion.venta_detalle (fecha_transaccion DESC);
 CREATE INDEX IF NOT EXISTS idx_vd_lote  ON operacion.venta_detalle (id_lote);
+CREATE INDEX IF NOT EXISTS idx_vd_loc_fecha ON operacion.venta_detalle (id_locacion, fecha_transaccion DESC);
 
 -- -----------------------------------------------------------------------------
 -- Mermas
@@ -364,6 +368,7 @@ CREATE INDEX IF NOT EXISTS idx_merma_fecha   ON operacion.merma (fecha_registro 
 CREATE INDEX IF NOT EXISTS idx_merma_causa   ON operacion.merma (causa_merma);
 CREATE INDEX IF NOT EXISTS idx_merma_lote    ON operacion.merma (id_lote);
 CREATE INDEX IF NOT EXISTS idx_merma_locacion ON operacion.merma (id_locacion);
+CREATE INDEX IF NOT EXISTS idx_merma_loc_fecha ON operacion.merma (id_locacion, fecha_registro DESC);
 
 -- -----------------------------------------------------------------------------
 -- Metadatos de reportes y documentos PDF en Cloud Object Storage

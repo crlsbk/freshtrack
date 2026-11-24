@@ -27,6 +27,7 @@ analitica.forecast_result (producto, tienda, fecha, demanda pronosticada).
 from __future__ import annotations
 
 import math
+import os
 from statistics import NormalDist
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -36,6 +37,7 @@ from sqlalchemy import text
 from app import auditoria
 from app.db import a_float, a_int, config_valor, escalar, one, query, transaccion
 from app.events.dispatcher import publicar_evento
+from app.services import cache_service
 from app.services.doc_store import guardar_pronostico
 
 METODOS_BASE = (
@@ -613,27 +615,30 @@ def _ejecutar_pronostico_tienda(
         raise ValueError(f"La tienda {id_locacion} no existe.")
     loc_nombre = loc_row["nombre"]
 
-    fecha_fin = escalar("SELECT max(fecha) FROM analitica.v_demanda_diaria") or date.today()
+    fecha_fin = escalar("SELECT MAX(fecha_transaccion)::date FROM operacion.venta_detalle") or date.today()
     fecha_inicio = fecha_fin - timedelta(days=dias_historia)
 
-    condiciones = ["v.fecha >= :inicio", "v.id_locacion = :id_locacion"]
+    condiciones = ["vd.fecha_transaccion >= :inicio", "vd.id_locacion = :id_locacion"]
     params: dict = {"inicio": fecha_inicio, "id_locacion": id_locacion}
     if id_sku:
-        condiciones.append("v.id_sku = :id_sku")
+        condiciones.append("vd.id_sku = :id_sku")
         params["id_sku"] = id_sku
     join_prod = ""
     if categoria:
-        join_prod = "JOIN operacion.producto p ON p.id_sku = v.id_sku"
+        join_prod = "JOIN operacion.producto p ON p.id_sku = vd.id_sku"
         condiciones.append("p.categoria = :categoria")
         params["categoria"] = categoria
 
     filas = query(
         f"""
-        SELECT v.id_sku, v.id_locacion, v.fecha, v.cantidad
-        FROM analitica.v_demanda_diaria v
+        SELECT vd.id_sku, vd.id_locacion,
+               vd.fecha_transaccion::date AS fecha,
+               SUM(vd.cantidad) AS cantidad
+        FROM operacion.venta_detalle vd
         {join_prod}
         WHERE {' AND '.join(condiciones)}
-        ORDER BY v.id_sku, v.fecha
+        GROUP BY vd.id_sku, vd.id_locacion, vd.fecha_transaccion::date
+        ORDER BY vd.id_sku, vd.fecha_transaccion::date
         """,
         **params,
     )
@@ -883,6 +888,10 @@ def _ejecutar_pronostico_tienda(
             "correlation_id": id_run,
         },
     )
+    try:
+        cache_service.invalidar_patron("web:forecast:*")
+    except Exception:
+        pass
 
     return {
         "id_run": id_run,
@@ -1420,35 +1429,39 @@ def evaluar_salud_modelos(
     y anomalías tanto a nivel tienda como por producto dentro de cada tienda.
     """
     tiendas_modelo = modelos_activos_por_tienda(id_locacion=id_locacion)
-    fecha_fin = escalar("SELECT max(fecha) FROM analitica.v_demanda_diaria") or date.today()
+    fecha_fin = escalar("SELECT MAX(fecha_transaccion)::date FROM operacion.venta_detalle") or date.today()
     fecha_inicio = fecha_fin - timedelta(days=dias_historia)
 
-    condiciones = ["v.fecha >= :inicio"]
+    condiciones = ["vd.fecha_transaccion >= :inicio"]
     params: dict = {"inicio": fecha_inicio}
     if id_locacion:
-        condiciones.append("v.id_locacion = :loc")
+        condiciones.append("vd.id_locacion = :loc")
         params["loc"] = id_locacion
 
     filas = query(
         f"""
-        SELECT v.id_sku, v.id_locacion, v.fecha, v.cantidad,
-               p.nombre AS producto, p.unidad_medida, loc.nombre AS locacion
-        FROM analitica.v_demanda_diaria v
-        JOIN operacion.producto p ON p.id_sku = v.id_sku
-        JOIN operacion.locacion loc ON loc.id_locacion = v.id_locacion
+        SELECT vd.id_sku, vd.id_locacion,
+               vd.fecha_transaccion::date AS fecha,
+               SUM(vd.cantidad) AS cantidad,
+               p.nombre AS producto, p.unidad_medida, p.perfil_demanda, loc.nombre AS locacion
+        FROM operacion.venta_detalle vd
+        JOIN operacion.producto p ON p.id_sku = vd.id_sku
+        JOIN operacion.locacion loc ON loc.id_locacion = vd.id_locacion
         WHERE {' AND '.join(condiciones)}
-        ORDER BY v.id_locacion, v.id_sku, v.fecha
+        GROUP BY vd.id_sku, vd.id_locacion, vd.fecha_transaccion::date,
+                 p.nombre, p.unidad_medida, p.perfil_demanda, loc.nombre
+        ORDER BY vd.id_locacion, vd.id_sku, vd.fecha_transaccion::date
         """,
         **params,
     )
 
     por_tienda_diario: dict[int, dict[date, float]] = {}
     por_tienda_sku: dict[int, dict[int, list[dict]]] = {}
-    productos_info: dict[int, tuple[str, str]] = {}
+    productos_info: dict[int, tuple[str, str, str | None]] = {}
     for f in filas:
         loc_id = f["id_locacion"]
         sku_id = f["id_sku"]
-        productos_info[sku_id] = (f["producto"], f["unidad_medida"])
+        productos_info[sku_id] = (f["producto"], f["unidad_medida"], f.get("perfil_demanda"))
         por_tienda_diario.setdefault(loc_id, {})
         por_tienda_diario[loc_id][f["fecha"]] = (
             por_tienda_diario[loc_id].get(f["fecha"], 0.0) + a_float(f["cantidad"])
@@ -1493,12 +1506,13 @@ def evaluar_salud_modelos(
             diag_sku = detectar_drift_serie(serie_sku, ventana_reciente=ventana_reciente)
             if diag_sku["estado"] in ("NO_CONFIABLE", "VIGILANCIA"):
                 anomalias_tienda += 1
-                prod_nom, u_med = productos_info[sku_id]
+                prod_nom, u_med, perfil_dem = productos_info[sku_id]
                 anomalias_sku.append(
                     {
                         "id_sku": sku_id,
                         "producto": prod_nom,
                         "unidad_medida": u_med,
+                        "perfil_demanda": perfil_dem,
                         "id_locacion": loc_id,
                         "locacion": mod["locacion"],
                         **diag_sku,
@@ -1722,14 +1736,23 @@ def evaluar_salud_datos(
 ) -> dict:
     """
     Etapa 1 (Data Health): evalúa la calidad y deriva de ventas diarias antes de entrenar.
-    Mantiene todas las claves de `evaluar_salud_modelos` y agrega semáforo y avisos claros.
+    Mantiene todas las claves de `evaluar_salud_modelos`, agrega semáforo y usa Cache-Aside en Redis.
     """
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    clave_cache = f"web:forecast:salud:{id_locacion or 'all'}:{int(dias_historia)}:{int(ventana_reciente)}"
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json(clave_cache)
+        if isinstance(cached, dict) and "salud_datos" in cached:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+
     salud = evaluar_salud_modelos(
         id_locacion=id_locacion,
         dias_historia=dias_historia,
         ventana_reciente=ventana_reciente,
     )
-    ultima_fecha = escalar("SELECT max(fecha) FROM analitica.v_demanda_diaria")
+    ultima_fecha = escalar("SELECT MAX(fecha_transaccion)::date FROM operacion.venta_detalle")
     rezago_dias = (date.today() - ultima_fecha).days if isinstance(ultima_fecha, date) else None
 
     verdes = ambar = rojas = 0
@@ -1771,6 +1794,11 @@ def evaluar_salud_datos(
         "tiendas_ambar": ambar,
         "tiendas_rojas": rojas,
     }
+    if activa and cache_service.get_redis_client() is not None:
+        try:
+            cache_service.set_json(clave_cache, salud, ttl_segundos=90)
+        except Exception:
+            pass
     return salud
 
 

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#6FD8B0</color>
+    <color name="brand_on_primary">#003828</color>
+    <color name="brand_primary_container">#005140</color>
+    <color name="brand_on_primary_container">#C9F1E1</color>
+    <color name="brand_secondary">#F2C078</color>
+    <color name="brand_secondary_container">#5E4100</color>
+    <color name="brand_on_secondary_container">#FFE2B6</color>
+
+    <color name="surface">#0F1512</color>
+    <color name="surface_card">#18201C</color>
+    <color name="on_surface">#E0E8E3</color>
+    <color name="on_surface_muted">#9EAAA4</color>
+    <color name="outline">#2C3833</color>
+
+    <color name="risk_ok">#6FD8A0</color>
+    <color name="risk_ok_bg">#16392A</color>
+    <color name="risk_watch">#F2C078</color>
+    <color name="risk_watch_bg">#3D2D10</color>
+    <color name="risk_critical">#FF9C80</color>
+    <color name="risk_critical_bg">#4A2016</color>
+    <color name="risk_expired">#F4A3B8</color>
+    <color name="risk_expired_bg">#4A1A27</color>
+    <!-- Encabezados con texto blanco: verde oscuro en ambos temas -->
+    <color name="header_bg">#0B4F3D</color>
+    <color name="header_bg_end">#0F6B52</color>
+</resources>

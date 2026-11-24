@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FreshTrack</string>
+    <string name="app_tagline">Personal de tienda · Inventario perecedero</string>
+
+    <string name="nav_home">Inicio</string>
+    <string name="nav_inventory">Inventario</string>
+    <string name="nav_alerts">Alertas</string>
+    <string name="nav_more">Más</string>
+
+    <string name="login_email">Correo</string>
+    <string name="login_password">Contraseña</string>
+    <string name="login_button">Iniciar sesión</string>
+    <string name="login_demo">Cuentas de demostración</string>
+    <string name="login_server">Servidor</string>
+
+    <string name="action_scan">Escanear</string>
+    <string name="action_receive">Recibir</string>
+    <string name="action_shrinkage">Merma</string>
+    <string name="action_count">Conteo</string>
+    <string name="action_fefo">FEFO</string>
+    <string name="action_transfer">Transferir</string>
+    <string name="action_discounts">Descuentos</string>
+    <string name="action_evidence">Evidencias</string>
+    <string name="action_retry">Reintentar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_confirm">Confirmar</string>
+
+    <string name="permission_camera">Se necesita la cámara para escanear etiquetas y tomar evidencias.</string>
+    <string name="empty_generic">No hay nada que mostrar por ahora.</string>
+</resources>

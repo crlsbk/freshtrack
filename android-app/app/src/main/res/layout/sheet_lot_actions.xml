@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingBottom="24dp">
+
+    <TextView
+        android:id="@+id/textTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="24dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="24dp"
+        android:textAppearance="?attr/textAppearanceTitleLarge"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/textSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="12dp"
+        style="@style/Text.FreshTrack.Label" />
+
+    <TextView android:id="@+id/actShrink" style="@style/SheetAction" android:text="Registrar merma de este lote" android:drawableStart="@drawable/ic_trash" />
+    <TextView android:id="@+id/actTransfer" style="@style/SheetAction" android:text="Solicitar transferencia a otra tienda" android:drawableStart="@drawable/ic_transfer" />
+    <TextView android:id="@+id/actQuarantine" style="@style/SheetAction" android:text="Poner en cuarentena" android:drawableStart="@drawable/ic_lock" />
+    <TextView android:id="@+id/actRelease" style="@style/SheetAction" android:text="Liberar lote (volver a FEFO)" android:drawableStart="@drawable/ic_check" />
+</LinearLayout>

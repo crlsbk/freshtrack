@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="@color/header_bg">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="20dp">
+                <FrameLayout
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="@drawable/bg_logo_circle">
+                    <ImageView
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:layout_gravity="center"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_person"
+                        app:tint="@android:color/white" />
+                </FrameLayout>
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView android:id="@+id/textName" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceTitleLarge" android:textColor="@android:color/white" android:textStyle="bold" />
+                    <TextView android:id="@+id/textEmail" android:layout_width="wrap_content" android:layout_height="wrap_content" android:alpha="0.85" android:textColor="@android:color/white" />
+                    <TextView android:id="@+id/textRole" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textAppearance="?attr/textAppearanceLabelLarge" android:textColor="@color/brand_accent" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:id="@+id/textSession"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginStart="4dp"
+            android:drawablePadding="6dp"
+            android:gravity="center_vertical"
+            app:drawableStartCompat="@drawable/ic_shield"
+            app:drawableTint="@color/brand_primary"
+            style="@style/Text.FreshTrack.Label" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            style="@style/Widget.FreshTrack.Card.Outlined">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <include android:id="@+id/mReceive" layout="@layout/item_menu" />
+                <include android:id="@+id/mShrink" layout="@layout/item_menu" />
+                <include android:id="@+id/mCount" layout="@layout/item_menu" />
+                <include android:id="@+id/mTransfers" layout="@layout/item_menu" />
+                <include android:id="@+id/mDiscounts" layout="@layout/item_menu" />
+                <include android:id="@+id/mEvidence" layout="@layout/item_menu" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            style="@style/Widget.FreshTrack.Card.Outlined">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <include android:id="@+id/mStatus" layout="@layout/item_menu" />
+                <include android:id="@+id/mRefresh" layout="@layout/item_menu" />
+                <include android:id="@+id/mSettings" layout="@layout/item_menu" />
+                <include android:id="@+id/mLogout" layout="@layout/item_menu" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:id="@+id/textVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            style="@style/Text.FreshTrack.Label" />
+    </LinearLayout>
+</ScrollView>

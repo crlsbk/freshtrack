@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Marca FreshTrack: verde fresco + ámbar -->
+    <color name="brand_primary">#0F7B5F</color>
+    <color name="brand_primary_dark">#0B5D47</color>
+    <color name="brand_on_primary">#FFFFFF</color>
+    <color name="brand_primary_container">#C9F1E1</color>
+    <color name="brand_on_primary_container">#002118</color>
+    <color name="brand_secondary">#B7791F</color>
+    <color name="brand_secondary_container">#FFE2B6</color>
+    <color name="brand_on_secondary_container">#2A1800</color>
+    <color name="brand_accent">#F2A541</color>
+
+    <color name="surface">#F7FAF8</color>
+    <color name="surface_card">#FFFFFF</color>
+    <color name="on_surface">#18201C</color>
+    <color name="on_surface_muted">#5B6863</color>
+    <color name="outline">#DCE5E0</color>
+
+    <!-- Semáforo de riesgo de vencimiento (fn_clasificar_riesgo) -->
+    <color name="risk_ok">#1E8E5A</color>
+    <color name="risk_ok_bg">#DDF4E8</color>
+    <color name="risk_watch">#B7791F</color>
+    <color name="risk_watch_bg">#FFF1D6</color>
+    <color name="risk_critical">#D2421F</color>
+    <color name="risk_critical_bg">#FFE3D9</color>
+    <color name="risk_expired">#8E1B3A</color>
+    <color name="risk_expired_bg">#F8D9E1</color>
+
+    <color name="status_up">#1E8E5A</color>
+    <color name="status_degraded">#D99A1E</color>
+    <color name="status_down">#D2421F</color>
+
+    <color name="scanner_frame">#F2A541</color>
+    <color name="scrim">#99000000</color>
+    <color name="ic_launcher_background">#0F7B5F</color>
+    <!-- Encabezados con texto blanco: verde oscuro en ambos temas -->
+    <color name="header_bg">#0F7B5F</color>
+    <color name="header_bg_end">#14966F</color>
+</resources>

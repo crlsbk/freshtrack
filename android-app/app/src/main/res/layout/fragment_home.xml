@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.swiperefreshlayout.widget.SwipeRefreshLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/swipe"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="96dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Encabezado -->
+            <LinearLayout
+                android:id="@+id/header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_header_gradient"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="64dp">
+
+                <TextView
+                    android:id="@+id/textGreeting"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_store"
+                        app:tint="@android:color/white" />
+                    <TextView
+                        android:id="@+id/textStore"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:alpha="0.9"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:textColor="@android:color/white" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- KPIs (montados sobre el encabezado) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginTop="-52dp"
+                android:layout_marginEnd="12dp"
+                android:orientation="vertical">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false">
+                    <include android:id="@+id/kpiRisk" layout="@layout/view_kpi" />
+                    <include android:id="@+id/kpiAlerts" layout="@layout/view_kpi" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false">
+                    <include android:id="@+id/kpiTransfers" layout="@layout/view_kpi" />
+                    <include android:id="@+id/kpiDiscounts" layout="@layout/view_kpi" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Aviso de degradación -->
+            <LinearLayout
+                android:id="@+id/bannerDegraded"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/bg_warn_box"
+                android:gravity="center_vertical"
+                android:padding="12dp"
+                android:visibility="gone">
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_warning"
+                    app:tint="@color/risk_watch" />
+                <TextView
+                    android:id="@+id/textDegraded"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:textAppearance="?attr/textAppearanceBodySmall" />
+            </LinearLayout>
+
+            <!-- Acciones rápidas -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginTop="20dp"
+                android:text="Operación de tienda"
+                style="@style/Text.FreshTrack.Section" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="12dp"
+                android:orientation="vertical">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false">
+                    <include android:id="@+id/actReceive" layout="@layout/view_action" />
+                    <include android:id="@+id/actShrink" layout="@layout/view_action" />
+                    <include android:id="@+id/actCount" layout="@layout/view_action" />
+                    <include android:id="@+id/actFefo" layout="@layout/view_action" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false">
+                    <include android:id="@+id/actTransfer" layout="@layout/view_action" />
+                    <include android:id="@+id/actDiscount" layout="@layout/view_action" />
+                    <include android:id="@+id/actEvidence" layout="@layout/view_action" />
+                    <include android:id="@+id/actScan" layout="@layout/view_action" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Impacto ESG -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginEnd="16dp"
+                app:cardBackgroundColor="@color/brand_primary_container">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/ic_leaf"
+                            app:tint="@color/brand_primary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="Desperdicio evitado"
+                            android:textColor="@color/brand_on_primary_container"
+                            style="@style/Text.FreshTrack.Section" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:id="@+id/textEsgWaste" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceTitleLarge" android:textStyle="bold" android:textColor="@color/brand_on_primary_container" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Alimento rescatado" android:textAppearance="?attr/textAppearanceLabelSmall" android:textColor="@color/brand_on_primary_container" />
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:id="@+id/textEsgCo2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceTitleLarge" android:textStyle="bold" android:textColor="@color/brand_on_primary_container" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Emisiones evitadas" android:textAppearance="?attr/textAppearanceLabelSmall" android:textColor="@color/brand_on_primary_container" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView android:id="@+id/textEsgMoney" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textAppearance="?attr/textAppearanceTitleLarge" android:textStyle="bold" android:textColor="@color/brand_on_primary_container" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Ahorro estimado (MXN)" android:textAppearance="?attr/textAppearanceLabelSmall" android:textColor="@color/brand_on_primary_container" />
+                    <TextView android:id="@+id/textEsgSource" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:alpha="0.7" android:textAppearance="?attr/textAppearanceLabelSmall" android:textColor="@color/brand_on_primary_container" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Próximos a vencer -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginTop="20dp"
+                android:text="Vencen pronto · surtir primero"
+                style="@style/Text.FreshTrack.Section" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/listExpiring"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:nestedScrollingEnabled="false"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
+            <TextView
+                android:id="@+id/textExpiringEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:padding="24dp"
+                android:text="Sin lotes por vencer en los próximos 2 días 🎉"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:visibility="gone" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>

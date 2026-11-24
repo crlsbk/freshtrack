@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
+        app:navigationIcon="@drawable/ic_back" />
+
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/textScanState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_error_box"
+                android:padding="12dp"
+                android:textColor="@color/risk_critical"
+                android:visibility="gone" />
+
+            <!-- Lo declarado en la etiqueta / ASN -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <TextView
+                            android:id="@+id/textLabelProduct"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textAppearance="?attr/textAppearanceTitleLarge"
+                            android:textStyle="bold" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRescan"
+                            style="@style/Widget.Material3.Button.IconButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="Escanear otra etiqueta"
+                            app:icon="@drawable/ic_scan" />
+                    </LinearLayout>
+
+                    <TextView android:id="@+id/textLabelCode" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceLabelLarge" android:fontFamily="monospace" />
+                    <TextView android:id="@+id/textLabelOc" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/Text.FreshTrack.Label" />
+                    <TextView
+                        android:id="@+id/textLabelSignature"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:drawablePadding="6dp"
+                        android:drawableTint="@color/brand_primary"
+                        android:gravity="center_vertical"
+                        android:textAppearance="?attr/textAppearanceLabelMedium"
+                        android:textColor="@color/brand_primary" />
+
+                    <TableLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:stretchColumns="0,1">
+                        <TableRow>
+                            <TextView android:text="Proveedor" style="@style/Text.FreshTrack.Label" />
+                            <TextView android:text="Lote proveedor" style="@style/Text.FreshTrack.Label" />
+                        </TableRow>
+                        <TableRow>
+                            <TextView android:id="@+id/textLabelSupplier" android:layout_width="0dp" android:layout_weight="1" android:textAppearance="?attr/textAppearanceBodyMedium" />
+                            <TextView android:id="@+id/textLabelLot" android:layout_width="0dp" android:layout_weight="1" android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        </TableRow>
+                        <TableRow android:layout_marginTop="8dp">
+                            <TextView android:text="Cantidad declarada" style="@style/Text.FreshTrack.Label" />
+                            <TextView android:text="Caducidad declarada" style="@style/Text.FreshTrack.Label" />
+                        </TableRow>
+                        <TableRow>
+                            <TextView android:id="@+id/textLabelDeclared" android:layout_width="0dp" android:layout_weight="1" android:textAppearance="?attr/textAppearanceBodyMedium" android:textStyle="bold" />
+                            <TextView android:id="@+id/textLabelExpiry" android:layout_width="0dp" android:layout_weight="1" android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        </TableRow>
+                        <TableRow android:layout_marginTop="8dp">
+                            <TextView android:text="Cadena de frío" style="@style/Text.FreshTrack.Label" />
+                        </TableRow>
+                        <TableRow>
+                            <TextView android:id="@+id/textLabelTemp" android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        </TableRow>
+                    </TableLayout>
+
+                    <LinearLayout
+                        android:id="@+id/boxWarnings"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_warn_box"
+                        android:padding="12dp"
+                        android:visibility="gone">
+                        <TextView android:id="@+id/textWarnings" android:layout_width="match_parent" android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceBodySmall" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Captura de la recepción real -->
+            <LinearLayout
+                android:id="@+id/formCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Lo que llegó" style="@style/FormSection" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutQty"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:hint="Cantidad recibida">
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputQty"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutTemp"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:hint="Temperatura"
+                        app:startIconDrawable="@drawable/ic_thermo"
+                        app:suffixText="°C">
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputTemp"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal|numberSigned" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutExpiry"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="Caducidad verificada"
+                    app:startIconDrawable="@drawable/ic_event">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputExpiry"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:focusable="false"
+                        android:inputType="none" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Inspección de calidad" style="@style/FormSection" />
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/chipsInspection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:checkedChip="@id/chipConform"
+                    app:selectionRequired="true"
+                    app:singleSelection="true">
+                    <com.google.android.material.chip.Chip android:id="@+id/chipConform" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Conforme" />
+                    <com.google.android.material.chip.Chip android:id="@+id/chipObservations" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Con observaciones" />
+                    <com.google.android.material.chip.Chip android:id="@+id/chipNonConform" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="No conforme" />
+                </com.google.android.material.chip.ChipGroup>
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Acción" style="@style/FormSection" />
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/chipsAction"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:checkedChip="@id/chipAccept"
+                    app:selectionRequired="true"
+                    app:singleSelection="true">
+                    <com.google.android.material.chip.Chip android:id="@+id/chipAccept" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Aceptar a FEFO" />
+                    <com.google.android.material.chip.Chip android:id="@+id/chipQuarantine" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Cuarentena" />
+                    <com.google.android.material.chip.Chip android:id="@+id/chipReject" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rechazar en muelle" />
+                </com.google.android.material.chip.ChipGroup>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="Observaciones (opcional)">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputNotes"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textMultiLine|textCapSentences"
+                        android:maxLength="400"
+                        android:minLines="2" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Evidencia -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center_vertical">
+                    <TextView
+                        android:id="@+id/textPhoto"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Opcional: foto del producto o del termómetro"
+                        style="@style/Text.FreshTrack.Label" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPhoto"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Tomar foto"
+                        app:icon="@drawable/ic_camera" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSubmit"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="20dp"
+                    android:text="Registrar recepción"
+                    app:icon="@drawable/ic_check" />
+            </LinearLayout>
+
+            <!-- Resultado -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardResult"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:visibility="gone"
+                app:cardBackgroundColor="@color/brand_primary_container">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+                    <ImageView android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_check" app:tint="@color/brand_primary" android:importantForAccessibility="no" />
+                    <TextView android:id="@+id/textResultTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceTitleLarge" android:textStyle="bold" android:textColor="@color/brand_on_primary_container" />
+                    <TextView android:id="@+id/textResultBody" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textColor="@color/brand_on_primary_container" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp">
+                        <com.google.android.material.button.MaterialButton android:id="@+id/btnNext" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginEnd="6dp" android:text="Recibir otro" app:icon="@drawable/ic_scan" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/btnDone" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Terminar" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

@@ -31,6 +31,7 @@ x-entorno-servicio: &entorno-servicio
   OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-freshtrack_s3_secret_2026}
   OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-freshtrack-reportes}
   OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
+  APP_VERSION: ${APP_VERSION:-1.0.0}
   LOG_LEVEL: INFO
   # Correo saliente: los servicios entregan siempre a Mailpit (servicio "mail"), que guarda
   # una copia visible en http://localhost:8025 y la reenvía al destinatario real si hay
@@ -189,6 +190,8 @@ services:
       # La web es el frontend de los microservicios: login, ventas, mermas, productos,
       # pronóstico y reabastecimiento se ejecutan en ellos por HTTP.
       WEB_USA_MICROSERVICIOS: "true"
+      MONITOR_USER: ${MONITOR_USER:-ops_monitor}
+      MONITOR_PASSWORD: ${MONITOR_PASSWORD:-FreshTrackOps2026!}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

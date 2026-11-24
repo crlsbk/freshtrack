@@ -15,13 +15,13 @@ Cada servicio se crea con `crear_servicio(...)`, que le da el mismo esqueleto:
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timezone
+from decimal import Decimal
 import logging
 import os
 import time
 from typing import Iterable
-
-from datetime import date, datetime
-from decimal import Decimal
 
 from flask import Flask, Response, g, request, send_from_directory
 from flask.json.provider import DefaultJSONProvider
@@ -52,25 +52,37 @@ _CODIGOS_HTTP = {
 }
 
 
-def _estado_dependencias(dependencias: Iterable[str]) -> dict[str, bool]:
-    estado: dict[str, bool] = {}
-    for dep in dependencias:
-        ok = False
-        try:
-            if dep == "postgres":
-                from app.db import escalar
+def _verificar_dependencia(dep: str) -> bool:
+    try:
+        if dep == "postgres":
+            from app.db import escalar
 
-                ok = escalar("SELECT 1") == 1
-            elif dep == "redis":
-                r = cache_service.get_redis_client()
-                ok = bool(r and r.ping())
-            elif dep == "mongo":
-                db = doc_store.get_mongo_db()
-                ok = db is not None and bool(db.client.admin.command("ping").get("ok"))
-        except Exception:
-            ok = False
-        estado[dep] = ok
-    return estado
+            return escalar("SELECT 1") == 1
+        if dep == "redis":
+            r = cache_service.get_redis_client()
+            return bool(r and r.ping())
+        if dep == "mongo":
+            db = doc_store.get_mongo_db()
+            return db is not None and bool(db.client.admin.command("ping").get("ok"))
+        if dep == "bucket":
+            from app.services import object_storage
+
+            return bool(object_storage.verificar_salud())
+    except Exception:
+        return False
+    return False
+
+
+def _estado_dependencias(dependencias: Iterable[str]) -> dict[str, bool]:
+    deps_list = list(dependencias)
+    if not deps_list:
+        return {}
+    if len(deps_list) == 1:
+        return {deps_list[0]: _verificar_dependencia(deps_list[0])}
+    with ThreadPoolExecutor(max_workers=min(len(deps_list), 4)) as pool:
+        futuros = {dep: pool.submit(_verificar_dependencia, dep) for dep in deps_list}
+        # Reconstruye en el orden exacto recibido para respetar <xs:sequence> en XML.
+        return {dep: bool(futuros[dep].result()) for dep in deps_list}
 
 
 class JsonContrato(DefaultJSONProvider):
@@ -103,6 +115,9 @@ def crear_servicio(
     app.config["JSON_SORT_KEYS"] = False
     app.json = JsonContrato(app)
     log = logging.getLogger(f"freshtrack.{nombre}")
+    inicio_mono = time.monotonic()
+    iniciado_en = datetime.now(timezone.utc).isoformat()
+    version_desplegada = os.getenv("APP_VERSION", "").strip() or version
 
     @app.before_request
     def _inicio() -> None:
@@ -121,6 +136,8 @@ def crear_servicio(
                 request.method, request.full_path.rstrip("?"), resp.status_code, dur_ms, usuario, correlation_id(),
             )
             cache_service.incrementar_contador(nombre, f"http_{resp.status_code}")
+            if resp.status_code >= 500:
+                cache_service.incrementar_contador(nombre, "errores_5xx")
         return resp
 
     # --- Errores estandarizados ------------------------------------------------
@@ -142,14 +159,24 @@ def crear_servicio(
     # --- Infraestructura -------------------------------------------------------
     @app.get("/health")
     def health():
-        """Estado del microservicio y de sus dependencias (PostgreSQL, MongoDB, Redis)."""
+        """Estado del microservicio, proceso, latencia, versión y dependencias."""
+        t0 = time.perf_counter()
         deps = _estado_dependencias(dependencias)
+        response_time_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         sano = all(deps.values())
         return render_response(
             {
                 "service": nombre,
                 "status": "HEALTHY" if sano else "DEGRADED",
-                "version": version,
+                "version": version_desplegada,
+                "process": {
+                    "status": "UP",
+                    "pid": os.getpid(),
+                    "uptime_seconds": round(time.monotonic() - inicio_mono, 1),
+                    "started_at": iniciado_en,
+                },
+                "response_time_ms": response_time_ms,
+                "checked_at": datetime.now(timezone.utc).isoformat(),
                 "dependencies": deps,
             },
             status=200 if sano else 503,
@@ -167,7 +194,7 @@ def crear_servicio(
             return error_response(404, "no_encontrado", f"No existe el contrato '{nombre_xsd}.xsd'.")
         return send_from_directory(DIR_XSD, f"{nombre_xsd}.xsd", mimetype="application/xml")
 
-    registrar_openapi(app, titulo=titulo, descripcion=descripcion, version=version)
+    registrar_openapi(app, titulo=titulo, descripcion=descripcion, version=version_desplegada)
     return app
 
 

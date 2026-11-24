@@ -45,7 +45,7 @@ app = crear_servicio(
     "svc-asn",
     "Inbound Logistics & ASN Reception Service (FreshTrack)",
     "Avisos anticipados de embarque (ASN) en JSON o XML, persistidos como documentos en MongoDB.",
-    dependencias=("postgres", "mongo", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 ESTADOS_ASN = {"ANUNCIADO", "EN_TRANSITO", "RECIBIDO", "REVISION_CALIDAD", "CANCELADO"}

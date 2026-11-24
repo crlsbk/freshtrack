@@ -137,6 +137,7 @@ def create_app() -> Flask:
     from app.blueprints.api import bp as bp_api
     from app.blueprints.auth import bp as bp_auth
     from app.blueprints.catalogo import bp as bp_catalogo
+    from app.blueprints.monitoreo import bp as bp_monitoreo
     from app.blueprints.operacion import bp as bp_operacion
     from app.blueprints.panel import bp as bp_panel
     from app.blueprints.publico import bp as bp_publico
@@ -148,17 +149,38 @@ def create_app() -> Flask:
     app.register_blueprint(bp_analitica)
     app.register_blueprint(bp_panel)
     app.register_blueprint(bp_api)
+    app.register_blueprint(bp_monitoreo)
+
+    import time
+    from datetime import datetime, timezone
+
+    _inicio_web_mono = time.monotonic()
+    _iniciado_web_en = datetime.now(timezone.utc).isoformat()
+    _version_web = os.getenv("APP_VERSION", "").strip() or Config.APP_VERSION
 
     @app.get("/health")
     def health():
-        """Healthcheck del sistema web (lo usan Docker y el pipeline de despliegue)."""
-        from app.db import escalar
+        """Healthcheck del sistema web (lo usan Docker y el monitoreo)."""
+        from app.services.common.servicio import _estado_dependencias
 
-        try:
-            ok = escalar("SELECT 1") == 1
-        except Exception:
-            ok = False
-        return {"service": "web", "status": "HEALTHY" if ok else "DEGRADED", "dependencies": {"postgres": ok}}, (200 if ok else 503)
+        t0 = time.perf_counter()
+        deps = _estado_dependencias(("postgres", "mongo", "redis", "bucket"))
+        latencia_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        ok = bool(deps.get("postgres"))
+        return {
+            "service": "web",
+            "status": "HEALTHY" if all(deps.values()) else "DEGRADED",
+            "version": _version_web,
+            "process": {
+                "status": "UP",
+                "pid": os.getpid(),
+                "uptime_seconds": round(time.monotonic() - _inicio_web_mono, 1),
+                "started_at": _iniciado_web_en,
+            },
+            "response_time_ms": latencia_ms,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "dependencies": deps,
+        }, (200 if ok else 503)
 
     # --- Contexto de plantillas -------------------------------------------
     @app.context_processor

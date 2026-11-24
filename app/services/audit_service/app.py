@@ -41,7 +41,7 @@ app = crear_servicio(
     "svc-audit",
     "Immutable Audit & Compliance Service (FreshTrack)",
     "Bitácora inmutable, trazabilidad de lotes y monitoreo de eventos de dominio.",
-    dependencias=("postgres", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 

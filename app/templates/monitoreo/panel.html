@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <title>FreshTrack Ops — Monitor Central</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1120;
+      --surface: #111827;
+      --surface-2: #0f172a;
+      --border: #1f2937;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --ok: #10b981;
+      --ok-bg: rgba(16, 185, 129, 0.14);
+      --warn: #f59e0b;
+      --warn-bg: rgba(245, 158, 11, 0.14);
+      --bad: #ef4444;
+      --bad-bg: rgba(239, 68, 68, 0.14);
+      --neutral: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 20px 20px 44px;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 18px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .meta {
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .badge-ok { background: var(--ok-bg); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
+    .badge-warn { background: var(--warn-bg); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+    .badge-bad { background: var(--bad-bg); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); }
+    .badge-muted { background: rgba(107, 114, 128, 0.16); color: #d1d5db; border: 1px solid rgba(107, 114, 128, 0.35); }
+    .btn, select {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--ok);
+      color: #052e16;
+      border-color: var(--ok);
+      font-weight: 700;
+    }
+    .btn-primary:hover { background: #059669; color: #fff; }
+    .btn:hover { border-color: #6b7280; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 980px) {
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 15px 16px;
+    }
+    .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .kpi-val { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+    .kpi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 900px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .card-head {
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .card-title { font-size: 14.5px; font-weight: 700; margin: 0; }
+    .card-body { padding: 14px 16px; }
+    .deps-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .dep-box {
+      padding: 11px 12px;
+      border-radius: 9px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .dep-name { font-weight: 700; font-size: 13.5px; }
+    .dep-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .list-inc { display: flex; flex-direction: column; gap: 8px; }
+    .inc-item {
+      padding: 10px 12px;
+      border-radius: 9px;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .ok-empty {
+      padding: 16px;
+      border-radius: 9px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.28);
+      color: #6ee7b7;
+      font-weight: 600;
+      text-align: center;
+    }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    th {
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      background: var(--surface-2);
+    }
+    tr:last-child td { border-bottom: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+    .uptime-bar {
+      display: inline-flex;
+      gap: 2px;
+      align-items: center;
+      margin-top: 4px;
+    }
+    .u-seg {
+      width: 6px;
+      height: 14px;
+      border-radius: 2px;
+      background: var(--neutral);
+    }
+    .u-ok { background: var(--ok); }
+    .u-warn { background: var(--warn); }
+    .u-bad { background: var(--bad); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: currentColor; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Monitor Central · FreshTrack</h1>
+        <span id="badge-global" class="badge {{ 'badge-ok' if snapshot.estado_global == 'OPERATIVO' else ('badge-bad' if snapshot.estado_global == 'CRITICO' else 'badge-warn') }}">
+          <span class="dot"></span>
+          <span id="text-global">{{ snapshot.estado_global }}</span>
+        </span>
+        <span class="meta">
+          Última verificación: <strong id="ultima-verificacion" class="mono">{{ snapshot.ultima_verificacion_legible }}</strong>
+          · Sesión: <span class="mono">{{ monitor_user }}</span>
+        </span>
+      </div>
+      <div class="controls">
+        <label class="meta" for="auto-interval">Refresco:</label>
+        <select id="auto-interval">
+          <option value="15000">Cada 15 s</option>
+          <option value="30000" selected>Cada 30 s</option>
+          <option value="60000">Cada 60 s</option>
+          <option value="0">Manual</option>
+        </select>
+        <button id="btn-verificar" type="button" class="btn btn-primary">Verificar ahora</button>
+        <form method="post" action="{{ url_for('monitoreo.logout') }}" style="margin:0;">
+          <button type="submit" class="btn">Cerrar sesión</button>
+        </form>
+      </div>
+    </header>
+
+    <section class="kpis">
+      <div class="kpi">
+        <div class="kpi-label">Estado actual</div>
+        <div class="kpi-val" id="kpi-sanos">{{ snapshot.resumen.sanos }} / {{ snapshot.resumen.total_servicios }}</div>
+        <div class="kpi-sub" id="kpi-disp">Disponibilidad actual: {{ snapshot.resumen.disponibilidad_actual_pct }}%</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Tiempo de respuesta</div>
+        <div class="kpi-val" id="kpi-latencia">
+          {{ (snapshot.resumen.tiempo_respuesta_promedio_ms ~ ' ms') if snapshot.resumen.tiempo_respuesta_promedio_ms is not none else '—' }}
+        </div>
+        <div class="kpi-sub">Promedio de chequeo por servicio</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Número de errores</div>
+        <div class="kpi-val" id="kpi-errores">{{ snapshot.resumen.total_errores }}</div>
+        <div class="kpi-sub">Fallos de salud + HTTP 4xx/5xx hoy</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Servicios degradados / caídos</div>
+        <div class="kpi-val" id="kpi-degradados">{{ snapshot.servicios_degradados | length }}</div>
+        <div class="kpi-sub" id="kpi-deg-detalle">{{ snapshot.resumen.degradados }} degradados · {{ snapshot.resumen.caidos }} caídos</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Dependencias caídas</div>
+        <div class="kpi-val" id="kpi-deps-caidas">{{ snapshot.dependencias_caidas | length }}</div>
+        <div class="kpi-sub">PostgreSQL, MongoDB, Redis, Bucket</div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-head">
+          <h2 class="card-title">Dependencias de infraestructura</h2>
+          <span class="meta" id="deps-resumen-tag">{{ snapshot.dependencias_caidas | length }} con falla</span>
+        </div>
+        <div class="card-body">
+          <div class="deps-grid" id="deps-grid">
+            {% for d in snapshot.dependencias %}
+              <div class="dep-box">
+                <div>
+                  <div class="dep-name">{{ d.nombre }}</div>
+                  <div class="dep-meta">OK: {{ d.ok_servicios }} · Falla: {{ d.fallas_servicios }}</div>
+                </div>
+                {% if d.estado == 'OK' %}
+                  <span class="badge badge-ok">OK</span>
+                {% elif d.estado == 'CAIDA' %}
+                  <span class="badge badge-bad">CAÍDA</span>
+                {% else %}
+                  <span class="badge badge-muted">SIN DATOS</span>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-head">
+          <h2 class="card-title">Servicios degradados y dependencias caídas</h2>
+        </div>
+        <div class="card-body" id="incidencias-box">
+          {% if snapshot.servicios_degradados or snapshot.dependencias_caidas %}
+            <div class="list-inc">
+              {% for dep in snapshot.dependencias_caidas %}
+                <div class="inc-item">
+                  <div>
+                    <strong>Dependencia caída: {{ dep.nombre }}</strong>
+                    <div class="meta">Afecta a: {{ dep.servicios_afectados | join(', ') }}</div>
+                  </div>
+                  <span class="badge badge-bad">CAÍDA</span>
+                </div>
+              {% endfor %}
+              {% for sd in snapshot.servicios_degradados %}
+                <div class="inc-item">
+                  <div>
+                    <strong>{{ sd.nombre }}</strong>
+                    <div class="meta">{{ sd.motivo }}</div>
+                  </div>
+                  <span class="badge {{ 'badge-bad' if sd.estado == 'DOWN' else 'badge-warn' }}">{{ sd.estado }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="ok-empty">Sin servicios degradados ni dependencias caídas en esta verificación.</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Estado detallado de los 8 microservicios</h2>
+        <span class="meta">Proceso · PostgreSQL · MongoDB · Redis · Bucket · Respuesta · Versión</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Servicio / Versión</th>
+              <th>Estado</th>
+              <th>Proceso</th>
+              <th>PostgreSQL</th>
+              <th>MongoDB</th>
+              <th>Redis</th>
+              <th>Bucket</th>
+              <th>Respuesta</th>
+              <th>Errores</th>
+              <th>Disponibilidad</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-servicios">
+            {% for s in snapshot.servicios %}
+              <tr>
+                <td>
+                  <strong>{{ s.nombre }}</strong>
+                  <div class="meta mono">v{{ s.version }} · {{ s.url }}</div>
+                </td>
+                <td>
+                  {% if s.estado == 'HEALTHY' %}
+                    <span class="badge badge-ok">OPERATIVO</span>
+                  {% elif s.estado == 'DEGRADED' %}
+                    <span class="badge badge-warn">DEGRADADO</span>
+                  {% else %}
+                    <span class="badge badge-bad">CAÍDO</span>
+                  {% endif %}
+                </td>
+                <td class="mono">
+                  <span class="badge {{ 'badge-ok' if s.proceso.status == 'UP' else 'badge-bad' }}">{{ s.proceso.status }}</span>
+                  {% if s.proceso.pid %}<div class="meta">PID {{ s.proceso.pid }}{% if s.proceso.uptime_seconds is not none %} · {{ s.proceso.uptime_seconds }}s{% endif %}</div>{% endif %}
+                </td>
+                {% for dep in ['postgres', 'mongo', 'redis', 'bucket'] %}
+                  {% set val = s.dependencias.get(dep) %}
+                  <td>
+                    {% if val is true %}
+                      <span class="badge badge-ok">OK</span>
+                    {% elif val is false %}
+                      <span class="badge badge-bad">FALLA</span>
+                    {% else %}
+                      <span class="badge badge-muted">—</span>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+                <td class="mono">
+                  {{ (s.tiempo_respuesta_ms ~ ' ms') if s.tiempo_respuesta_ms is not none else '—' }}
+                  {% if s.latencia_red_ms is not none %}
+                    <div class="meta">Red: {{ s.latencia_red_ms }} ms</div>
+                  {% endif %}
+                </td>
+                <td class="mono">
+                  <strong>{{ s.errores }}</strong>
+                  <div class="meta">5xx:{{ s.errores_detalle.http_5xx }} · 4xx:{{ s.errores_detalle.http_4xx }}</div>
+                </td>
+                <td>
+                  <strong class="mono">{{ s.disponibilidad_pct }}%</strong>
+                  <div class="uptime-bar" title="Últimas verificaciones (izq=antigua, der=actual)">
+                    {% for st in s.historial_reciente %}
+                      <span class="u-seg {{ 'u-ok' if st == 'HEALTHY' else ('u-warn' if st == 'DEGRADED' else 'u-bad') }}"></span>
+                    {% endfor %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Historial de disponibilidad</h2>
+        <span class="meta">Verificaciones registradas: <strong id="hist-count">{{ snapshot.resumen.verificaciones_registradas }}</strong></span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha y hora (UTC)</th>
+              <th>Estado</th>
+              <th>Disponibilidad</th>
+              <th>Sanos / Deg / Caídos</th>
+              <th>Respuesta promedio</th>
+              <th>Dependencias caídas</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-historial">
+            {% for h in snapshot.historial %}
+              <tr>
+                <td class="mono">{{ h.fecha_hora_utc or h.timestamp }}</td>
+                <td>
+                  <span class="badge {{ 'badge-ok' if h.estado_global == 'OPERATIVO' else ('badge-bad' if h.estado_global == 'CRITICO' else 'badge-warn') }}">
+                    {{ h.estado_global }}
+                  </span>
+                </td>
+                <td class="mono">{{ h.disponibilidad_pct }}%</td>
+                <td class="mono">{{ h.sanos }} / {{ h.degradados }} / {{ h.caidos }}</td>
+                <td class="mono">{{ (h.latencia_promedio_ms ~ ' ms') if h.latencia_promedio_ms is not none else '—' }}</td>
+                <td>
+                  {% if h.dependencias_caidas %}
+                    <span class="badge badge-bad">{{ h.dependencias_caidas | join(', ') }}</span>
+                  {% else %}
+                    <span class="meta">Ninguna</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const btnVerificar = document.getElementById("btn-verificar");
+      const selInterval = document.getElementById("auto-interval");
+      let timerId = null;
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = String(text);
+        return node;
+      }
+
+      function badgeEstadoGlobal(estado) {
+        if (estado === "OPERATIVO") return "badge badge-ok";
+        if (estado === "CRITICO") return "badge badge-bad";
+        return "badge badge-warn";
+      }
+
+      function badgeServicio(estado) {
+        if (estado === "HEALTHY") return ["badge badge-ok", "OPERATIVO"];
+        if (estado === "DEGRADED") return ["badge badge-warn", "DEGRADADO"];
+        return ["badge badge-bad", "CAÍDO"];
+      }
+
+      function badgeDep(val) {
+        if (val === true) return ["badge badge-ok", "OK"];
+        if (val === false) return ["badge badge-bad", "FALLA"];
+        return ["badge badge-muted", "—"];
+      }
+
+      function renderSnapshot(data) {
+        document.getElementById("badge-global").className = badgeEstadoGlobal(data.estado_global);
+        document.getElementById("text-global").textContent = data.estado_global;
+        document.getElementById("ultima-verificacion").textContent = data.ultima_verificacion_legible || data.ultima_verificacion;
+
+        const r = data.resumen || {};
+        document.getElementById("kpi-sanos").textContent = `${r.sanos ?? 0} / ${r.total_servicios ?? 8}`;
+        document.getElementById("kpi-disp").textContent = `Disponibilidad actual: ${r.disponibilidad_actual_pct ?? 0}%`;
+        document.getElementById("kpi-latencia").textContent =
+          r.tiempo_respuesta_promedio_ms !== null && r.tiempo_respuesta_promedio_ms !== undefined
+            ? `${r.tiempo_respuesta_promedio_ms} ms`
+            : "—";
+        document.getElementById("kpi-errores").textContent = r.total_errores ?? 0;
+        document.getElementById("kpi-degradados").textContent = (data.servicios_degradados || []).length;
+        document.getElementById("kpi-deg-detalle").textContent = `${r.degradados ?? 0} degradados · ${r.caidos ?? 0} caídos`;
+        document.getElementById("kpi-deps-caidas").textContent = (data.dependencias_caidas || []).length;
+        document.getElementById("deps-resumen-tag").textContent = `${(data.dependencias_caidas || []).length} con falla`;
+        document.getElementById("hist-count").textContent = r.verificaciones_registradas ?? (data.historial || []).length;
+
+        const depsGrid = document.getElementById("deps-grid");
+        depsGrid.replaceChildren();
+        (data.dependencias || []).forEach(d => {
+          const box = el("div", "dep-box");
+          const left = el("div");
+          left.appendChild(el("div", "dep-name", d.nombre));
+          left.appendChild(el("div", "dep-meta", `OK: ${d.ok_servicios} · Falla: ${d.fallas_servicios}`));
+          const bCls = d.estado === "OK" ? "badge badge-ok" : (d.estado === "CAIDA" ? "badge badge-bad" : "badge badge-muted");
+          const bTxt = d.estado === "OK" ? "OK" : (d.estado === "CAIDA" ? "CAÍDA" : "SIN DATOS");
+          box.appendChild(left);
+          box.appendChild(el("span", bCls, bTxt));
+          depsGrid.appendChild(box);
+        });
+
+        const incBox = document.getElementById("incidencias-box");
+        incBox.replaceChildren();
+        const degs = data.servicios_degradados || [];
+        const dCaidas = data.dependencias_caidas || [];
+        if (degs.length === 0 && dCaidas.length === 0) {
+          incBox.appendChild(el("div", "ok-empty", "Sin servicios degradados ni dependencias caídas en esta verificación."));
+        } else {
+          const list = el("div", "list-inc");
+          dCaidas.forEach(dep => {
+            const row = el("div", "inc-item");
+            const left = el("div");
+            left.appendChild(el("strong", "", `Dependencia caída: ${dep.nombre}`));
+            left.appendChild(el("div", "meta", `Afecta a: ${(dep.servicios_afectados || []).join(", ")}`));
+            row.appendChild(left);
+            row.appendChild(el("span", "badge badge-bad", "CAÍDA"));
+            list.appendChild(row);
+          });
+          degs.forEach(sd => {
+            const row = el("div", "inc-item");
+            const left = el("div");
+            left.appendChild(el("strong", "", sd.nombre));
+            left.appendChild(el("div", "meta", sd.motivo));
+            row.appendChild(left);
+            row.appendChild(el("span", sd.estado === "DOWN" ? "badge badge-bad" : "badge badge-warn", sd.estado));
+            list.appendChild(row);
+          });
+          incBox.appendChild(list);
+        }
+
+        const tbodySvc = document.getElementById("tbody-servicios");
+        tbodySvc.replaceChildren();
+        (data.servicios || []).forEach(s => {
+          const tr = el("tr");
+
+          const tdNombre = el("td");
+          tdNombre.appendChild(el("strong", "", s.nombre));
+          tdNombre.appendChild(el("div", "meta mono", `v${s.version} · ${s.url}`));
+          tr.appendChild(tdNombre);
+
+          const tdEst = el("td");
+          const [clsEst, txtEst] = badgeServicio(s.estado);
+          tdEst.appendChild(el("span", clsEst, txtEst));
+          tr.appendChild(tdEst);
+
+          const tdProc = el("td", "mono");
+          const proc = s.proceso || {};
+          tdProc.appendChild(el("span", proc.status === "UP" ? "badge badge-ok" : "badge badge-bad", proc.status || "DOWN"));
+          if (proc.pid) {
+            const up = proc.uptime_seconds !== null && proc.uptime_seconds !== undefined ? ` · ${proc.uptime_seconds}s` : "";
+            tdProc.appendChild(el("div", "meta", `PID ${proc.pid}${up}`));
+          }
+          tr.appendChild(tdProc);
+
+          ["postgres", "mongo", "redis", "bucket"].forEach(dep => {
+            const td = el("td");
+            const [dCls, dTxt] = badgeDep((s.dependencias || {})[dep]);
+            td.appendChild(el("span", dCls, dTxt));
+            tr.appendChild(td);
+          });
+
+          const tdResp = el("td", "mono");
+          tdResp.appendChild(document.createTextNode(
+            s.tiempo_respuesta_ms !== null && s.tiempo_respuesta_ms !== undefined ? `${s.tiempo_respuesta_ms} ms` : "—"
+          ));
+          if (s.latencia_red_ms !== null && s.latencia_red_ms !== undefined) {
+            tdResp.appendChild(el("div", "meta", `Red: ${s.latencia_red_ms} ms`));
+          }
+          tr.appendChild(tdResp);
+
+          const tdErr = el("td", "mono");
+          tdErr.appendChild(el("strong", "", s.errores ?? 0));
+          const ed = s.errores_detalle || {};
+          tdErr.appendChild(el("div", "meta", `5xx:${ed.http_5xx ?? 0} · 4xx:${ed.http_4xx ?? 0}`));
+          tr.appendChild(tdErr);
+
+          const tdDisp = el("td");
+          tdDisp.appendChild(el("strong", "mono", `${s.disponibilidad_pct ?? 0}%`));
+          const bar = el("div", "uptime-bar");
+          (s.historial_reciente || []).forEach(st => {
+            const c = st === "HEALTHY" ? "u-ok" : (st === "DEGRADED" ? "u-warn" : "u-bad");
+            bar.appendChild(el("span", `u-seg ${c}`));
+          });
+          tdDisp.appendChild(bar);
+          tr.appendChild(tdDisp);
+
+          tbodySvc.appendChild(tr);
+        });
+
+        const tbodyHist = document.getElementById("tbody-historial");
+        tbodyHist.replaceChildren();
+        (data.historial || []).forEach(h => {
+          const tr = el("tr");
+          tr.appendChild(el("td", "mono", h.fecha_hora_utc || h.timestamp));
+          const tdEst = el("td");
+          tdEst.appendChild(el("span", badgeEstadoGlobal(h.estado_global), h.estado_global));
+          tr.appendChild(tdEst);
+          tr.appendChild(el("td", "mono", `${h.disponibilidad_pct ?? 0}%`));
+          tr.appendChild(el("td", "mono", `${h.sanos ?? 0} / ${h.degradados ?? 0} / ${h.caidos ?? 0}`));
+          tr.appendChild(el("td", "mono",
+            h.latencia_promedio_ms !== null && h.latencia_promedio_ms !== undefined ? `${h.latencia_promedio_ms} ms` : "—"
+          ));
+          const tdDep = el("td");
+          if (h.dependencias_caidas && h.dependencias_caidas.length > 0) {
+            tdDep.appendChild(el("span", "badge badge-bad", h.dependencias_caidas.join(", ")));
+          } else {
+            tdDep.appendChild(el("span", "meta", "Ninguna"));
+          }
+          tr.appendChild(tdDep);
+          tbodyHist.appendChild(tr);
+        });
+      }
+
+      async function actualizar() {
+        btnVerificar.disabled = true;
+        btnVerificar.textContent = "Verificando…";
+        try {
+          const resp = await fetch("{{ url_for('monitoreo.api_snapshot') }}", {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+          if (resp.status === 401) {
+            window.location.href = "{{ url_for('monitoreo.login') }}";
+            return;
+          }
+          if (resp.ok) {
+            const data = await resp.json();
+            renderSnapshot(data);
+          }
+        } catch (err) {
+          console.error("Error al consultar snapshot:", err);
+        } finally {
+          btnVerificar.disabled = false;
+          btnVerificar.textContent = "Verificar ahora";
+        }
+      }
+
+      function configurarAutoRefresco() {
+        if (timerId) clearInterval(timerId);
+        const ms = Number(selInterval.value || 0);
+        if (ms > 0) {
+          timerId = setInterval(actualizar, ms);
+        }
+      }
+
+      btnVerificar.addEventListener("click", actualizar);
+      selInterval.addEventListener("change", configurarAutoRefresco);
+      configurarAutoRefresco();
+    })();
+  </script>
+</body>
+</html>

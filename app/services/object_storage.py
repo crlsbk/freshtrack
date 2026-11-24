@@ -230,11 +230,11 @@ def verificar_salud() -> bool:
     """Comprueba conectividad hacia Cloud Object Storage (S3/Silo local o GCS HMAC)."""
     cfg = _config_actual()
     if _proveedor_storage(cfg["endpoint"]) == "gcs":
-        status, _, _ = _peticion_s3("HEAD", cfg["bucket"], timeout=4.0)
+        status, _, _ = _peticion_s3("HEAD", cfg["bucket"], timeout=3.0)
         return status in (200, 403)
     try:
-        with urllib.request.urlopen(f"{cfg['endpoint']}/minio/health/live", timeout=2.5) as r:
+        with urllib.request.urlopen(f"{cfg['endpoint']}/minio/health/live", timeout=2.0) as r:
             return r.status == 200
     except Exception:
-        status, _, _ = _peticion_s3("HEAD", cfg["bucket"], timeout=2.5)
+        status, _, _ = _peticion_s3("HEAD", cfg["bucket"], timeout=2.0)
         return status == 200

@@ -49,7 +49,7 @@ app = crear_servicio(
     "svc-commercial",
     "Commercial, POS & Shrinkage Service (FreshTrack)",
     "Cobro POS orquestado con Saga (reserva FEFO → venta → compensación), carritos en Redis, mermas e historial de ventas.",
-    dependencias=("postgres", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 CANALES = {"TIENDA", "ONLINE", "MAYOREO"}

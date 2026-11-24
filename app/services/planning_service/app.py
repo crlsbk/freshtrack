@@ -47,7 +47,7 @@ app = crear_servicio(
     "svc-planning",
     "Demand Planning & Replenishment Service (FreshTrack)",
     "Pronóstico de demanda con linaje (PostgreSQL + MongoDB) y órdenes de reabastecimiento con aprobación humana.",
-    dependencias=("postgres", "mongo", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 ESTADOS_ORDEN = {"PENDIENTE", "APROBADA", "RECHAZADA", "EJECUTADA", "CANCELADA"}

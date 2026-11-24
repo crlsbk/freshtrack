@@ -32,7 +32,7 @@ app = crear_servicio(
     "svc-alerts",
     "Pre-Shrinkage Alerts & ESG Service (FreshTrack)",
     "Alertas de riesgo de merma en MongoDB a partir de lotes en PostgreSQL, y métricas de sostenibilidad.",
-    dependencias=("postgres", "mongo", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 CRITICIDADES = {"INFO", "WARNING", "CRITICAL"}

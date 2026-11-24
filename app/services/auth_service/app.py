@@ -41,7 +41,7 @@ app = crear_servicio(
     "svc-auth",
     "Auth & Identity Service (FreshTrack)",
     "Autenticación contra PostgreSQL (pgcrypto), emisión de JWT con RBAC, sesiones y denylist en Redis.",
-    dependencias=("postgres", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 _USUARIO_EJEMPLO = {

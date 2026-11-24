@@ -108,3 +108,8 @@ class Config:
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
     APP_PORT = int(os.getenv("APP_PORT", "5000"))
+    APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+
+    # --- Monitoreo privado (/ops/status) -----------------------------------
+    MONITOR_USER = os.getenv("MONITOR_USER", "ops_monitor")
+    MONITOR_PASSWORD = os.getenv("MONITOR_PASSWORD", "FreshTrackOps2026!")

@@ -46,7 +46,7 @@ app = crear_servicio(
     "svc-inventory",
     "Inventory & FEFO Engine Service (FreshTrack)",
     "Existencias por lote, cola FEFO y reservas con bloqueo distribuido en Redis para la Saga de Ventas.",
-    dependencias=("postgres", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 _RESERVA_EJEMPLO = {

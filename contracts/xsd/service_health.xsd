@@ -14,12 +14,25 @@
           </xs:simpleType>
         </xs:element>
         <xs:element name="version" type="xs:string"/>
+        <xs:element name="process" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="status" type="xs:string"/>
+              <xs:element name="pid" type="xs:integer"/>
+              <xs:element name="uptime_seconds" type="xs:decimal"/>
+              <xs:element name="started_at" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="response_time_ms" type="xs:decimal" minOccurs="0"/>
+        <xs:element name="checked_at" type="xs:string" minOccurs="0"/>
         <xs:element name="dependencies">
           <xs:complexType>
             <xs:sequence>
               <xs:element name="postgres" type="xs:boolean" minOccurs="0"/>
               <xs:element name="mongo" type="xs:boolean" minOccurs="0"/>
               <xs:element name="redis" type="xs:boolean" minOccurs="0"/>
+              <xs:element name="bucket" type="xs:boolean" minOccurs="0"/>
             </xs:sequence>
           </xs:complexType>
         </xs:element>

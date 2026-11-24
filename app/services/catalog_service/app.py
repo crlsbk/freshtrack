@@ -47,7 +47,7 @@ app = crear_servicio(
     "svc-catalog",
     "Master Catalog & Locations Service (FreshTrack)",
     "Productos perecederos, proveedores, tiendas y CEDIS con Cache-Aside en Redis.",
-    dependencias=("postgres", "redis"),
+    dependencias=("postgres", "mongo", "redis", "bucket"),
 )
 
 CACHE_PREFIX_PRODUCTS = "catalog:products:"

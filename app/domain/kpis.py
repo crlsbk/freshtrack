@@ -19,12 +19,16 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+import logging
 import os
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import a_float, a_int, one, query, transaccion
 from app.services import cache_service
+
+logger = logging.getLogger(__name__)
 
 
 from app.domain.cache_web import con_cache_web as _con_cache_web  # noqa: E402
@@ -728,6 +732,13 @@ def resumen_desperdicio_evitado() -> dict:
 
 
 def _resumen_desperdicio_evitado_db() -> dict:
+    # Las intervenciones nacen con recuperado = 0 y las ventas posteriores del lote
+    # solo cuentan al recalcular. Se recalcula aquí (al expirar la caché, máx. 1 vez
+    # por minuto) para que lo vendido tras un traslado o descuento aparezca solo.
+    try:
+        calcular_desperdicio_evitado()
+    except SQLAlchemyError:
+        logger.exception("No se pudo recalcular el desperdicio evitado; se muestran los últimos valores.")
     totales = one(
         """
         SELECT COALESCE(SUM(cantidad_en_riesgo), 0)         AS en_riesgo,

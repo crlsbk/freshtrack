@@ -1131,18 +1131,18 @@ def pipeline_produccion_newsvendor_fefo(
         entradas = round(entradas_map.get((sku, loc), 0.0), 2)
 
         nv = optimizar_newsvendor(
-            precio_venta=a_float(p_info.get("precio_venta"), 20.0),
-            precio_costo=a_float(p_info.get("precio_costo"), 10.0),
+            precio_venta=a_float(p_info.get("precio_venta")) or 20.0,
+            precio_costo=a_float(p_info.get("precio_costo")) or 10.0,
             demanda_media=media_h,
             desviacion_estandar=sigma_h,
             vida_util_dias=a_int(p_info.get("vida_util_estandar"), 15),
             demanda_diaria=demanda_diaria,
             stock_util=inv_util,
             entradas=entradas,
-            stock_seguridad_simple=a_float(p_info.get("stock_seguridad"), 0.0),
+            stock_seguridad_simple=a_float(p_info.get("stock_seguridad")),
         )
         necesidad = nv["cantidad_newsvendor"]
-        moq = max(1.0, a_float(p_info.get("moq"), 1.0))
+        moq = max(1.0, a_float(p_info.get("moq")) or 1.0)
         if necesidad <= 0:
             sugerida = 0.0
         elif necesidad < moq:

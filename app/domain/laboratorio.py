@@ -245,8 +245,8 @@ def evaluar_modelos_laboratorio(
                 "producto": f["producto"],
                 "locacion": f["locacion"],
                 "categoria": f["categoria"],
-                "precio_venta": a_float(f["precio_venta"], 20.0),
-                "precio_costo": a_float(f["precio_costo"], 10.0),
+                "precio_venta": a_float(f["precio_venta"]) or 20.0,
+                "precio_costo": a_float(f["precio_costo"]) or 10.0,
                 "vida_util_dias": a_int(f["vida_util_estandar"], 7),
             }
 
@@ -285,7 +285,7 @@ def evaluar_modelos_laboratorio(
                 precio_venta=info["precio_venta"],
                 precio_costo=info["precio_costo"],
                 vida_util_dias=info["vida_util_dias"],
-                sigma_diaria=a_float(sal.get("sigma_diaria"), 0.0),
+                sigma_diaria=a_float(sal.get("sigma_diaria")),
             )
             a = acum[modelo]
             if m["n"]:

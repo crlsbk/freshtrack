@@ -225,3 +225,40 @@ cd ~/iac-proyecto
 git pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
 ```
+
+### 4.6 Optimización de consultas sobre el dataset masivo (en caliente, sin borrar datos)
+
+`sql/08_optimizacion.sql` es idempotente: crea los índices que faltaban, materializa
+la demanda diaria histórica (`analitica.mv_demanda_diaria_hist`) y redefine
+`analitica.v_demanda_diaria` como *histórico materializado ∪ ventas de hoy en vivo*
+(mismas columnas). En un volumen nuevo se ejecuta solo; sobre la base ya cargada:
+
+```bash
+cd ~/iac-proyecto
+git pull
+
+# 1. Base de datos (tarda segundos a pocos minutos según el volumen; no borra nada)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+         -f /docker-entrypoint-initdb.d/08_optimizacion.sql'
+
+# 2. Código, pool de conexiones, tuning de Postgres y límites de memoria
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+```
+
+Mantenimiento del histórico materializado:
+
+- La app web lo refresca sola cada 10 min **solo si hace falta** (cambió el día o se
+  registraron ventas con fecha retroactiva). Variables: `AGREGADOS_AUTO_REFRESCO`,
+  `AGREGADOS_INTERVALO_SEG`.
+- `scripts/ETL.py` y `scripts/generar_dataset_masivo.py` lo refrescan al terminar.
+  Cualquier otra carga masiva con `session_replication_role=replica` debe ejecutar:
+  `docker compose ... exec app python scripts/refrescar_agregados.py --forzar`.
+- La vista nunca devuelve datos incompletos: si el histórico está desfasado agrega
+  en vivo (más lento) hasta el siguiente refresco.
+
+Consultas lentas: Postgres registra todo lo que tarde más de 500 ms:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs postgres | grep duration
+```

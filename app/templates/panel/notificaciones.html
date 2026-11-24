@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block titulo %}Notificaciones{% endblock %}
+{% block breadcrumb %}Principal › Notificaciones{% endblock %}
+
+{% block content %}
+{{ ui.encabezado(
+  'Principal',
+  'Notificaciones',
+  'Alertas abiertas y eventos de negocio (transferencias, descuentos, órdenes de compra, ASN) que corresponden a tu rol y tienda. Las más recientes primero.'
+) }}
+
+<div class="filtros">
+  <div class="text-muted">
+    {% if no_leidas %}<span class="badge badge-warning">{{ no_leidas }}</span> sin leer{% else %}Todo leído{% endif %}
+  </div>
+  {% if no_leidas %}
+    <form method="post" action="{{ url_for('panel.notificaciones_leer') }}">
+      <button class="btn btn-ghost btn-sm" type="submit">Marcar todas como leídas</button>
+    </form>
+  {% endif %}
+</div>
+
+{% set caidas = [] %}
+{% for nombre, ok in fuentes.items() if not ok %}{% set _ = caidas.append(nombre) %}{% endfor %}
+{% if caidas %}
+  <div class="alert-item alert-warning" style="margin-bottom:16px;">
+    <div>
+      Algunas fuentes no están disponibles en este momento
+      ({{ caidas | map('replace', '_', ' ') | join(', ') }}); se muestra el resto.
+    </div>
+  </div>
+{% endif %}
+
+<div class="card">
+  <table>
+    <thead><tr><th>Fecha</th><th>Notificación</th><th>Severidad</th><th></th></tr></thead>
+    <tbody>
+      {% for n in notificaciones %}
+        <tr {% if not n.leida %}style="font-weight:600;"{% endif %}>
+          <td class="mono" style="white-space:nowrap;">{{ n.fecha | fecha_hora }}</td>
+          <td>
+            {% if n.endpoint %}<a href="{{ url_for(n.endpoint) }}" style="color:inherit;">{{ n.titulo }}</a>{% else %}{{ n.titulo }}{% endif %}
+            {% if n.mensaje %}<div class="text-muted" style="font-weight:400;">{{ n.mensaje }}</div>{% endif %}
+          </td>
+          <td>{{ ui.severidad(n.severidad) }}</td>
+          <td style="text-align:right;">
+            {% if not n.leida %}
+              <form method="post" action="{{ url_for('panel.notificaciones_leer') }}">
+                <input type="hidden" name="id" value="{{ n.id }}">
+                <button class="btn btn-ghost btn-sm" type="submit">Marcar leída</button>
+              </form>
+            {% else %}
+              <span class="text-muted">Leída</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        {{ ui.vacio('No tienes notificaciones por ahora.', 4) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

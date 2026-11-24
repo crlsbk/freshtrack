@@ -206,9 +206,12 @@ def create_app() -> Flask:
         permitidas = set(VISTAS_POR_ROL.get(rol, []))
         avisos = 0
         try:
-            from app.domain import alertas as motor_alertas
+            # No leídas del centro de notificaciones (alertas + eventos de negocio
+            # del rol/tienda); cacheado 30 s en Redis.
+            from app.domain import notificaciones as dom_notif
+            from app.security import usuario_actual
 
-            avisos = motor_alertas.resumen_alertas()["total"]
+            avisos = dom_notif.contar_no_leidas(usuario_actual())
         except Exception:
             avisos = 0
 

@@ -3,6 +3,7 @@ Blueprint del panel, alertas, desperdicio evitado, usuarios, bitácora y ajustes
 
     /panel                 tablero empresarial (todo desde PostgreSQL)
     /alertas               alertas generadas por reglas + regenerar
+    /notificaciones        centro de notificaciones del usuario (campana)
     /desperdicio-evitado   metodología del desperdicio evitado
     /sostenibilidad        indicadores de sostenibilidad
     /usuarios              CRUD de usuarios y roles
@@ -112,6 +113,38 @@ def alertas():
         filtro_severidad=request.args.get("severidad", ""),
         filtro_estado=estado,
     )
+
+
+# ===========================================================================
+# NOTIFICACIONES (app/domain/notificaciones.py)
+# ===========================================================================
+@bp.route("/notificaciones")
+@login_required
+def notificaciones():
+    from app.domain import notificaciones as dom_notif
+
+    datos = dom_notif.listar(usuario_actual())
+    return render_template(
+        "panel/notificaciones.html",
+        active="notifications",
+        notificaciones=datos["items"],
+        no_leidas=datos["no_leidas"],
+        fuentes=datos["fuentes"],
+    )
+
+
+@bp.post("/notificaciones/leer")
+@login_required
+def notificaciones_leer():
+    """Marca una (campo «id») o todas (sin «id») como leídas."""
+    from app.domain import notificaciones as dom_notif
+
+    usuario = usuario_actual()
+    id_notif = (request.form.get("id") or "").strip()
+    ok = dom_notif.marcar_leidas(usuario, [id_notif]) if id_notif else dom_notif.marcar_todas(usuario)
+    if not ok:
+        flash("No se pudo guardar el estado de lectura en este momento. Intenta más tarde.", "error")
+    return redirect(url_for("panel.notificaciones"))
 
 
 @bp.post("/alertas/regenerar")

@@ -16,6 +16,7 @@ La verificación del hash se hace **dentro de PostgreSQL** con `crypt()`
 
 from __future__ import annotations
 
+import threading
 import hashlib
 import secrets
 import uuid
@@ -434,6 +435,35 @@ def renovar_sesion(
     return nueva
 
 
+# Marca, por hilo, si la última verificación de sesión falló porque PostgreSQL no respondió.
+_verificacion_local = threading.local()
+
+
+def decodificar_token_con_motivo(token: str) -> tuple[dict | None, str]:
+    """
+    Valida el token y devuelve (payload, "ok"), (None, "invalido") o
+    (None, "bd_no_disponible") cuando la firma es buena pero PostgreSQL no respondió.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            Config.JWT_SECRET_KEY,
+            algorithms=[Config.JWT_ALGORITHM],
+            issuer="freshtrack",
+            options={"require": ["exp", "iat", "jti", "sub", "iss"]},
+            leeway=30,
+        )
+    except jwt.PyJWTError:
+        return None, "invalido"
+    jti = payload.get("jti")
+    if not jti or esta_jwt_revocado(jti):
+        return None, "invalido"
+    _verificacion_local.fallo_bd = False
+    if verificar_sesion_respaldo_bd(jti):
+        return payload, "ok"
+    return None, ("bd_no_disponible" if getattr(_verificacion_local, "fallo_bd", False) else "invalido")
+
+
 def verificar_sesion_respaldo_bd(jti: str) -> bool:
     """
     Verificación Fail-Closed en PostgreSQL cuando Redis no está disponible.
@@ -453,6 +483,7 @@ def verificar_sesion_respaldo_bd(jti: str) -> bool:
             jti=jti,
         )
     except Exception:
+        _verificacion_local.fallo_bd = True
         return False
     if vigente is None or vigente["revocado"] or not vigente["estado_activo"]:
         return False
@@ -463,30 +494,7 @@ def verificar_sesion_respaldo_bd(jti: str) -> bool:
 
 def decodificar_token(token: str) -> dict | None:
     """Valida firma y expiración, y comprueba que la sesión siga vigente (Fail-Closed)."""
-    try:
-        payload = jwt.decode(
-            token,
-            Config.JWT_SECRET_KEY,
-            algorithms=[Config.JWT_ALGORITHM],
-            issuer="freshtrack",
-            # Sin `require`, PyJWT acepta un token SIN exp como si no caducara.
-            options={"require": ["exp", "iat", "jti", "sub", "iss"]},
-            leeway=30,
-        )
-    except jwt.PyJWTError:
-        return None
-
-    jti = payload.get("jti")
-    if not jti:
-        return None
-
-    # Verificación ultra-rápida en la denylist de Redis
-    if esta_jwt_revocado(jti):
-        return None
-
-    if not verificar_sesion_respaldo_bd(jti):
-        return None
-    return payload
+    return decodificar_token_con_motivo(token)[0]
 
 
 def revocar_sesiones_usuario(id_usuario: str) -> int:

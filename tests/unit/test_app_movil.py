@@ -222,3 +222,21 @@ def test_url_evidencia_de_otra_sucursal_403(com, tokens, monkeypatch):
     monkeypatch.setattr(m.dom_movil, "evidencia_con_url", lambda id_ev: {"id_evidencia": id_ev, "id_locacion": 9})
     r = c.get("/api/v1/commercial/evidence/0f8b6f8e-6a7c-4b1e-9d1a-2b3c4d5e6f70/url", headers=tokens("store_manager", 3))
     assert r.status_code == 403
+
+
+def test_foto_de_6mb_cabe_bajo_el_limite_global(com, tokens, monkeypatch):
+    """Regresión: MAX_CONTENT_LENGTH global (4 MB) cortaba fotos válidas de hasta 8 MB."""
+    m, c = com
+    monkeypatch.setattr(m.dom_movil, "guardar_evidencia", lambda **kw: {"id_evidencia": "e-6mb"})
+    r = c.post("/api/v1/commercial/evidence", headers=tokens("store_manager"), content_type="multipart/form-data",
+               data={"archivo": (io.BytesIO(JPEG + b"0" * (6 * 1024 * 1024)), "f.jpg"), "tipo": "OTRO"})
+    assert r.status_code == 201, r.data
+
+
+def test_cuerpo_excesivo_responde_413_en_espanol(com, tokens):
+    _, c = com
+    r = c.post("/api/v1/commercial/evidence", headers=tokens("store_manager"), content_type="multipart/form-data",
+               data={"archivo": (io.BytesIO(JPEG + b"0" * (10 * 1024 * 1024)), "f.jpg"), "tipo": "OTRO"})
+    assert r.status_code == 413
+    cuerpo = r.get_json()
+    assert cuerpo["error"] == "cuerpo_demasiado_grande" and "MB" in cuerpo["mensaje"] and "capacity" not in cuerpo["mensaje"]

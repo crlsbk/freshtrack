@@ -38,15 +38,36 @@ _client: pymongo.MongoClient | None = None
 _db: Database | None = None
 _ultimo_fallo: float = 0.0
 SEGUNDOS_REINTENTO = 10
+SEGUNDOS_VERIFICACION = 5
+_ultimo_ping: float = 0.0
 ESQUEMA_VERSION = 1
 DIAS_RETENCION_ALERTAS = 180
 
 
 def get_mongo_db() -> Database | None:
     """Devuelve la base de datos de MongoDB reutilizando el cliente y asegurando índices."""
-    global _client, _db, _ultimo_fallo
+    global _client, _db, _ultimo_fallo, _ultimo_ping
     if _db is not None:
-        return _db
+        ahora = time.monotonic()
+        if ahora - _ultimo_ping < SEGUNDOS_VERIFICACION:
+            return _db
+        # Si Mongo cae después del arranque, se descarta el cliente: así los guardas
+        # `_mongo()` de los servicios responden 503 en lugar de listas vacías o 500.
+        try:
+            _db.client.admin.command("ping")
+            _ultimo_ping = ahora
+            return _db
+        except Exception as exc:  # noqa: BLE001
+            _db = None
+            _ultimo_fallo = ahora
+            if _client is not None:
+                try:
+                    _client.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            _client = None
+            logger.warning("MongoDB dejó de responder; se reintentará en %ss: %s", SEGUNDOS_REINTENTO, exc)
+            return None
     # Igual que con Redis: si Mongo no respondió hace poco, no se vuelve a pagar
     # el timeout de selección de servidor en cada petición.
     if _ultimo_fallo and time.monotonic() - _ultimo_fallo < SEGUNDOS_REINTENTO:
@@ -58,6 +79,7 @@ def get_mongo_db() -> Database | None:
         _db = _client[Config.MONGO_DB]
         asegurar_indices(_db)
         _ultimo_fallo = 0.0
+        _ultimo_ping = time.monotonic()
         return _db
     except Exception as exc:
         _ultimo_fallo = time.monotonic()

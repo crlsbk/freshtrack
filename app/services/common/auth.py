@@ -24,7 +24,7 @@ from typing import Any, Callable
 import jwt
 from flask import g, request
 
-from app.security import decodificar_token, verificar_sesion_respaldo_bd
+from app.security import decodificar_token, decodificar_token_con_motivo, verificar_sesion_respaldo_bd
 from app.services.cache_service import esta_jwt_revocado, incrementar_contador, sesion_activa
 from app.services.common.response import ErrorApi, correlation_id, error_response
 
@@ -137,6 +137,18 @@ def _extraer_token() -> str | None:
     return None
 
 
+_DECODIFICAR_REAL = decodificar_token
+
+
+def _decodificar_con_motivo(token: str) -> tuple[dict | None, str]:
+    """Valida el token distinguiendo 'inválido' de 'PostgreSQL no respondió'.
+    Si `decodificar_token` fue sustituido (pruebas), se respeta esa versión."""
+    if decodificar_token is _DECODIFICAR_REAL:
+        return decodificar_token_con_motivo(token)
+    payload = decodificar_token(token)
+    return (payload, "ok") if payload else (None, "invalido")
+
+
 def requiere_auth(*roles_permitidos: str) -> Callable:
     """
     Decorador para proteger endpoints de microservicios con JWT, sesión Redis y RBAC.
@@ -160,7 +172,16 @@ def requiere_auth(*roles_permitidos: str) -> Callable:
                 incrementar_contador("auth", "access_denied_revoked")
                 return error_response(401, "token_revocado", "La sesión fue cerrada; el token ya no es válido.")
 
-            payload = decodificar_token(token)
+            payload, motivo = _decodificar_con_motivo(token)
+            if motivo == "bd_no_disponible":
+                # Fail-closed, pero con 503: la sesión puede ser válida; el cliente debe
+                # reintentar en vez de mandar al usuario al login.
+                incrementar_contador("auth", "access_denied_db_unavailable")
+                return error_response(
+                    503,
+                    "sesion_no_verificable",
+                    "No se puede verificar la sesión porque la base de datos no responde. Intenta de nuevo en unos segundos.",
+                )
             if not payload:
                 incrementar_contador("auth", "access_denied_invalid")
                 return error_response(401, "token_invalido", "Token inválido, expirado o manipulado.")

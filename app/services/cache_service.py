@@ -36,13 +36,38 @@ _client: redis.Redis | None = None
 # timeout de conexión). Se espera este número de segundos antes de reintentar.
 SEGUNDOS_REINTENTO = 10
 _ultimo_fallo: float = 0.0
+# El cliente guardado se verifica con PING cada pocos segundos: si Redis cae después
+# del arranque, se descarta en vez de pagar el timeout en cada operación.
+SEGUNDOS_VERIFICACION = 5
+_ultimo_ping: float = 0.0
+
+
+def _marcar_redis_caido(exc: Exception) -> None:
+    global _client, _ultimo_fallo
+    _client = None
+    _ultimo_fallo = time.monotonic()
+    if _pool is not None:
+        try:
+            _pool.disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+    logger.warning("Redis dejó de responder; se reintentará en %ss: %s", SEGUNDOS_REINTENTO, exc)
 
 
 def get_redis_client() -> redis.Redis | None:
     """Devuelve un cliente de Redis reutilizando el pool de conexiones."""
-    global _pool, _client, _ultimo_fallo
+    global _pool, _client, _ultimo_fallo, _ultimo_ping
     if _client is not None:
-        return _client
+        ahora = time.monotonic()
+        if ahora - _ultimo_ping < SEGUNDOS_VERIFICACION:
+            return _client
+        try:
+            _client.ping()
+            _ultimo_ping = ahora
+            return _client
+        except Exception as exc:  # noqa: BLE001
+            _marcar_redis_caido(exc)
+            return None
     if _ultimo_fallo and time.monotonic() - _ultimo_fallo < SEGUNDOS_REINTENTO:
         return None
 
@@ -72,6 +97,7 @@ def get_redis_client() -> redis.Redis | None:
         cliente.ping()
         _client = cliente
         _ultimo_fallo = 0.0
+        _ultimo_ping = time.monotonic()
         return _client
     except Exception as exc:
         _ultimo_fallo = time.monotonic()

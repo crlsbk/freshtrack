@@ -165,6 +165,10 @@ def crear_servicio(
     @app.errorhandler(HTTPException)
     def _error_http(exc: HTTPException):
         codigo = exc.code or 500
+        if codigo == 413:
+            tope = (app.config.get("MAX_CONTENT_LENGTH") or 0) / (1024 * 1024)
+            return error_response(413, "cuerpo_demasiado_grande",
+                                  f"La petición excede el tamaño máximo permitido ({tope:g} MB).")
         return error_response(codigo, _CODIGOS_HTTP.get(codigo, "error_http"), exc.description or exc.name)
 
     @app.errorhandler(Exception)

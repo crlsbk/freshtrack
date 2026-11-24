@@ -46,7 +46,9 @@ class Config:
     PREFERRED_URL_SCHEME = "https" if SESSION_COOKIE_SECURE else "http"
     TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() == "true"
     PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.getenv("JWT_HORAS_VIGENCIA", "8")))
-    MAX_CONTENT_LENGTH = 4 * 1024 * 1024  # 4 MB
+    # Tope global de cuerpo por petición. 9 MB deja pasar fotos de evidencia de hasta 8 MB
+    # (límite del endpoint) más el sobre del multipart.
+    MAX_CONTENT_LENGTH = int(float(os.getenv("MAX_CONTENT_LENGTH_MB", "9")) * 1024 * 1024)
 
     # --- Base de datos -----------------------------------------------------
     # Obligatoria y sin valor por defecto: si estuviera escrita aquí, la

@@ -36,6 +36,7 @@ from sqlalchemy import text
 from app import auditoria
 from app.db import a_float, a_int, config_valor, one, query, transaccion
 from app.domain import pronostico
+from app.domain.cache_web import con_cache_web, invalidar
 
 
 # ---------------------------------------------------------------------------
@@ -826,6 +827,7 @@ def generar_recomendaciones(
             usuario_email=usuario["email"],
         )
 
+    invalidar_cache_reabastecimiento()
     return {
         "generadas": generadas,
         "actualizadas": actualizadas,
@@ -843,7 +845,19 @@ def _json(valor) -> str:
 # ---------------------------------------------------------------------------
 # Consultas y flujo de aprobación
 # ---------------------------------------------------------------------------
+def invalidar_cache_reabastecimiento() -> None:
+    """Las órdenes cambiaron: descartar listados y resúmenes cacheados."""
+    invalidar("web:reab:*")
+
+
 def listar_ordenes(estado: str | None = None, limite: int = 100) -> list[dict]:
+    """Órdenes de reabastecimiento (cacheadas 30 s; se invalidan al generar/decidir)."""
+    return con_cache_web(
+        f"web:reab:ordenes:{estado or 'todas'}:{int(limite)}", 30, lambda: _listar_ordenes_db(estado, limite)
+    )
+
+
+def _listar_ordenes_db(estado: str | None = None, limite: int = 100) -> list[dict]:
     filtro = "WHERE o.estado = :estado" if estado else ""
     params = {"estado": estado, "limite": limite} if estado else {"limite": limite}
     return query(
@@ -936,10 +950,16 @@ def decidir_orden(
         id_usuario=usuario["id_usuario"],
         usuario_email=usuario["email"],
     )
+    invalidar_cache_reabastecimiento()
     return {"id_orden": id_orden, "estado": nuevo_estado, "cantidad": aprobada}
 
 
 def resumen_ordenes() -> dict:
+    """Conteos del tablero de órdenes (cacheados 30 s)."""
+    return con_cache_web("web:reab:resumen", 30, _resumen_ordenes_db)
+
+
+def _resumen_ordenes_db() -> dict:
     fila = one(
         """
         SELECT COUNT(*) FILTER (WHERE estado = 'PENDIENTE')  AS pendientes,
@@ -956,9 +976,18 @@ def resumen_ordenes() -> dict:
 
 
 def sobreinventario(horizonte: int | None = None, limite: int = 50) -> list[dict]:
-    """Productos donde el inventario útil supera la demanda esperada."""
+    """Productos donde el inventario útil supera la demanda esperada (cacheado 120 s)."""
     if horizonte is None:
         horizonte = a_int(config_valor("umbral_sobreinventario_dias", "21"), 21)
+    return con_cache_web(
+        f"web:reab:sobreinv:{int(horizonte)}:{int(limite)}",
+        120,
+        lambda: _sobreinventario_db(horizonte, limite),
+        con_lock=True,
+    )
+
+
+def _sobreinventario_db(horizonte: int, limite: int = 50) -> list[dict]:
 
     filas = query(
         """

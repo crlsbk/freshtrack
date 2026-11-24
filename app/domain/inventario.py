@@ -18,6 +18,7 @@ from sqlalchemy import text
 from app import auditoria
 from app.db import a_float, a_int, one, query, transaccion
 from app.services import cache_service
+from app.domain.cache_web import invalida
 
 # ---------------------------------------------------------------------------
 # Consultas de catálogo auxiliar
@@ -363,6 +364,7 @@ def obtener_lote(id_lote: str) -> dict | None:
     )
 
 
+@invalida("web:triaje:*")
 def registrar_recepcion(
     *,
     id_sku: int,
@@ -498,6 +500,7 @@ ESTADOS_LOTE_VALIDOS = (
 )
 
 
+@invalida("web:triaje:*")
 def cambiar_estado_lote(
     *,
     id_lote: str,

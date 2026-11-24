@@ -13,6 +13,7 @@ Dos reglas que se respetan en todo el proyecto:
 from __future__ import annotations
 
 import os
+import time
 from contextlib import contextmanager
 from decimal import Decimal
 from typing import Any, Iterable, Sequence
@@ -220,6 +221,31 @@ def paginar(items: Sequence, pagina: int, por_pagina: int = 25) -> dict:
     }
 
 
+_CONFIG_MEMO: dict[tuple[str, str | None], tuple[float, str | None]] = {}
+
+
 def config_valor(clave: str, default: str | None = None) -> str | None:
-    """Lee un parámetro de analitica.configuracion."""
-    return escalar("SELECT analitica.fn_config(:c, :d)", c=clave, d=default)
+    """
+    Lee un parámetro de analitica.configuracion.
+
+    Se memoriza en el proceso CONFIG_CACHE_SEG segundos (30 por defecto): los
+    motores de triaje/reabastecimiento lo llaman varias veces por cada par
+    producto × tienda, y cada lectura era un viaje a PostgreSQL. Guardar la
+    configuración desde /configuracion limpia la memoria del proceso que la
+    guarda; los demás procesos la ven a lo sumo CONFIG_CACHE_SEG después.
+    """
+    ttl = float(os.getenv("CONFIG_CACHE_SEG", "30"))
+    if ttl <= 0 or "PYTEST_CURRENT_TEST" in os.environ:
+        return escalar("SELECT analitica.fn_config(:c, :d)", c=clave, d=default)
+    llave = (clave, default)
+    ahora = time.monotonic()
+    memo = _CONFIG_MEMO.get(llave)
+    if memo is not None and memo[0] > ahora:
+        return memo[1]
+    valor = escalar("SELECT analitica.fn_config(:c, :d)", c=clave, d=default)
+    _CONFIG_MEMO[llave] = (ahora + ttl, valor)
+    return valor
+
+
+def limpiar_cache_config() -> None:
+    _CONFIG_MEMO.clear()

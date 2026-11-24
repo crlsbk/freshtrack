@@ -23,6 +23,7 @@ from sqlalchemy import text
 from app import auditoria
 from app.db import a_float, a_int, config_valor, one, query, transaccion
 from app.domain import pdf_oc, reabastecimiento
+from app.domain.cache_web import con_cache_web, invalidar
 from app.events.dispatcher import publicar_evento
 from app.services import mailer, object_storage
 
@@ -34,7 +35,13 @@ def _json(valor) -> str:
 
 
 def resumen_necesidad_por_proveedor() -> dict[int, dict]:
-    """Devuelve métricas rápidas de necesidad de compra pendiente por proveedor."""
+    """Devuelve métricas rápidas de necesidad de compra pendiente por proveedor (cache 60 s)."""
+    datos = con_cache_web("web:reab:necesidad_proveedor", 60, _resumen_necesidad_por_proveedor_db)
+    # JSON convierte las llaves int en str: restaurarlas.
+    return {int(k): v for k, v in datos.items()}
+
+
+def _resumen_necesidad_por_proveedor_db() -> dict[int, dict]:
     filas = query(
         """
         SELECT pr.id_proveedor,
@@ -63,7 +70,23 @@ def catalogo_compra_proveedor(id_proveedor: int, horizonte: int | None = None) -
     """
     Construye el catálogo de compra por lotes para un proveedor integrando el análisis
     inteligente Newsvendor + Triaje para cada producto y tienda activa.
+
+    Es el cálculo más caro de la plataforma (producto × tienda × ~13 consultas),
+    así que se cachea 5 min por proveedor con protección anti-estampida y se
+    invalida al emitir una orden de compra o cambiar órdenes de reabastecimiento.
     """
+    if horizonte is None:
+        horizonte = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
+    return con_cache_web(
+        f"web:reab:catalogo_compra:{int(id_proveedor)}:{int(horizonte)}",
+        300,
+        lambda: _catalogo_compra_proveedor_db(id_proveedor, horizonte),
+        con_lock=True,
+        espera_max_seg=25.0,
+    )
+
+
+def _catalogo_compra_proveedor_db(id_proveedor: int, horizonte: int) -> dict:
     prov = one(
         """
         SELECT id_proveedor, rfc, razon_social, lead_time_dias, moq,
@@ -76,9 +99,6 @@ def catalogo_compra_proveedor(id_proveedor: int, horizonte: int | None = None) -
     if prov is None:
         raise ValueError(f"El proveedor {id_proveedor} no existe.")
     prov_out = {**prov, "moq": a_float(prov["moq"])}
-
-    if horizonte is None:
-        horizonte = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
 
     tiendas = query(
         """
@@ -450,6 +470,8 @@ def registrar_orden_compra(
             "correlation_id": id_oc,
         },
     )
+    # La OC aprueba órdenes de reabastecimiento y cambia las entradas confirmadas.
+    invalidar("web:reab:*")
     return orden
 
 

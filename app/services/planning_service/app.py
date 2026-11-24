@@ -544,7 +544,7 @@ def evaluar_triaje_api():
     """Calcula sin escribir en BD qué ruta económica recupera más valor para cada lote en riesgo."""
     id_locacion = g.contexto.get("location_id") or entero(request.args, "id_locacion", minimo=1)
     horizonte = entero(request.args, "horizonte", minimo=1, defecto=7)
-    res = dom_triaje.evaluar_triaje_lotes(id_locacion=id_locacion, horizonte=horizonte)
+    res = dom_triaje.evaluar_triaje_cacheado(id_locacion=id_locacion, horizonte=horizonte)
     return render_response(res, status=200, root_tag="triage_evaluation")
 
 

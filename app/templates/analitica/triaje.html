@@ -46,7 +46,7 @@
 <div class="panel-pestanas" data-pestanas>
   <div class="tabs" role="tablist">
     <button class="tab {% if tab_activa == 'triaje' %}active{% endif %}" type="button" data-pestana="triaje">
-      Decisiones por Lote ({{ decisiones | length }})
+      Decisiones por Lote ({{ total_decisiones }})
     </button>
     <button class="tab {% if tab_activa == 'traslados' %}active{% endif %}" type="button" data-pestana="traslados">
       Traslados entre Tiendas ({{ transferencias | length }})
@@ -222,6 +222,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {{ ui.paginacion(paginacion_decisiones, 'analitica.triaje', filtros_triaje) }}
   </div>
 
   {# ══════════════════════════════════════════════════════════════════════ #}

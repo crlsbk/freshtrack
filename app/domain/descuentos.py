@@ -15,12 +15,14 @@ from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, a_int, config_valor, one, query, transaccion
+from app.domain.cache_web import invalida
 
 
 def _json(valor) -> str:
     return json.dumps(valor, default=str, ensure_ascii=False)
 
 
+@invalida("web:triaje:*")
 def sugerir_descuentos(*, usuario: dict, dias_hasta: int | None = None) -> dict:
     """
     Genera sugerencias de descuento para los lotes próximos a vencer que
@@ -168,6 +170,7 @@ def listar_descuentos(estado: str | None = None, limite: int = 100) -> list[dict
     )
 
 
+@invalida("web:triaje:*")
 def decidir_descuento(id_descuento: str, *, aprobar: bool, usuario: dict) -> dict:
     d = one(
         """

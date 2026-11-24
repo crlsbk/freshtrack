@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import auditoria
-from app.db import a_int, paginar, query, sql_error, transaccion
+from app.db import a_int, limpiar_cache_config, paginar, query, sql_error, transaccion
 from app.domain import alertas as motor_alertas
 from app.domain import inventario as dom_inv
 from app.domain import kpis as motor_kpis
@@ -418,6 +418,7 @@ def _guardar_configuracion(form) -> None:
                 ),
                 {"v": form.get(campo, ""), "c": clave},
             )
+    limpiar_cache_config()
     auditoria.registrar(
         "UPDATE_USER",
         tabla="configuracion",

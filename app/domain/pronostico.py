@@ -39,6 +39,7 @@ from app.db import a_float, a_int, config_valor, escalar, one, query, transaccio
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service
 from app.services.doc_store import guardar_pronostico
+from app.domain.cache_web import con_cache_web
 
 METODOS_BASE = ("SUAVIZACION_EXPONENCIAL", "MEDIA_MOVIL_PONDERADA", "MEDIA_MOVIL")
 
@@ -1060,6 +1061,13 @@ def evaluar_backtest_comparativo(
 # Consultas por tienda y vigilancia de deriva
 # ---------------------------------------------------------------------------
 def ultima_corrida(id_locacion: int | None = None) -> dict | None:
+    """Última corrida completada (cacheada 90 s; se invalida al ejecutar un pronóstico)."""
+    return con_cache_web(
+        f"web:forecast:ultima:{id_locacion or 'all'}", 90, lambda: _ultima_corrida_db(id_locacion)
+    )
+
+
+def _ultima_corrida_db(id_locacion: int | None = None) -> dict | None:
     filtro_loc = "AND r.id_locacion = :loc" if id_locacion else ""
     params = {"loc": id_locacion} if id_locacion else {}
     return one(
@@ -1082,6 +1090,15 @@ def ultima_corrida(id_locacion: int | None = None) -> dict | None:
 
 
 def corridas(limite: int = 20, id_locacion: int | None = None) -> list[dict]:
+    """Historial de corridas (cacheado 90 s; se invalida al ejecutar un pronóstico)."""
+    return con_cache_web(
+        f"web:forecast:corridas:{int(limite)}:{id_locacion or 'all'}",
+        90,
+        lambda: _corridas_db(limite, id_locacion),
+    )
+
+
+def _corridas_db(limite: int = 20, id_locacion: int | None = None) -> list[dict]:
     filtro_loc = "WHERE r.id_locacion = :loc" if id_locacion else ""
     params: dict = {"limite": limite, **({"loc": id_locacion} if id_locacion else {})}
     return query(
@@ -1105,8 +1122,15 @@ def corridas(limite: int = 20, id_locacion: int | None = None) -> list[dict]:
 def pronostico_por_serie(id_run: str, limite: int = 300) -> list[dict]:
     """
     Pronóstico agregado por Producto + Tienda: próximo día y próximos N días.
-    Es el formato que exige la rúbrica.
+    Es el formato que exige la rúbrica. Una corrida es inmutable una vez
+    completada, así que se cachea 5 min.
     """
+    return con_cache_web(
+        f"web:forecast:serie:{id_run}:{int(limite)}", 300, lambda: _pronostico_por_serie_db(id_run, limite)
+    )
+
+
+def _pronostico_por_serie_db(id_run: str, limite: int = 300) -> list[dict]:
     return query(
         """
         SELECT p.nombre AS producto, p.id_sku, p.unidad_medida,
@@ -1135,7 +1159,18 @@ def pronostico_por_serie(id_run: str, limite: int = 300) -> list[dict]:
 def pronostico_vigente_por_tienda(
     id_locacion: int | None = None, limite: int = 300
 ) -> list[dict]:
-    """Devuelve las proyecciones vigentes tomadas del último modelo propio de cada tienda."""
+    """Proyecciones vigentes del último modelo de cada tienda (cacheadas 90 s)."""
+    return con_cache_web(
+        f"web:forecast:vigente:{id_locacion or 'all'}:{int(limite)}",
+        90,
+        lambda: _pronostico_vigente_por_tienda_db(id_locacion, limite),
+        con_lock=True,
+    )
+
+
+def _pronostico_vigente_por_tienda_db(
+    id_locacion: int | None = None, limite: int = 300
+) -> list[dict]:
     filtro_loc = "WHERE ut.id_locacion = :loc" if id_locacion else ""
     params: dict = {"limite": limite, **({"loc": id_locacion} if id_locacion else {})}
     filas = query(
@@ -1265,6 +1300,85 @@ def demanda_diaria_vigente(id_sku: int, id_locacion: int) -> float:
         if dias > 0 and total > 0:
             return round(total / dias, 4)
     return demanda_diaria_promedio(id_sku, id_locacion, 28)
+
+
+def demandas_diarias_vigentes(pares) -> dict[tuple[int, int], float]:
+    """
+    Versión en lote de `demanda_diaria_vigente` para muchos pares (sku, tienda).
+
+    Misma regla, en 2 consultas en vez de 2-3 por par:
+      1. Modelo vigente: la corrida COMPLETADA más reciente con resultados para
+         el par, priorizando la corrida propia de la tienda sobre la global.
+         Demanda diaria = total pronosticado / días del horizonte.
+      2. Respaldo: promedio de los últimos 28 días con venta.
+    """
+    pares = sorted({(int(s), int(l)) for s, l in pares})
+    if not pares:
+        return {}
+    skus = [s for s, _ in pares]
+    locs = [l for _, l in pares]
+    resultado: dict[tuple[int, int], float] = {}
+
+    for f in query(
+        """
+        WITH pares AS (
+            SELECT * FROM unnest(CAST(:skus AS integer[]), CAST(:locs AS integer[])) AS t(id_sku, id_locacion)
+        ),
+        elegido AS (
+            SELECT DISTINCT ON (pa.id_sku, pa.id_locacion)
+                   pa.id_sku, pa.id_locacion, r.id_run
+            FROM pares pa
+            JOIN analitica.forecast_result fr
+              ON fr.id_sku = pa.id_sku AND fr.id_locacion = pa.id_locacion
+            JOIN analitica.forecast_run r
+              ON r.id_run = fr.id_run
+             AND r.estado = 'COMPLETADO'
+             AND (r.id_locacion = pa.id_locacion OR r.id_locacion IS NULL)
+            ORDER BY pa.id_sku, pa.id_locacion,
+                     (CASE WHEN r.id_locacion = pa.id_locacion THEN 0 ELSE 1 END),
+                     r.fecha_ejecucion DESC
+        )
+        SELECT e.id_sku, e.id_locacion,
+               SUM(fr.demanda_pronosticada) AS total, COUNT(*) AS dias
+        FROM elegido e
+        JOIN analitica.forecast_result fr
+          ON fr.id_run = e.id_run AND fr.id_sku = e.id_sku AND fr.id_locacion = e.id_locacion
+        GROUP BY e.id_sku, e.id_locacion
+        """,
+        skus=skus,
+        locs=locs,
+    ):
+        total = a_float(f["total"])
+        dias = a_int(f["dias"], 0)
+        if dias > 0 and total > 0:
+            resultado[(f["id_sku"], f["id_locacion"])] = round(total / dias, 4)
+
+    faltan = [p for p in pares if p not in resultado]
+    if faltan:
+        promedios = {
+            (f["id_sku"], f["id_locacion"]): a_float(f["promedio"])
+            for f in query(
+                """
+                WITH pares AS (
+                    SELECT * FROM unnest(CAST(:skus AS integer[]), CAST(:locs AS integer[])) AS t(id_sku, id_locacion)
+                )
+                SELECT s.id_sku, s.id_locacion, AVG(s.cantidad) AS promedio
+                FROM (
+                    SELECT d.id_sku, d.id_locacion, d.fecha, SUM(d.cantidad) AS cantidad
+                    FROM analitica.v_demanda_diaria d
+                    JOIN pares pa ON pa.id_sku = d.id_sku AND pa.id_locacion = d.id_locacion
+                    WHERE d.fecha >= CURRENT_DATE - 28
+                    GROUP BY d.id_sku, d.id_locacion, d.fecha
+                ) s
+                GROUP BY s.id_sku, s.id_locacion
+                """,
+                skus=[s for s, _ in faltan],
+                locs=[l for _, l in faltan],
+            )
+        }
+        for par in faltan:
+            resultado[par] = promedios.get(par, 0.0)
+    return resultado
 
 
 def modelos_activos_por_tienda(id_locacion: int | None = None) -> list[dict]:

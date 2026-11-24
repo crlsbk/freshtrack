@@ -27,35 +27,9 @@ from app.db import a_float, a_int, one, query, transaccion
 from app.services import cache_service
 
 
-def _normalizar_cache(obj):
-    """Convierte Decimal y fechas para serializar limpio a Redis sin cambiar tipos numéricos."""
-    if isinstance(obj, Decimal):
-        return float(obj)
-    if isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    if isinstance(obj, dict):
-        return {k: _normalizar_cache(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_normalizar_cache(v) for v in obj]
-    return obj
-
-
-def _con_cache_web(clave: str, ttl: int, fn):
-    """
-    Cache-Aside en Redis para agregaciones pesadas de la plataforma web.
-    Controlable mediante CACHE_WEB_ACTIVA=false y tolerante a caídas de Redis.
-    """
-    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
-    if activa and cache_service.get_redis_client() is not None:
-        cached = cache_service.get_json(clave)
-        if cached is not None:
-            cache_service.incrementar_contador("web", "cache_hit")
-            return cached
-        cache_service.incrementar_contador("web", "cache_miss")
-        datos = _normalizar_cache(fn())
-        cache_service.set_json(clave, datos, ttl_segundos=ttl)
-        return datos
-    return fn()
+from app.domain.cache_web import con_cache_web as _con_cache_web  # noqa: E402
+from app.domain.cache_web import invalidar as _invalidar  # noqa: E402
+from app.domain.cache_web import normalizar_cache as _normalizar_cache  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
@@ -744,10 +718,16 @@ def calcular_desperdicio_evitado() -> dict:
             )
         ).rowcount or 0
 
+    _invalidar("web:desp:*")
     return {"actualizados": act_tr + act_desc, "transferencias": act_tr, "descuentos": act_desc}
 
 
 def resumen_desperdicio_evitado() -> dict:
+    """Cacheado 60 s en Redis; se invalida al recalcular el desperdicio evitado."""
+    return _con_cache_web("web:desp:resumen", 60, _resumen_desperdicio_evitado_db)
+
+
+def _resumen_desperdicio_evitado_db() -> dict:
     totales = one(
         """
         SELECT COALESCE(SUM(cantidad_en_riesgo), 0)         AS en_riesgo,
@@ -800,6 +780,11 @@ def resumen_desperdicio_evitado() -> dict:
 
 
 def indicadores_desperdicio_completo(dias: int = 30) -> dict:
+    """Cacheado 60 s en Redis; se invalida al recalcular el desperdicio evitado."""
+    return _con_cache_web(f"web:desp:indicadores:{int(dias)}", 60, lambda: _indicadores_desperdicio_completo_db(dias))
+
+
+def _indicadores_desperdicio_completo_db(dias: int = 30) -> dict:
     """
     Devuelve los 6 indicadores diferenciados requeridos en instructions.md:
       1. Producto en riesgo
@@ -886,6 +871,11 @@ def indicadores_desperdicio_completo(dias: int = 30) -> dict:
 
 
 def kpis_sostenibilidad(dias: int = 180) -> dict:
+    """Cacheado 60 s en Redis; se invalida al recalcular el desperdicio evitado."""
+    return _con_cache_web(f"web:desp:sostenibilidad:{int(dias)}", 60, lambda: _kpis_sostenibilidad_db(dias))
+
+
+def _kpis_sostenibilidad_db(dias: int = 180) -> dict:
     """Indicadores de sostenibilidad: separa recuperación bruta, neto contrafactual y merma observada."""
     completo = indicadores_desperdicio_completo(min(dias, 30))
     evitado = resumen_desperdicio_evitado()["totales"]

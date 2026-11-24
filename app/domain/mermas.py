@@ -21,6 +21,7 @@ from sqlalchemy import text
 from app import auditoria
 from app.db import a_float, one, query, transaccion
 from app.services import cache_service
+from app.domain.cache_web import invalida
 
 # Las 7 causas mínimas exigidas, con su etiqueta para la interfaz
 CAUSAS: list[dict] = [
@@ -36,6 +37,7 @@ CAUSAS_CODIGOS = [c["codigo"] for c in CAUSAS]
 ETIQUETA_CAUSA = {c["codigo"]: c["etiqueta"] for c in CAUSAS}
 
 
+@invalida("web:triaje:*")
 def registrar_merma(
     *,
     id_lote: str,

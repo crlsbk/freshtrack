@@ -12,7 +12,7 @@ from __future__ import annotations
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db import a_int, config_valor, sql_error
+from app.db import a_int, config_valor, paginar, sql_error
 from app.domain import alertas as motor_alertas
 from app.domain import descuentos as dom_desc
 from app.domain import inventario as dom_inv
@@ -26,6 +26,9 @@ from app.services import clientes
 
 bp = Blueprint("analitica", __name__)
 
+POR_PAGINA = 50
+LIMITE_SERIES = 3000
+
 
 # ===========================================================================
 # PRONÓSTICO
@@ -38,11 +41,15 @@ def pronostico():
     corrida = motor_pron.ultima_corrida(id_locacion=id_loc)
     id_run = request.args.get("run")
 
-    series = (
-        motor_pron.pronostico_por_serie(id_run)
+    # Todas las series (agregadas y cacheadas en Redis), mostradas por páginas
+    # de 50 para no renderizar miles de filas en el DOM.
+    series_todas = (
+        motor_pron.pronostico_por_serie(id_run, limite=LIMITE_SERIES)
         if id_run
-        else motor_pron.pronostico_vigente_por_tienda(id_locacion=id_loc)
+        else motor_pron.pronostico_vigente_por_tienda(id_locacion=id_loc, limite=LIMITE_SERIES)
     )
+    pag_series = paginar(series_todas, a_int(request.args.get("pagina"), 1) or 1, POR_PAGINA)
+    filtros_series = {k: v for k, v in (("locacion", id_loc), ("run", id_run)) if v}
 
     salud = None
     try:
@@ -61,7 +68,10 @@ def pronostico():
         active="forecast",
         corrida=corrida,
         corridas=motor_pron.corridas(15, id_locacion=id_loc),
-        series=series,
+        series=pag_series["items"],
+        total_series=pag_series["total"],
+        paginacion_series=pag_series,
+        filtros_series=filtros_series,
         salud=salud,
         id_run=id_run,
         id_locacion=id_loc,
@@ -460,17 +470,26 @@ def triaje():
         if status == 200 and isinstance(r, dict):
             evaluacion = r
     if evaluacion is None or any("transferencia_activa" not in d for d in evaluacion.get("decisiones", [])):
-        evaluacion = dom_triaje.evaluar_triaje_lotes(id_locacion=id_loc)
+        evaluacion = dom_triaje.evaluar_triaje_cacheado(id_locacion=id_loc)
 
     decisiones = evaluacion.get("decisiones", [])
     if filtro_accion in ("TRASLADO", "DESCUENTO", "MERMA", "NORMAL"):
         decisiones = [d for d in decisiones if d["accion"] == filtro_accion]
+    # Cientos/miles de lotes en riesgo, cada uno con formularios y modales:
+    # se muestran por páginas de 50.
+    pag_decisiones = paginar(decisiones, a_int(request.args.get("pagina"), 1) or 1, POR_PAGINA)
+    filtros_triaje = {
+        k: v for k, v in (("locacion", id_loc), ("accion", filtro_accion), ("tab", "triaje")) if v
+    }
 
     return render_template(
         "analitica/triaje.html",
         active="triage",
         evaluacion=evaluacion,
-        decisiones=decisiones,
+        decisiones=pag_decisiones["items"],
+        total_decisiones=pag_decisiones["total"],
+        paginacion_decisiones=pag_decisiones,
+        filtros_triaje=filtros_triaje,
         locaciones=dom_inv.locaciones_activas("Tienda"),
         locaciones_todas=dom_inv.locaciones_activas(),
         id_locacion=id_loc,

@@ -22,6 +22,7 @@ from sqlalchemy import text
 from app import auditoria
 from app.db import a_float, a_int, config_valor, one, query, transaccion
 from app.domain import descuentos, inventario, mermas, pronostico, reabastecimiento, transferencias
+from app.domain.cache_web import con_cache_web, invalida, invalidar
 
 DIAS_TRANSITO = transferencias.DIAS_TRANSITO
 
@@ -204,6 +205,30 @@ def decidir_ruta_lote(
     }
 
 
+def evaluar_triaje_cacheado(
+    *, id_locacion: int | None = None, horizonte: int | None = None
+) -> dict:
+    """
+    `evaluar_triaje_lotes` para pantallas de solo lectura (web /triaje,
+    GET /api/v1/planning/triage, desktop Mermas): cacheado 60 s con
+    protección anti-estampida. Las acciones (ejecutar triaje, aprobar
+    traslado/descuento, registrar merma…) invalidan `web:triaje:*`.
+    """
+    if horizonte is None:
+        horizonte = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
+    return con_cache_web(
+        f"web:triaje:eval:{id_locacion or 'all'}:{int(horizonte)}",
+        60,
+        lambda: evaluar_triaje_lotes(id_locacion=id_locacion, horizonte=horizonte),
+        con_lock=True,
+        espera_max_seg=20.0,
+    )
+
+
+def invalidar_cache_triaje() -> None:
+    invalidar("web:triaje:*")
+
+
 def evaluar_triaje_lotes(
     *, id_locacion: int | None = None, horizonte: int | None = None
 ) -> dict:
@@ -276,12 +301,24 @@ def evaluar_triaje_lotes(
     }
 
     tiendas = inventario.locaciones_activas("Tienda")
-    situaciones_cache: dict[tuple[int, int], dict] = {}
+
+    # Precarga en lote (antes: 1 consulta de demanda por lote + ~3 por cada
+    # producto × tienda candidata). Mismo resultado, unas pocas consultas.
+    skus_traslado = {
+        l["id_sku"]
+        for l in lotes
+        if l["estado_lote"] == "DISPONIBLE" and a_int(l["dias_restantes"], 0) > DIAS_TRANSITO
+    }
+    pares_demanda = {(l["id_sku"], l["id_locacion"]) for l in lotes}
+    pares_demanda |= {(sku, t["id_locacion"]) for sku in skus_traslado for t in tiendas}
+    demandas = pronostico.demandas_diarias_vigentes(pares_demanda)
+    situaciones_cache = transferencias.situaciones_en_lote(
+        skus_traslado, [t["id_locacion"] for t in tiendas], horizonte, demandas=demandas
+    )
 
     def _sit(sku: int, loc: int) -> dict:
         if (sku, loc) not in situaciones_cache:
-            s = transferencias._situacion(sku, loc, horizonte)
-            situaciones_cache[(sku, loc)] = s
+            situaciones_cache[(sku, loc)] = transferencias._situacion(sku, loc, horizonte)
         return situaciones_cache[(sku, loc)]
 
     decisiones = []
@@ -291,7 +328,9 @@ def evaluar_triaje_lotes(
     for l in lotes:
         sku = l["id_sku"]
         loc_orig = l["id_locacion"]
-        dem_orig = pronostico.demanda_diaria_vigente(sku, loc_orig)
+        dem_orig = demandas.get((sku, loc_orig))
+        if dem_orig is None:
+            dem_orig = pronostico.demanda_diaria_vigente(sku, loc_orig)
 
         mejor_dest = None
         if l["estado_lote"] == "DISPONIBLE" and a_int(l["dias_restantes"], 0) > DIAS_TRANSITO:
@@ -352,6 +391,7 @@ def evaluar_triaje_lotes(
     }
 
 
+@invalida("web:triaje:*")
 def ejecutar_triaje_automatico(
     *, usuario: dict, id_locacion: int | None = None, horizonte: int | None = None
 ) -> dict:
@@ -510,6 +550,7 @@ def ejecutar_triaje_automatico(
     }
 
 
+@invalida("web:triaje:*")
 def ejecutar_ciclo_planeacion(
     *,
     usuario: dict,
@@ -579,6 +620,7 @@ def ejecutar_ciclo_planeacion(
     }
 
 
+@invalida("web:triaje:*")
 def ejecutar_accion_directa_lote(
     *,
     id_lote: str,

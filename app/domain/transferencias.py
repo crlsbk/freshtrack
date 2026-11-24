@@ -26,6 +26,7 @@ from sqlalchemy import text
 from app import auditoria
 from app.db import a_float, a_int, config_valor, one, query, transaccion
 from app.domain import inventario, pronostico
+from app.domain.cache_web import invalida
 
 # Días que se asumen de traslado entre tiendas (no hay optimización logística
 # todavía: es una constante explícita y documentada).
@@ -52,7 +53,12 @@ def _situacion(id_sku: int, id_locacion: int, horizonte: int) -> dict:
     )
     promedio_diario = pronostico.demanda_diaria_vigente(id_sku, id_locacion)
     dias_riesgo = a_int(config_valor("dias_ventana_riesgo_lote", "5"), 5)
+    return _calcular_situacion(id_locacion, lotes, promedio_diario, dias_riesgo, horizonte)
 
+
+def _calcular_situacion(
+    id_locacion: int, lotes: list[dict], promedio_diario: float, dias_riesgo: int, horizonte: int
+) -> dict:
     fisico = 0.0
     en_riesgo = 0.0
     for lote in lotes:
@@ -77,6 +83,47 @@ def _situacion(id_sku: int, id_locacion: int, horizonte: int) -> dict:
     }
 
 
+def situaciones_en_lote(
+    skus, id_locaciones, horizonte: int, demandas: dict[tuple[int, int], float] | None = None
+) -> dict[tuple[int, int], dict]:
+    """
+    `_situacion` para todos los pares skus × id_locaciones en 2-3 consultas
+    (en vez de ~3 por par). Mismo resultado que llamar `_situacion` par por par.
+    """
+    skus = sorted({int(s) for s in skus})
+    locs = sorted({int(l) for l in id_locaciones})
+    if not skus or not locs:
+        return {}
+    filas = query(
+        """
+        SELECT id_sku, id_locacion, id_lote::text, codigo_lote_prov, cantidad_disponible,
+               (fecha_caducidad - CURRENT_DATE) AS dias_restantes, clasificacion,
+               costo_unitario
+        FROM operacion.v_inventario_lote
+        WHERE id_sku = ANY(CAST(:skus AS integer[]))
+          AND id_locacion = ANY(CAST(:locs AS integer[]))
+          AND cantidad_disponible > 0
+        ORDER BY id_sku, id_locacion, fecha_caducidad ASC
+        """,
+        skus=skus,
+        locs=locs,
+    )
+    lotes_por_par: dict[tuple[int, int], list[dict]] = {}
+    for f in filas:
+        par = (f.pop("id_sku"), f.pop("id_locacion"))
+        lotes_por_par.setdefault(par, []).append(f)
+
+    pares = [(s, l) for s in skus for l in locs]
+    faltan = [p for p in pares if demandas is None or p not in demandas]
+    demandas = {**(demandas or {}), **pronostico.demandas_diarias_vigentes(faltan)}
+    dias_riesgo = a_int(config_valor("dias_ventana_riesgo_lote", "5"), 5)
+    return {
+        (s, l): _calcular_situacion(l, lotes_por_par.get((s, l), []), demandas.get((s, l), 0.0), dias_riesgo, horizonte)
+        for s, l in pares
+    }
+
+
+@invalida("web:triaje:*")
 def detectar_oportunidades(
     *, usuario: dict, horizonte: int | None = None, minimo: float = 5.0
 ) -> dict:
@@ -105,11 +152,15 @@ def detectar_oportunidades(
     sugeridas = []
     descartadas = 0
 
+    todas = situaciones_en_lote(
+        [p["id_sku"] for p in productos], [t["id_locacion"] for t in tiendas], horizonte
+    )
+
     for producto in productos:
         id_sku = producto["id_sku"]
         situaciones = {}
         for tienda in tiendas:
-            s = _situacion(id_sku, tienda["id_locacion"], horizonte)
+            s = todas[(id_sku, tienda["id_locacion"])]
             s["nombre"] = tienda["nombre"]
             situaciones[tienda["id_locacion"]] = s
 
@@ -291,6 +342,7 @@ def listar_transferencias(estado: str | None = None, limite: int = 100) -> list[
     )
 
 
+@invalida("web:triaje:*")
 def decidir_transferencia(
     id_transferencia: str, *, aprobar: bool, usuario: dict, cantidad: float | None = None
 ) -> dict:
@@ -355,6 +407,7 @@ def decidir_transferencia(
     return {"id_transferencia": id_transferencia, "estado": estado, "cantidad": nueva}
 
 
+@invalida("web:triaje:*")
 def ejecutar_transferencia(id_transferencia: str, *, usuario: dict) -> dict:
     """
     Mueve el inventario de verdad: descuenta en el origen, suma en el destino

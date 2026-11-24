@@ -110,8 +110,9 @@ def _registrar_filtros(app: Flask) -> None:
     @app.template_filter("fecha_hora")
     def fecha_hora(valor) -> str:
         if isinstance(valor, str):
+            # Valores que vienen de la caché Redis (fechas serializadas en ISO).
             try:
-                valor = datetime.fromisoformat(valor)
+                valor = date.fromisoformat(valor) if len(valor) == 10 else datetime.fromisoformat(valor)
             except ValueError:
                 return valor
         if isinstance(valor, datetime):

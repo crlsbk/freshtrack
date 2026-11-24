@@ -232,7 +232,7 @@
 <div class="table-wrap" style="margin-bottom:20px;">
   <div class="table-header">
     <div class="table-header-title">
-      Proyección de demanda vigente ({{ series | length }} series)
+      Proyección de demanda vigente ({{ total_series }} series)
       {% if id_locacion %}
         <span class="badge badge-info" style="margin-left:8px;">Filtrado por tienda</span>
       {% endif %}
@@ -270,6 +270,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ ui.paginacion(paginacion_series, 'analitica.pronostico', filtros_series) }}
 </div>
 
 {# ── Historial de calibraciones por tienda ── #}

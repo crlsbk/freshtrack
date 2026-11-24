@@ -1,306 +1,733 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block titulo %}Pronósticos por Tienda{% endblock %}
+{% block titulo %}Pronósticos y Pipeline Predictivo{% endblock %}
 {% block breadcrumb %}Analítica › Pronósticos{% endblock %}
 
 {% block content %}
 {{ ui.encabezado(
-  'Analítica',
-  'Modelos de demanda por tienda y vigilancia de deriva',
-  'Cada tienda cuenta con su propio modelo automático sin configuración manual. El sistema evalúa de forma continua cambios bruscos en las ventas o pérdida de confiabilidad.'
+  'Analítica · Flujo Desacoplado',
+  'Centro de Pronósticos: Salud → Laboratorio → A/B Test → Newsvendor FEFO',
+  'El módulo de pronóstico entrega únicamente la demanda esperada y su incertidumbre (μ, σ). Las decisiones de inventario y compra se calculan por separado con FEFO y Newsvendor.'
 ) }}
 
-{% set sr = salud.resumen if salud else {'total_tiendas': 0, 'confiables': 0, 'vigilancia': 0, 'no_confiables': 0, 'total_anomalias_sku': 0} %}
+{# ── Barra de progreso guiada (4 Etapas en una sola pantalla) ── #}
+<nav class="ft-stepper" aria-label="Etapas del flujo predictivo">
+  {% for st in stepper %}
+    <a class="ft-step {% if etapa_activa == st.id %}active{% endif %}"
+       href="{{ url_for('analitica.pronostico', etapa=st.id, locacion=id_locacion, horizonte=horizonte_defecto) }}">
+      <span class="ft-step-num">{{ st.num }}</span>
+      <span class="ft-step-body">
+        <div class="ft-step-title">{{ st.titulo }}</div>
+        <div class="ft-step-sub">
+          <span class="badge badge-{{ st.tono }}" style="font-size:10.5px;">{{ st.sub }}</span>
+        </div>
+      </span>
+    </a>
+  {% endfor %}
+</nav>
 
-<div class="stat-grid-4">
-  {{ ui.kpi('Modelos por tienda', sr.total_tiendas, 'Un modelo propio por sucursal',
-            None, None, 'Cada sucursal mantiene un modelo independiente ajustado a su propio patrón de venta.', 'caja') }}
-  {{ ui.kpi('Modelos confiables', sr.confiables, 'Estables y vigentes', '#16a34a', None,
-            'Tiendas cuyo volumen reciente y precisión se mantienen dentro del comportamiento esperado.', 'check') }}
-  {{ ui.kpi('En vigilancia', sr.vigilancia, 'Variación moderada reciente', '#d97706', None,
-            'Tiendas con picos aislados, sesgo leve o más de 72 horas sin actualizarse.', 'reloj') }}
-  {{ ui.kpi('Requieren recalibración', sr.no_confiables,
-            (sr.total_anomalias_sku ~ ' producto(s) con anomalía'),
-            '#dc2626' if sr.no_confiables else '#6b7280', None,
-            'Tiendas donde la demanda cambió bruscamente o el error superó el límite confiable y se recomienda recalibrar.', 'alerta') }}
-</div>
-
-{# ── Control simple de actualización por tienda ── #}
-{% if current_role in ['admin', 'planner'] %}
-<div class="form-card" style="margin-bottom:20px;">
-  <div class="card-title">Actualización automática por tienda</div>
-  <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}"
-        style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
-    <input type="hidden" name="metodo" value="AUTO"/>
-    <div class="campo" style="min-width:250px;flex:1;">
-      <label class="form-label">
-        Tienda {{ ui.ayuda('Si eliges Todas, se crea o actualiza un modelo independiente para cada tienda activa. Si eliges una sucursal, solo se recalibra su modelo.') }}
-      </label>
-      <select class="input" name="id_locacion">
-        <option value="">Todas (1 modelo independiente por tienda)</option>
-        {% for l in locaciones %}
-          <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
-        {% endfor %}
-      </select>
+{# ── Banner guía + Campeón Global vigente ── #}
+<div class="ft-guide-banner">
+  <div style="flex:1;min-width:260px;">
+    <div style="font-size:13.5px;font-weight:700;margin-bottom:3px;">
+      {{ guia.titulo }}
     </div>
-    <div class="campo" style="min-width:170px;">
-      <label class="form-label">
-        Horizonte de proyección {{ ui.ayuda('Días hacia adelante que cubrirá el pronóstico para planear triaje y compras.') }}
-      </label>
-      <select class="input" name="horizonte">
-        {% for h in [7, 14, 21] %}
-          <option value="{{ h }}" {% if h == horizonte_defecto %}selected{% endif %}>{{ h }} días</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button class="btn btn-primary" type="submit">
-        {{ 'Recalibrar tienda seleccionada' if id_locacion else 'Actualizar modelos por tienda' }}
-      </button>
-      {% if id_locacion %}
-        <a class="btn btn-ghost" href="{{ url_for('analitica.pronostico') }}">Ver todas las tiendas</a>
+    <div class="text-muted" style="font-size:12.5px;">
+      {{ guia.detalle }}
+      · Campeón Global en producción:
+      <strong>{{ gobernanza.campeon.etiqueta }}</strong>
+      {% if gobernanza.retador %}
+        · Retador en espera: <strong>{{ gobernanza.retador.etiqueta }}</strong>
       {% endif %}
     </div>
-  </form>
-  <div class="form-note" style="margin-top:10px;">
-    La selección de estrategia se realiza automáticamente dentro de cada tienda eligiendo el patrón de menor error histórico y estacionalidad semanal, sin ajustes manuales.
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <a class="btn btn-primary btn-sm"
+       href="{{ url_for('analitica.pronostico', etapa=guia.cta_etapa, locacion=id_locacion, horizonte=horizonte_defecto) }}">
+      {{ guia.cta_texto }}
+    </a>
   </div>
 </div>
-{% else %}
-<div class="form-note" style="margin-bottom:20px;">
-  Vista de solo consulta: la actualización o recalibración de los modelos predictivos por tienda está reservada para Planeación y Administración.
-</div>
-{% endif %}
 
-{# ── Tabla principal: salud y deriva por tienda ── #}
-<div class="table-wrap" style="margin-bottom:20px;">
-  <div class="table-header">
-    <div class="table-header-title">
-      Modelos activos por tienda y vigilancia de deriva ({{ salud.tiendas | length if salud else 0 }})
-    </div>
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{# ETAPA 1: SALUD DE DATOS (DATA HEALTH)                                       #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{% if etapa_activa == 'salud' %}
+  {% set sr = salud.resumen if salud else {'total_tiendas': 0, 'confiables': 0, 'vigilancia': 0, 'no_confiables': 0, 'total_anomalias_sku': 0} %}
+  {% set sd = salud.salud_datos if salud and salud.salud_datos else {'semaforo_global': 'AMBAR', 'ultima_fecha_ventas': None, 'dias_rezago_ventas': None, 'tiendas_verdes': 0, 'tiendas_ambar': 0, 'tiendas_rojas': 0} %}
+
+  <div class="stat-grid-4">
+    {{ ui.kpi('Semáforo global',
+              'Óptimo' if sd.semaforo_global == 'VERDE' else ('Revisar' if sd.semaforo_global == 'AMBAR' else 'Crítico'),
+              ('Última venta: ' ~ (sd.ultima_fecha_ventas or 'sin registros')),
+              '#16a34a' if sd.semaforo_global == 'VERDE' else ('#d97706' if sd.semaforo_global == 'AMBAR' else '#dc2626'),
+              icono='check' if sd.semaforo_global == 'VERDE' else 'alerta') }}
+    {{ ui.kpi('Tiendas en verde', sd.tiendas_verdes, 'Series estables listas para entrenar', '#16a34a', icono='tienda') }}
+    {{ ui.kpi('En revisión (Ámbar)', sd.tiendas_ambar, 'Variación moderada o rezago', '#d97706', icono='reloj') }}
+    {{ ui.kpi('Drift crítico (Rojo)', sd.tiendas_rojas,
+              sr.total_anomalias_sku ~ ' producto(s) con anomalía',
+              '#dc2626' if sd.tiendas_rojas else '#6b7280', icono='alerta') }}
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Tienda</th>
-        <th>Modelo y vigencia</th>
-        <th>Precisión</th>
-        <th>Deriva reciente (14 d) {{ ui.ayuda('Compara las ventas de las últimas dos semanas contra la historia previa de la tienda para detectar cambios de ritmo, días atípicos o desabasto.') }}</th>
-        <th>Estado y diagnóstico</th>
-        <th>Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in (salud.tiendas if salud else []) %}
-        <tr>
-          <td>
-            <div style="font-weight:600;">{{ t.locacion }}</div>
-            {% if t.productos_con_anomalia %}
-              <span class="badge badge-warning" style="font-size:10.5px;margin-top:4px;">
-                {{ t.productos_con_anomalia }} producto(s) con variación
-              </span>
-            {% endif %}
-          </td>
-          <td>
-            {% if t.id_run %}
-              <div style="font-size:12.5px;font-weight:500;">{{ t.fecha_ejecucion | fecha_hora }}</div>
-              <div class="text-muted" style="font-size:11.5px;">
-                {{ t.n_series }} productos · {{ t.horizonte_dias or horizonte_defecto }} d ·
-                {{ t.estrategia_etiqueta }}
-              </div>
-            {% else %}
-              <span class="badge badge-danger">Sin modelo propio</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if t.wmape is not none %}
-              <div class="mono" style="font-weight:600;">Error {{ t.wmape | cantidad(1) }}%</div>
-              <div class="text-muted" style="font-size:11px;">MAE {{ t.mae | cantidad(2) }} u/día</div>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
-            <div style="margin-top:4px;">
-              <span class="badge badge-{{ 'success' if t.confiabilidad == 'Alta' else ('warning' if t.confiabilidad == 'Media' else ('danger' if t.confiabilidad == 'Baja' else 'neutral')) }}">
-                Confiabilidad {{ t.confiabilidad }}
-              </span>
-            </div>
-          </td>
-          <td>
-            <div class="mono {% if ((t.z_nivel or 0) | abs) >= 2.8 %}text-danger{% elif ((t.z_nivel or 0) | abs) >= 1.8 %}text-warning{% endif %}" style="font-weight:600;">
-              {{ '%+.1f' | format((t.cambio_nivel_pct or 0) | float) }}% ritmo
-            </div>
-            <div class="text-muted" style="font-size:11px;">
-              Índice cambio {{ '%.2f' | format((t.psi or 0) | float) }} · {{ t.dias_atipicos or 0 }} día(s) atípico(s)
-            </div>
-          </td>
-          <td style="max-width:300px;">
-            {% if t.estado == 'CONFIABLE' %}
-              <span class="badge badge-success">Confiable</span>
-            {% elif t.estado == 'VIGILANCIA' %}
-              <span class="badge badge-warning">Vigilar</span>
-            {% elif t.estado == 'NO_CONFIABLE' %}
-              <span class="badge badge-danger">Recalibrar</span>
-            {% else %}
-              <span class="badge badge-neutral">Sin historia</span>
-            {% endif %}
-            <ul style="margin:6px 0 0 16px;font-size:11.5px;color:var(--muted-foreground);">
-              {% for m in t.motivos[:2] %}
-                <li>{{ m }}</li>
-              {% endfor %}
-            </ul>
-          </td>
-          <td style="min-width:170px;">
-            <div style="display:flex;flex-direction:column;gap:6px;">
-              {% if current_role in ['admin', 'planner'] %}
-                <form method="post" action="{{ url_for('analitica.pronostico_ejecutar') }}">
-                  <input type="hidden" name="id_locacion" value="{{ t.id_locacion }}"/>
-                  <input type="hidden" name="metodo" value="AUTO"/>
-                  <input type="hidden" name="horizonte" value="{{ t.horizonte_dias or horizonte_defecto }}"/>
-                  <button class="btn {{ 'btn-primary' if t.requiere_reemplazo else 'btn-ghost' }} btn-sm" type="submit" style="width:100%;">
-                    Recalibrar tienda
-                  </button>
-                </form>
-              {% endif %}
-              <a class="btn btn-ghost btn-sm" href="{{ url_for('analitica.pronostico', locacion=t.id_locacion) }}">
-                Ver productos
-              </a>
-            </div>
-          </td>
-        </tr>
-      {% else %}
-        {{ ui.vacio('No se encontraron tiendas activas para evaluar.', 6) }}
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
 
-{# ── Anomalías detectadas por producto ── #}
-{% if salud and salud.anomalias_sku %}
+  <div class="filtros">
+    <form method="get" action="{{ url_for('analitica.pronostico') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1;">
+      <input type="hidden" name="etapa" value="salud"/>
+      <div class="campo">
+        <label class="form-label">Filtrar tienda</label>
+        <select class="input" name="locacion">
+          <option value="">Todas las tiendas</option>
+          {% for l in locaciones %}
+            <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-ghost" type="submit">Aplicar</button>
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('analitica.pronostico', etapa='laboratorio', locacion=id_locacion, horizonte=horizonte_defecto) }}">
+      Siguiente: Laboratorio Offline →
+    </a>
+  </div>
+
   <div class="table-wrap" style="margin-bottom:20px;">
     <div class="table-header">
-      <div class="table-header-title">
-        Anomalías y cambios de demanda por producto ({{ salud.anomalias_sku | length }})
-      </div>
+      <div class="table-header-title">Etapa 1 · Semáforo de Salud de Datos por Tienda ({{ salud.tiendas | length if salud else 0 }})</div>
     </div>
     <table>
       <thead>
         <tr>
-          <th>Producto</th>
+          <th>Semáforo</th>
           <th>Tienda</th>
-          <th>Ritmo base → reciente</th>
-          <th>Indicadores de anomalía</th>
-          <th>Confiabilidad</th>
-          <th>Diagnóstico sugerido</th>
+          <th>Cambio de volumen (14 d)</th>
+          <th>Días en cero / Atípicos</th>
+          <th>Aviso previo al entrenamiento</th>
+          <th>Acción</th>
         </tr>
       </thead>
       <tbody>
-        {% for a in salud.anomalias_sku %}
+        {% for t in (salud.tiendas if salud else []) %}
           <tr>
-            <td style="font-weight:600;">{{ a.producto }}</td>
-            <td>{{ a.locacion }}</td>
-            <td class="mono">
-              {{ (a.media_base) | cantidad(1) }} → {{ (a.media_reciente) | cantidad(1) }} {{ a.unidad_medida }}/d
-            </td>
-            <td style="font-size:11.5px;">
-              <span class="mono {% if ((a.z_nivel or 0) | abs) >= 2.8 %}text-danger{% else %}text-warning{% endif %}">
-                {{ '%+.1f' | format((a.cambio_nivel_pct or 0) | float) }}%
-              </span>
-              · {{ a.dias_atipicos }} atípico(s)
-              {% if a.delta_ceros_pp > 0 %}· +{{ a.delta_ceros_pp | cantidad(0) }} pp sin venta{% endif %}
+            <td>
+              {% if t.semaforo == 'VERDE' %}
+                <span class="badge badge-success">● Verde · Óptimo</span>
+              {% elif t.semaforo == 'AMBAR' %}
+                <span class="badge badge-warning">● Ámbar · Revisar</span>
+              {% else %}
+                <span class="badge badge-danger">● Rojo · Drift crítico</span>
+              {% endif %}
             </td>
             <td>
-              <span class="badge badge-{{ 'danger' if a.estado == 'NO_CONFIABLE' else 'warning' }}">
-                {{ a.confiabilidad }}
-              </span>
+              <strong>{{ t.locacion }}</strong>
+              {% if t.productos_con_anomalia %}
+                <div class="text-muted" style="font-size:11.5px;">{{ t.productos_con_anomalia }} producto(s) con anomalía</div>
+              {% endif %}
             </td>
-            <td style="font-size:12px;">
-              {{ a.motivos[0] if a.motivos else '' }}
+            <td class="mono">
+              <span class="{% if ((t.z_nivel or 0) | abs) >= 2.8 %}text-danger{% elif ((t.z_nivel or 0) | abs) >= 1.8 %}text-warning{% endif %}" style="font-weight:700;">
+                {{ '%+.1f' | format((t.cambio_nivel_pct or 0) | float) }}%
+              </span>
+              <div class="text-muted" style="font-size:11px;">PSI {{ '%.2f' | format((t.psi or 0) | float) }} · Volatilidad {{ t.ratio_volatilidad or 1 }}×</div>
+            </td>
+            <td class="mono" style="font-size:12px;">
+              {{ '%+.1f' | format((t.delta_ceros_pp or 0) | float) }} pp ceros<br/>
+              <span class="text-muted">{{ t.dias_atipicos or 0 }} día(s) atípico(s)</span>
+            </td>
+            <td style="max-width:340px;font-size:12.5px;">
+              {{ t.aviso_pre_entrenamiento or (t.motivos[0] if t.motivos else '') }}
+            </td>
+            <td>
+              <a class="btn btn-ghost btn-sm"
+                 href="{{ url_for('analitica.pronostico', etapa='laboratorio', locacion=t.id_locacion, horizonte=horizonte_defecto) }}">
+                Evaluar tienda →
+              </a>
             </td>
           </tr>
+        {% else %}
+          {{ ui.vacio('No se encontraron tiendas activas para diagnosticar.', 6) }}
         {% endfor %}
       </tbody>
     </table>
   </div>
-{% endif %}
 
-{# ── Pronóstico vigente por producto y tienda ── #}
-<div class="table-wrap" style="margin-bottom:20px;">
-  <div class="table-header">
-    <div class="table-header-title">
-      Proyección de demanda vigente ({{ series | length }} series)
-      {% if id_locacion %}
-        <span class="badge badge-info" style="margin-left:8px;">Filtrado por tienda</span>
-      {% endif %}
+  {% if salud and salud.anomalias_sku %}
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-header-title">Productos con anomalías o ceros recientes ({{ salud.anomalias_sku | length }})</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Tienda</th>
+            <th>Base → Reciente</th>
+            <th>Variación / Ceros</th>
+            <th>Estado</th>
+            <th>Diagnóstico</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in salud.anomalias_sku[:25] %}
+            <tr>
+              <td><strong>{{ a.producto }}</strong></td>
+              <td>{{ a.locacion }}</td>
+              <td class="mono">{{ a.media_base | cantidad(1) }} → {{ a.media_reciente | cantidad(1) }} {{ a.unidad_medida }}/d</td>
+              <td class="mono" style="font-size:12px;">
+                {{ '%+.1f' | format((a.cambio_nivel_pct or 0) | float) }}% · {{ a.dias_atipicos }} atíp.
+                {% if a.delta_ceros_pp > 0 %}· +{{ a.delta_ceros_pp | cantidad(0) }} pp ceros{% endif %}
+              </td>
+              <td>
+                <span class="badge badge-{{ 'danger' if a.estado == 'NO_CONFIABLE' else 'warning' }}">{{ a.confiabilidad }}</span>
+              </td>
+              <td style="font-size:12px;">{{ a.motivos[0] if a.motivos else '' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{# ETAPA 2: LABORATORIO OFFLINE (ENTRENAMIENTO, BACKTEST Y SIM. NEWSVENDOR)    #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{% elif etapa_activa == 'laboratorio' %}
+  <div class="form-card" style="margin-bottom:20px;">
+    <div class="card-title">Etapa 2 · Alcance del Laboratorio Offline (Walk-Forward + Simulación Newsvendor)</div>
+    <form method="post" action="{{ url_for('analitica.pronostico_lab_evaluar') }}"
+          style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+      <div class="campo" style="min-width:220px;flex:1;">
+        <label class="form-label">Tienda</label>
+        <select class="input" name="id_locacion">
+          <option value="">Todas las tiendas activas</option>
+          {% for l in locaciones %}
+            <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo" style="min-width:200px;flex:1;">
+        <label class="form-label">Categoría</label>
+        <select class="input" name="categoria">
+          <option value="">Todas las categorías</option>
+          {% for cat in categorias %}
+            <option value="{{ cat }}" {% if categoria_sel == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo" style="min-width:150px;">
+        <label class="form-label">Horizonte backtest</label>
+        <select class="input" name="horizonte">
+          {% for h in [7, 14, 21] %}
+            <option value="{{ h }}" {% if h == horizonte_defecto %}selected{% endif %}>{{ h }} días</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit">Evaluar Modelos</button>
+    </form>
+    <div class="form-note" style="margin-top:10px;">
+      Cada modelo entrega solo (media, σ) en backtest; la simulación Newsvendor evalúa por fuera la merma simulada y el costo por faltantes.
+      Series evaluadas en este alcance: <strong>{{ lab.alcance.series_evaluadas if lab else 0 }}</strong>.
     </div>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Producto</th>
-        <th>Tienda</th>
-        <th>Próximo día</th>
-        <th>Total horizonte</th>
-        <th>Promedio diario</th>
-        <th>Unidad</th>
-        <th>Vigencia</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in series %}
-        <tr>
-          <td style="font-weight:600;">{{ s.producto }}</td>
-          <td>{{ s.locacion }}</td>
-          <td class="mono">{{ (s.proximo_dia) | cantidad(2) }}</td>
-          <td class="mono" style="font-weight:600;color:var(--role-accent);">
-            {{ (s.total_horizonte) | cantidad(2) }}
-          </td>
-          <td class="mono text-muted">
-            {{ ((s.total_horizonte | float) / (s.horizonte_dias or 1)) | cantidad(2) }}
-          </td>
-          <td class="text-muted" style="font-size:12px;">{{ s.unidad_medida }}</td>
-          <td class="mono" style="font-size:11px;">{{ s.desde }} → {{ s.hasta }}</td>
-        </tr>
-      {% else %}
-        {{ ui.vacio('Aún no hay proyecciones generadas. Pulsa «Actualizar modelos por tienda» para calibrar cada sucursal.', 7) }}
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
 
-{# ── Historial de calibraciones por tienda ── #}
-{% if corridas %}
-  <div class="table-wrap">
+  <div class="table-wrap" style="margin-bottom:20px;">
     <div class="table-header">
-      <div class="table-header-title">Historial de calibraciones por tienda</div>
+      <div class="table-header-title">Comparativa de Modelos — Precisión + FVA + Merma Simulada</div>
     </div>
     <table>
       <thead>
         <tr>
-          <th>Fecha</th>
-          <th>Tienda</th>
-          <th>Horizonte</th>
-          <th>Productos</th>
-          <th>MAE</th>
-          <th>Error (WMAPE)</th>
-          <th>Ejecutó</th>
-          <th>Estado</th>
+          <th>Modelo</th>
+          <th>WMAPE</th>
+          <th>Bias (Sesgo)</th>
+          <th>FVA vs. Naive {{ ui.ayuda('Forecast Value Added: puntos porcentuales de WMAPE que mejora frente al Naive semanal. Positivo = agrega valor real.') }}</th>
+          <th>Merma Simulada</th>
+          <th>Venta Perdida Sim.</th>
+          <th>Costo Total NV</th>
+          <th>Acción</th>
         </tr>
       </thead>
       <tbody>
-        {% for c in corridas %}
+        {% for m in (lab.modelos if lab else []) %}
           <tr>
-            <td class="mono" style="font-size:11px;">{{ c.fecha_ejecucion | fecha_hora }}</td>
-            <td style="font-weight:500;">{{ c.locacion or 'Red completa' }}</td>
-            <td class="mono">{{ c.horizonte_dias }} d</td>
-            <td class="mono">{{ c.n_series }}</td>
-            <td class="mono">{{ (c.mae) | cantidad(2) if c.mae is not none else '—' }}</td>
-            <td class="mono">{{ ((c.wmape) | cantidad(1)) ~ '%' if c.wmape is not none else '—' }}</td>
-            <td style="font-size:12px;">{{ c.ejecutado_por or 'Automático' }}</td>
-            <td>{{ ui.estado(c.estado) }}</td>
+            <td>
+              <div style="font-weight:700;">{{ m.etiqueta }}</div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;">
+                {% if m.recomendado %}<span class="badge badge-success">Mejor costo NV</span>{% endif %}
+                {% if m.es_campeon %}<span class="badge badge-info">Campeón actual</span>{% endif %}
+                {% if m.es_retador %}<span class="badge badge-warning">Retador actual</span>{% endif %}
+                {% if m.es_naive %}<span class="badge badge-neutral">Línea base</span>{% endif %}
+              </div>
+            </td>
+            <td class="mono" style="font-weight:700;">{{ (m.wmape | cantidad(2)) ~ '%' if m.wmape is not none else '—' }}</td>
+            <td class="mono">
+              {% if m.sesgo is not none %}
+                <span class="{% if m.sesgo > 0 %}text-warning{% elif m.sesgo < 0 %}text-info{% endif %}">
+                  {{ '%+.2f' | format(m.sesgo) }} u/d
+                </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="mono">
+              {% if m.es_naive %}
+                <span class="text-muted">0.00 pp (Ref)</span>
+              {% elif m.fva_pp is not none %}
+                <span class="badge badge-{{ 'success' if m.fva_pp > 0 else 'danger' }}">
+                  {{ '%+.2f' | format(m.fva_pp) }} pp
+                </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="mono">
+              {{ m.merma_simulada_unidades | cantidad(1) }} u.<br/>
+              <span class="text-muted" style="font-size:11.5px;">{{ ui.moneda(m.merma_simulada_valor) }}</span>
+            </td>
+            <td class="mono">{{ ui.moneda(m.venta_perdida_valor) }}</td>
+            <td class="mono">
+              <strong>{{ ui.moneda(m.costo_total_simulado) }}</strong>
+              {% if not m.es_naive and m.ahorro_vs_naive_valor > 0 %}
+                <div class="text-success" style="font-size:11px;">Ahorra {{ ui.moneda(m.ahorro_vs_naive_valor) }}</div>
+              {% endif %}
+            </td>
+            <td>
+              {% if not m.es_naive and current_role in ['admin', 'planner'] %}
+                <form method="post" action="{{ url_for('analitica.pronostico_promover_retador') }}" style="margin-bottom:6px;">
+                  <input type="hidden" name="metodo" value="{{ m.modelo }}"/>
+                  {% if id_locacion %}<input type="hidden" name="id_locacion" value="{{ id_locacion }}"/>{% endif %}
+                  {% if categoria_sel %}<input type="hidden" name="categoria" value="{{ categoria_sel }}"/>{% endif %}
+                  <input type="hidden" name="metricas_json" value='{{ {"wmape": m.wmape, "fva_pp": m.fva_pp, "merma_simulada_valor": m.merma_simulada_valor} | tojson }}'/>
+                  <button class="btn {{ 'btn-primary' if m.recomendado else 'btn-ghost' }} btn-sm" type="submit" style="width:100%;">
+                    Promover a Retador →
+                  </button>
+                </form>
+              {% elif m.es_naive %}
+                <span class="text-muted" style="font-size:11.5px;">Referencia</span>
+              {% endif %}
+            </td>
           </tr>
+        {% else %}
+          {{ ui.vacio('No hay series con historia suficiente para evaluar modelos en el alcance seleccionado.', 8) }}
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{# ETAPA 3: GESTOR DE A/B TEST (CONTROL VS. TRATAMIENTO)                       #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{% elif etapa_activa == 'abtest' %}
+  {% if ab_resumen %}
+    {% set exp = ab_resumen.experimento %}
+    {% set ctrl = ab_resumen.control %}
+    {% set trat = ab_resumen.tratamiento %}
+    {% set deltas = ab_resumen.deltas %}
+
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+        <div>
+          <span class="badge badge-info">Experimento A/B Activo</span>
+          <h2 style="margin:8px 0 4px;font-size:20px;">{{ exp.nombre }}</h2>
+          <div class="text-muted" style="font-size:13px;">
+            Inicio: <span class="mono">{{ exp.fecha_inicio }}</span> · Fin estimado: <span class="mono">{{ exp.fecha_fin_estimada }}</span>
+            {% if exp.categoria %}· Categoría: <strong>{{ exp.categoria }}</strong>{% endif %}
+          </div>
+        </div>
+        <div style="text-align:right;min-width:220px;">
+          <div style="font-size:18px;font-weight:800;">Día {{ ab_resumen.dia_actual }} de {{ ab_resumen.duracion_dias }}</div>
+          <div class="ft-progress-track">
+            <div class="ft-progress-fill" style="width: {{ ab_resumen.avance_pct }}%;"></div>
+          </div>
+          <div class="text-muted" style="font-size:11.5px;">Avance {{ ab_resumen.avance_pct }}% · {{ ab_resumen.texto_veredicto }}</div>
+        </div>
+      </div>
+
+      {% if current_role in ['admin', 'planner'] %}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+          <form method="post" action="{{ url_for('analitica.pronostico_ab_consolidar', id_exp=exp.id_experimento) }}">
+            <button class="btn btn-ghost btn-sm" type="submit">Consolidar ventas y mermas reales</button>
+          </form>
+          <form method="post" action="{{ url_for('analitica.pronostico_ab_decidir', id_exp=exp.id_experimento) }}" style="margin-left:auto;">
+            <input type="hidden" name="decision" value="DESCARTADO"/>
+            <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--danger);border-color:var(--danger);">
+              Descartar Retador
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('analitica.pronostico_ab_decidir', id_exp=exp.id_experimento) }}">
+            <input type="hidden" name="decision" value="PROMOVIDO"/>
+            <button class="btn btn-primary btn-sm" type="submit">
+              Promover Retador a Producción ✓
+            </button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+
+    {# Comparativa lado a lado Grupo A vs Grupo B #}
+    <div class="ft-ab-grid">
+      <div class="ft-ab-card control">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span class="badge badge-info">Grupo A · Control (Campeón)</span>
+          <span class="mono text-muted" style="font-size:12px;">{{ ab_resumen.asignaciones.CONTROL | length }} tiendas</span>
+        </div>
+        <h3 style="margin:0 0 12px;font-size:16px;">{{ exp.etiqueta_campeon }}</h3>
+        <div class="detalle-grid">
+          <div class="detalle-item"><div class="detalle-etiqueta">Ventas reales</div><div class="detalle-valor">{{ ui.moneda(ctrl.ventas_valor) }}</div></div>
+          <div class="detalle-item"><div class="detalle-etiqueta">Merma real</div><div class="detalle-valor">{{ ui.moneda(ctrl.merma_valor) }} <span class="text-muted" style="font-size:12px;">({{ ctrl.merma_unidades | cantidad(1) }} u.)</span></div></div>
+          <div class="detalle-item"><div class="detalle-etiqueta">Tasa de merma</div><div class="detalle-valor">{{ ctrl.tasa_merma_pct | cantidad(2) }}%</div></div>
+          <div class="detalle-item"><div class="detalle-etiqueta">WMAPE observado</div><div class="detalle-valor">{{ (ctrl.wmape_real | cantidad(2)) ~ '%' if ctrl.wmape_real is not none else '—' }}</div></div>
+        </div>
+        <div class="text-muted" style="font-size:11.5px;margin-top:12px;">
+          Tiendas: {{ ab_resumen.asignaciones.CONTROL | map(attribute='locacion') | join(', ') }}
+        </div>
+      </div>
+
+      <div class="ft-ab-card tratamiento">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span class="badge badge-warning">Grupo B · Tratamiento (Retador)</span>
+          <span class="mono text-muted" style="font-size:12px;">{{ ab_resumen.asignaciones.TRATAMIENTO | length }} tiendas</span>
+        </div>
+        <h3 style="margin:0 0 12px;font-size:16px;">{{ exp.etiqueta_retador }}</h3>
+        <div class="detalle-grid">
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Ventas reales</div>
+            <div class="detalle-valor">
+              {{ ui.moneda(trat.ventas_valor) }}
+              <span class="badge badge-{{ 'success' if deltas.ventas_pct >= 0 else 'warning' }}" style="font-size:10.5px;">{{ '%+.1f' | format(deltas.ventas_pct) }}%</span>
+            </div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Merma real</div>
+            <div class="detalle-valor">{{ ui.moneda(trat.merma_valor) }} <span class="text-muted" style="font-size:12px;">({{ trat.merma_unidades | cantidad(1) }} u.)</span></div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">Tasa de merma</div>
+            <div class="detalle-valor">
+              {{ trat.tasa_merma_pct | cantidad(2) }}%
+              <span class="badge badge-{{ 'success' if deltas.tasa_merma_pp <= 0 else 'danger' }}" style="font-size:10.5px;">{{ '%+.2f' | format(deltas.tasa_merma_pp) }} pp</span>
+            </div>
+          </div>
+          <div class="detalle-item">
+            <div class="detalle-etiqueta">WMAPE observado</div>
+            <div class="detalle-valor">
+              {{ (trat.wmape_real | cantidad(2)) ~ '%' if trat.wmape_real is not none else '—' }}
+              {% if deltas.wmape_pp is not none %}
+                <span class="badge badge-{{ 'success' if deltas.wmape_pp <= 0 else 'warning' }}" style="font-size:10.5px;">{{ '%+.2f' | format(deltas.wmape_pp) }} pp</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="text-muted" style="font-size:11.5px;margin-top:12px;">
+          Tiendas: {{ ab_resumen.asignaciones.TRATAMIENTO | map(attribute='locacion') | join(', ') }}
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-bottom:20px;">
+      <div class="table-header">
+        <div class="table-header-title">Bitácora diaria auditada del A/B Test (Control vs. Tratamiento)</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Ventas Control (A)</th>
+            <th>Ventas Tratamiento (B)</th>
+            <th>Merma Control (A)</th>
+            <th>Merma Tratamiento (B)</th>
+            <th>WMAPE (A vs B)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in ab_resumen.serie_diaria %}
+            {% set w_a = ((d.err_control | float) / (d.real_control | float) * 100) if (d.real_control | float) > 0 else None %}
+            {% set w_b = ((d.err_tratamiento | float) / (d.real_tratamiento | float) * 100) if (d.real_tratamiento | float) > 0 else None %}
+            <tr>
+              <td class="mono">{{ d.fecha }}</td>
+              <td class="mono">{{ ui.moneda(d.ventas_control) }}</td>
+              <td class="mono">{{ ui.moneda(d.ventas_tratamiento) }}</td>
+              <td class="mono">{{ ui.moneda(d.merma_control) }}</td>
+              <td class="mono">{{ ui.moneda(d.merma_tratamiento) }}</td>
+              <td class="mono">
+                {{ (w_a | cantidad(1)) ~ '%' if w_a is not none else '—' }}
+                vs.
+                {{ (w_b | cantidad(1)) ~ '%' if w_b is not none else '—' }}
+              </td>
+            </tr>
+          {% else %}
+            {{ ui.vacio('Pulsa «Consolidar ventas y mermas reales» para registrar los datos de cada día.', 6) }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    {# Crear nuevo A/B Test con asignación balanceada automática #}
+    <div class="form-card" style="margin-bottom:20px;">
+      <div class="card-title">Etapa 3 · Configurar A/B Test (Control vs. Tratamiento)</div>
+      <form method="post" action="{{ url_for('analitica.pronostico_ab_crear') }}">
+        <div class="grid-2" style="margin-bottom:14px;">
+          <div class="campo">
+            <label class="form-label">Nombre del experimento</label>
+            <input class="input" name="nombre" type="text"
+                   value="{{ gobernanza.campeon.metodo }} vs {{ gobernanza.retador.metodo if gobernanza.retador else 'ETS_HOLT_WINTERS' }}" required/>
+          </div>
+          <div class="campo">
+            <label class="form-label">Fecha de inicio (para cruzar ventas y mermas reales)</label>
+            <input class="input" name="fecha_inicio" type="date" value="{{ fecha_inicio_ab_def }}"/>
+          </div>
+          <div class="campo">
+            <label class="form-label">Grupo A · Campeón (Control)</label>
+            <select class="input" name="modelo_campeon">
+              {% for k, meta in metodos.items() %}
+                <option value="{{ k }}" {% if gobernanza.campeon.metodo == k %}selected{% endif %}>{{ meta.etiqueta }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="campo">
+            <label class="form-label">Grupo B · Retador (Tratamiento)</label>
+            {% set ret_def = gobernanza.retador.metodo if gobernanza.retador else 'ETS_HOLT_WINTERS' %}
+            <select class="input" name="modelo_retador">
+              {% for k, meta in metodos.items() %}
+                <option value="{{ k }}" {% if ret_def == k %}selected{% endif %}>{{ meta.etiqueta }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="campo">
+            <label class="form-label">Duración (días)</label>
+            <select class="input" name="duracion_dias">
+              {% for d in [14, 21, 30] %}
+                <option value="{{ d }}" {% if d == 21 %}selected{% endif %}>{{ d }} días</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="campo">
+            <label class="form-label">Categoría (opcional)</label>
+            <select class="input" name="categoria">
+              <option value="">Todas</option>
+              {% for cat in categorias %}
+                <option value="{{ cat }}">{{ cat }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrap" style="margin-bottom:14px;">
+          <div class="table-header">
+            <div class="table-header-title">Asignación balanceada por volumen (Grupo A Control vs. Grupo B Tratamiento)</div>
+          </div>
+          <table>
+            <thead><tr><th>Tienda</th><th>Ventas 30 d</th><th>Grupo asignado</th></tr></thead>
+            <tbody>
+              {% for t in asignacion_sugerida %}
+                <tr>
+                  <td><strong>{{ t.locacion }}</strong></td>
+                  <td class="mono">{{ t.volumen_30d | cantidad(0) }} u.</td>
+                  <td>
+                    <label style="margin-right:14px;">
+                      <input type="radio" name="grupo_loc_{{ t.id_locacion }}" value="CONTROL" {% if t.grupo == 'CONTROL' %}checked{% endif %}/>
+                      Grupo A (Control)
+                    </label>
+                    <label>
+                      <input type="radio" name="grupo_loc_{{ t.id_locacion }}" value="TRATAMIENTO" {% if t.grupo == 'TRATAMIENTO' %}checked{% endif %}/>
+                      Grupo B (Tratamiento)
+                    </label>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if current_role in ['admin', 'planner'] %}
+          <button class="btn btn-primary" type="submit">Iniciar A/B Test y consolidar datos reales</button>
+        {% endif %}
+      </form>
+    </div>
+  {% endif %}
+
+  {% if ab_historial %}
+    <details class="plegable">
+      <summary>Historial de experimentos A/B ({{ ab_historial | length }})</summary>
+      <div class="plegable-cuerpo">
+        <table>
+          <thead><tr><th>Nombre</th><th>Control vs. Retador</th><th>Inicio → Fin</th><th>Estado</th><th>Cierre</th></tr></thead>
+          <tbody>
+            {% for h in ab_historial %}
+              <tr>
+                <td><strong>{{ h.nombre }}</strong></td>
+                <td class="mono">{{ h.modelo_campeon }} vs. {{ h.modelo_retador }}</td>
+                <td class="mono">{{ h.fecha_inicio }} → {{ h.fecha_fin_estimada }}</td>
+                <td><span class="badge badge-{{ 'info' if h.estado == 'ACTIVO' else ('success' if h.estado == 'PROMOVIDO' else 'neutral') }}">{{ h.estado }}</span></td>
+                <td class="mono">{{ h.fecha_cierre | fecha_hora if h.fecha_cierre else 'En curso' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {% endif %}
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{# ETAPA 4: MOTOR DE INFERENCIA → NEWSVENDOR FEFO (PRODUCCIÓN)                 #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{% else %}
+  {% set rp = pipeline.resumen if pipeline else {'total_series': 0, 'con_orden_sugerida': 0, 'unidades_sugeridas': 0, 'inventario_en_riesgo': 0, 'ahorro_esperado': 0} %}
+
+  <div class="ft-pipeline-steps">
+    <div class="ft-pipeline-box">
+      <div class="badge badge-info" style="margin-bottom:6px;">1 · Módulo Pronóstico (Puro)</div>
+      <div style="font-weight:700;margin-bottom:4px;">Tabla estándar de demanda</div>
+      <div class="text-muted" style="font-size:12px;">
+        Genera <code>(fecha, tienda, producto, media, desviacion_std)</code> sin conocer FEFO ni costos de merma.
+      </div>
+    </div>
+    <div class="ft-pipeline-box">
+      <div class="badge badge-warning" style="margin-bottom:6px;">2 · Módulo Inventario FEFO</div>
+      <div style="font-weight:700;margin-bottom:4px;">Stock por fecha de caducidad</div>
+      <div class="text-muted" style="font-size:12px;">
+        Desglosa existencias que caducan <strong>Hoy</strong>, <strong>Mañana</strong>, en <strong>2 días</strong> y <strong>&gt;2 días</strong>.
+      </div>
+    </div>
+    <div class="ft-pipeline-box">
+      <div class="badge badge-success" style="margin-bottom:6px;">3 · Módulo Newsvendor FEFO</div>
+      <div style="font-weight:700;margin-bottom:4px;">Cuantil Q* y Orden Sugerida</div>
+      <div class="text-muted" style="font-size:12px;">
+        Cruza <code>(μ, σ)</code> con el inventario útil restante (descontando riesgo de caducidad) y calcula la orden.
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-grid-4">
+    {{ ui.kpi('Series en producción', rp.total_series, 'Con (μ, σ) vigente', icono='tendencia') }}
+    {{ ui.kpi('Órdenes sugeridas', rp.con_orden_sugerida, (rp.unidades_sugeridas | cantidad(0)) ~ ' unidades totales', '#0284c7', icono='carrito') }}
+    {{ ui.kpi('Stock en riesgo FEFO', rp.inventario_en_riesgo | cantidad(1), 'Descontado antes de pedir', '#d97706', icono='reloj') }}
+    {{ ui.kpi('Ahorro esperado NV', ui.moneda(rp.ahorro_esperado), 'Vs. política simple', '#16a34a', icono='dinero') }}
+  </div>
+
+  <div class="form-card" style="margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;">
+      <form method="get" action="{{ url_for('analitica.pronostico') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <input type="hidden" name="etapa" value="produccion"/>
+        <div class="campo">
+          <label class="form-label">Tienda</label>
+          <select class="input" name="locacion">
+            <option value="">Todas</option>
+            {% for l in locaciones %}
+              <option value="{{ l.id_locacion }}" {% if id_locacion == l.id_locacion %}selected{% endif %}>{{ l.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="campo">
+          <label class="form-label">Horizonte</label>
+          <select class="input" name="horizonte">
+            {% for h in [7, 14, 21] %}
+              <option value="{{ h }}" {% if h == horizonte_defecto %}selected{% endif %}>{{ h }} días</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-ghost" type="submit">Filtrar</button>
+      </form>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        {% if current_role in ['admin', 'planner'] %}
+          <form method="post" action="{{ url_for('analitica.pronostico_produccion_ejecutar') }}" style="display:flex;gap:8px;align-items:center;">
+            {% if id_locacion %}<input type="hidden" name="id_locacion" value="{{ id_locacion }}"/>{% endif %}
+            <input type="hidden" name="horizonte" value="{{ horizonte_defecto }}"/>
+            <button class="btn btn-primary" type="submit">Ejecutar Pipeline de Producción</button>
+          </form>
+        {% endif %}
+        <a class="btn btn-ghost" href="{{ url_for('analitica.reabastecimiento') }}">Aprobar órdenes en Reabastecimiento →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap" style="margin-bottom:20px;">
+    <div class="table-header">
+      <div class="table-header-title">Pipeline Integrado: Pronóstico (μ ± σ) → Inventario FEFO → Orden Newsvendor ({{ pipeline.filas | length if pipeline else 0 }})</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Producto / Tienda</th>
+          <th>Pronóstico (μ ± σ)</th>
+          <th>Cuantil Q* (F*)</th>
+          <th>Stock FEFO por caducidad</th>
+          <th>Útil / En riesgo</th>
+          <th>Orden sugerida</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in (pipeline.filas if pipeline else []) %}
+          <tr>
+            <td>
+              <div style="font-weight:700;">{{ f.producto }}</div>
+              <div class="text-muted" style="font-size:11.5px;">
+                {{ f.locacion }} · {{ f.modelo_aplicado }}
+                {% if f.grupo_ab %}<span class="badge badge-info" style="font-size:10px;">A/B {{ f.grupo_ab }}</span>{% endif %}
+              </div>
+              <div class="mono text-muted" style="font-size:10.5px;">{{ f.desde }} → {{ f.hasta }}</div>
+            </td>
+            <td class="mono">
+              <strong>{{ f.media | cantidad(1) }}</strong> ± {{ f.desviacion_std | cantidad(1) }} {{ f.unidad_medida }}
+              <div class="text-muted" style="font-size:11px;">{{ f.media_diaria | cantidad(2) }}/día</div>
+            </td>
+            <td class="mono">
+              <strong>{{ f.cuantil_optimo | cantidad(1) }}</strong>
+              <div class="text-muted" style="font-size:11px;">F* {{ '%.2f' | format(f.fractil_critico) }}</div>
+            </td>
+            <td>
+              <div class="ft-fefo-chips">
+                {% if f.caduca_hoy > 0 %}<span class="ft-chip ft-chip-hoy">Hoy: {{ f.caduca_hoy | cantidad(0) }}</span>{% endif %}
+                {% if f.caduca_manana > 0 %}<span class="ft-chip ft-chip-manana">Mañ: {{ f.caduca_manana | cantidad(0) }}</span>{% endif %}
+                {% if f.caduca_2_dias > 0 %}<span class="ft-chip ft-chip-2d">2d: {{ f.caduca_2_dias | cantidad(0) }}</span>{% endif %}
+                {% set resto = f.caduca_3_5_dias + f.caduca_mas_5_dias %}
+                {% if resto > 0 %}<span class="ft-chip ft-chip-fresco">&gt;2d: {{ resto | cantidad(0) }}</span>{% endif %}
+                {% if f.stock_fisico == 0 %}<span class="text-muted" style="font-size:11px;">Sin stock</span>{% endif %}
+              </div>
+            </td>
+            <td class="mono">
+              <strong>{{ f.inventario_util | cantidad(1) }}</strong> útil
+              {% if f.inventario_riesgo > 0 %}
+                <div class="text-danger" style="font-size:11px;">−{{ f.inventario_riesgo | cantidad(1) }} riesgo</div>
+              {% endif %}
+            </td>
+            <td class="mono">
+              {% if f.orden_sugerida > 0 %}
+                <span class="badge badge-{{ 'danger' if f.prioridad == 'ALTA' else ('warning' if f.prioridad == 'MEDIA' else 'info') }}">
+                  {{ f.orden_sugerida | cantidad(0) }} {{ f.unidad_medida }}
+                </span>
+                <div class="text-muted" style="font-size:10.5px;">Prioridad {{ f.prioridad }}</div>
+              {% else %}
+                <span class="badge badge-success">Cubierto</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('Aún no hay tabla de pronóstico generada. Pulsa «Ejecutar Pipeline de Producción».', 6) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if corridas %}
+    <details class="plegable">
+      <summary>Historial de ejecuciones de inferencia ({{ corridas | length }})</summary>
+      <div class="plegable-cuerpo">
+        <table>
+          <thead>
+            <tr><th>Fecha</th><th>Tienda</th><th>Método</th><th>Horizonte</th><th>Series</th><th>MAE</th><th>WMAPE</th><th>Estado</th></tr>
+          </thead>
+          <tbody>
+            {% for c in corridas %}
+              <tr>
+                <td class="mono" style="font-size:11px;">{{ c.fecha_ejecucion | fecha_hora }}</td>
+                <td>{{ c.locacion or 'Red completa' }}</td>
+                <td class="mono">{{ c.metodo }}</td>
+                <td class="mono">{{ c.horizonte_dias }} d</td>
+                <td class="mono">{{ c.n_series }}</td>
+                <td class="mono">{{ (c.mae) | cantidad(2) if c.mae is not none else '—' }}</td>
+                <td class="mono">{{ ((c.wmape) | cantidad(1)) ~ '%' if c.wmape is not none else '—' }}</td>
+                <td>{{ ui.estado(c.estado) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {% endif %}
 {% endif %}
 {% endblock %}

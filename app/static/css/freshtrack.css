@@ -290,3 +290,82 @@ details.plegable > .plegable-cuerpo > .card, details.plegable > .plegable-cuerpo
 @keyframes ftHighlight { 0% { background: var(--success-bg); } 100% { background: transparent; } }
 .card .stat-grid-3, .card .stat-grid-4 { gap: 12px; }
 .panel-pestanas .kpi-card .kpi-value { font-size: 24px; }
+
+/* ── Flujo guiado de Pronósticos (4 Etapas) ── */
+.ft-stepper {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+  margin-bottom: 18px;
+}
+.ft-step {
+  display: flex; align-items: flex-start; gap: 12px; text-decoration: none;
+  background: var(--card); color: var(--foreground);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; box-shadow: var(--shadow);
+  transition: border-color .15s, transform .12s, box-shadow .15s;
+}
+.ft-step:hover { border-color: var(--role-accent, var(--primary)); transform: translateY(-1px); }
+.ft-step.active {
+  border-color: var(--role-accent, var(--primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--role-accent, #16a34a) 22%, transparent), var(--shadow);
+}
+.ft-step-num {
+  width: 28px; height: 28px; border-radius: 99px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  background: var(--muted); color: var(--muted-foreground);
+}
+.ft-step.active .ft-step-num {
+  background: var(--role-accent, var(--primary)); color: #fff;
+}
+.ft-step-body { min-width: 0; flex: 1; }
+.ft-step-title { font-size: 13.5px; font-weight: 700; line-height: 1.3; margin-bottom: 3px; }
+.ft-step-sub { font-size: 11.5px; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.ft-guide-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 4px solid var(--role-accent, var(--primary));
+  border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; box-shadow: var(--shadow);
+}
+
+.ft-ab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px; }
+.ft-ab-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; box-shadow: var(--shadow);
+}
+.ft-ab-card.control { border-top: 3px solid #0284c7; }
+.ft-ab-card.tratamiento { border-top: 3px solid #7c3aed; }
+
+.ft-progress-track {
+  width: 100%; height: 10px; border-radius: 99px; background: var(--muted); overflow: hidden; margin: 8px 0;
+}
+.ft-progress-fill {
+  height: 100%; border-radius: 99px; background: var(--role-accent, var(--primary)); transition: width .25s ease;
+}
+
+.ft-pipeline-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
+.ft-pipeline-box {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; box-shadow: var(--shadow);
+}
+.ft-fefo-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ft-chip {
+  display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ft-chip-hoy    { background: var(--danger-bg); color: #b91c1c; border: 1px solid var(--danger-border); }
+.ft-chip-manana { background: var(--warning-bg); color: #92400e; border: 1px solid var(--warning-border); }
+.ft-chip-2d     { background: var(--info-bg); color: #075985; border: 1px solid var(--info-border); }
+.ft-chip-fresco { background: var(--success-bg); color: #166534; border: 1px solid var(--success-border); }
+html[data-theme="dark"] .ft-chip-hoy    { color: #fca5a5; }
+html[data-theme="dark"] .ft-chip-manana { color: #fcd34d; }
+html[data-theme="dark"] .ft-chip-2d     { color: #7dd3fc; }
+html[data-theme="dark"] .ft-chip-fresco { color: #86efac; }
+
+@media (max-width: 1024px) {
+  .ft-stepper { grid-template-columns: repeat(2, 1fr); }
+  .ft-pipeline-steps, .ft-ab-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .ft-stepper { grid-template-columns: 1fr; }
+}

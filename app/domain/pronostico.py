@@ -27,6 +27,7 @@ analitica.forecast_result (producto, tienda, fecha, demanda pronosticada).
 from __future__ import annotations
 
 import math
+from statistics import NormalDist
 import time
 from datetime import date, datetime, timedelta, timezone
 
@@ -37,12 +38,21 @@ from app.db import a_float, a_int, config_valor, escalar, one, query, transaccio
 from app.events.dispatcher import publicar_evento
 from app.services.doc_store import guardar_pronostico
 
-METODOS_BASE = ("SUAVIZACION_EXPONENCIAL", "MEDIA_MOVIL_PONDERADA", "MEDIA_MOVIL")
+METODOS_BASE = (
+    "SUAVIZACION_EXPONENCIAL",
+    "ETS_HOLT_WINTERS",
+    "MEDIA_MOVIL_PONDERADA",
+    "MEDIA_MOVIL",
+)
 
 METODOS = {
     "AUTO": {
         "etiqueta": "Automático por tienda",
         "descripcion": "Evalúa estrategias de demanda dentro de cada tienda y elige automáticamente la de menor error sin configuración manual.",
+    },
+    "ETS_HOLT_WINTERS": {
+        "etiqueta": "ETS (Tendencia + Estacionalidad)",
+        "descripcion": "Suavización exponencial doble con tendencia amortiguada e índice de estacionalidad semanal.",
     },
     "MEDIA_MOVIL": {
         "etiqueta": "Media móvil",
@@ -57,6 +67,14 @@ METODOS = {
         "descripcion": "Suavización exponencial simple (SES) con factor alfa.",
     },
 }
+
+
+def cuantil_normal(media: float, desviacion_std: float, probabilidad: float) -> float:
+    """Calcula un cuantil bajo distribución Normal(media, desviacion_std) acotada >= 0."""
+    p = min(0.99, max(0.01, float(probabilidad)))
+    sigma = max(0.0, float(desviacion_std))
+    z = NormalDist(0.0, 1.0).inv_cdf(p)
+    return round(max(0.0, float(media) + z * sigma), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +141,42 @@ def _suavizacion_exponencial(valores: list[float], alpha: float) -> float:
     return nivel
 
 
-def _nivel(valores: list[float], metodo: str, ventana: int, alpha: float) -> float:
+def _ets_holt_winters(
+    valores: list[float],
+    alpha: float = 0.30,
+    beta: float = 0.10,
+    phi: float = 0.85,
+    pasos: int = 1,
+) -> float:
+    """
+    Suavización exponencial doble (Holt con tendencia amortiguada) sobre la
+    serie previamente desestacionalizada por día de semana.
+    """
+    if not valores:
+        return 0.0
+    if len(valores) == 1:
+        return max(0.0, valores[0])
+    alpha = min(0.99, max(0.01, alpha))
+    beta = min(0.50, max(0.01, beta))
+    nivel = valores[0]
+    tendencia = valores[1] - valores[0]
+    for valor in valores[1:]:
+        nivel_prev = nivel
+        nivel = alpha * valor + (1.0 - alpha) * (nivel_prev + phi * tendencia)
+        tendencia = beta * (nivel - nivel_prev) + (1.0 - beta) * phi * tendencia
+    pasos = max(1, int(pasos))
+    factor_amort = sum(phi ** k for k in range(1, pasos + 1))
+    return max(0.0, nivel + factor_amort * tendencia)
+
+
+def _nivel(
+    valores: list[float],
+    metodo: str,
+    ventana: int,
+    alpha: float,
+    *,
+    pasos: int = 1,
+) -> float:
     if not valores:
         return 0.0
     if metodo == "MEDIA_MOVIL":
@@ -132,6 +185,8 @@ def _nivel(valores: list[float], metodo: str, ventana: int, alpha: float) -> flo
         return _media_movil_ponderada(valores, ventana)
     if metodo == "SUAVIZACION_EXPONENCIAL":
         return _suavizacion_exponencial(valores, alpha)
+    if metodo == "ETS_HOLT_WINTERS":
+        return _ets_holt_winters(valores, alpha=alpha, pasos=pasos)
     raise ValueError(f"Método de pronóstico desconocido: {metodo}")
 
 
@@ -142,10 +197,12 @@ def _pronosticar_fecha(
     ventana: int,
     alpha: float,
     factores: dict[int, float],
+    *,
+    horizonte_paso: int = 1,
 ) -> float:
     """Pronóstico para una fecha concreta usando solo los datos anteriores."""
     ajustados = [v / factores[f.weekday()] for f, v in serie]
-    nivel = _nivel(ajustados, metodo, ventana, alpha)
+    nivel = _nivel(ajustados, metodo, ventana, alpha, pasos=horizonte_paso)
     return max(0.0, nivel * factores[objetivo.weekday()])
 
 
@@ -200,18 +257,25 @@ def _pronosticar_serie_base(
     factores = _factores_semana(serie)
     dias_backtest = min(horizonte, max(1, len(serie) // 5))
 
-    reales, pronosticados, naive_pronosticados = [], [], []
+    reales, pronosticados, naive_pronosticados, backtest_puntos = [], [], [], []
     if len(serie) > dias_backtest:
         for i in range(len(serie) - dias_backtest, len(serie)):
             entrenamiento = serie[:i]
             fecha, real = serie[i]
-            pronosticados.append(
-                _pronosticar_fecha(entrenamiento, fecha, metodo, ventana, alpha, factores)
-            )
+            pred_bt = _pronosticar_fecha(entrenamiento, fecha, metodo, ventana, alpha, factores)
+            pronosticados.append(pred_bt)
             # Predicción ingenua (Naive): mismo día de la semana anterior o último día observado
             naive_val = entrenamiento[-7][1] if len(entrenamiento) >= 7 else (entrenamiento[-1][1] if entrenamiento else 0.0)
             naive_pronosticados.append(naive_val)
             reales.append(real)
+            backtest_puntos.append(
+                {
+                    "fecha": fecha,
+                    "real": round(float(real), 4),
+                    "pred": round(float(pred_bt), 4),
+                    "naive": round(float(naive_val), 4),
+                }
+            )
 
     metricas = _metricas(reales, pronosticados)
     metricas_naive = _metricas(reales, naive_pronosticados)
@@ -219,17 +283,34 @@ def _pronosticar_serie_base(
     if metricas["mae"] is not None and metricas_naive["mae"] and metricas_naive["mae"] > 0:
         mejora_vs_naive = round((metricas_naive["mae"] - metricas["mae"]) / metricas_naive["mae"] * 100, 2)
 
+    nivel_base = _nivel([v / factores[f.weekday()] for f, v in serie], metodo, ventana, alpha)
+    if reales:
+        residuos = [r - p for r, p in zip(reales, pronosticados)]
+        sigma_diaria = math.sqrt(sum(e * e for e in residuos) / len(residuos))
+    else:
+        sigma_diaria = max(nivel_base * 0.15, 0.25)
+    if nivel_base > 0:
+        sigma_diaria = max(sigma_diaria, nivel_base * 0.05, 0.10)
+    sigma_diaria = round(sigma_diaria, 4)
+
     pronostico = []
     for h in range(1, horizonte + 1):
         objetivo = fecha_base + timedelta(days=h)
+        valor_h = _pronosticar_fecha(
+            serie,
+            objetivo,
+            metodo,
+            ventana,
+            alpha,
+            factores,
+            horizonte_paso=h,
+        )
         pronostico.append(
             {
                 "fecha": objetivo,
                 "horizonte_dia": h,
-                "valor": round(
-                    _pronosticar_fecha(serie, objetivo, metodo, ventana, alpha, factores),
-                    2,
-                ),
+                "valor": round(valor_h, 2),
+                "desviacion_std": sigma_diaria,
             }
         )
 
@@ -244,12 +325,9 @@ def _pronosticar_serie_base(
         "alpha_ganador": alpha,
         "ventana_ganador": ventana,
         "estrategia_etiqueta": METODOS[metodo]["etiqueta"],
-        "nivel_ajustado": round(
-            _nivel(
-                [v / factores[f.weekday()] for f, v in serie], metodo, ventana, alpha
-            ),
-            2,
-        ),
+        "nivel_ajustado": round(nivel_base, 2),
+        "sigma_diaria": sigma_diaria,
+        "backtest_puntos": backtest_puntos,
     }
 
 
@@ -272,6 +350,7 @@ def pronosticar_serie(
     candidatos = (
         ("SUAVIZACION_EXPONENCIAL", 28, 0.25),
         ("SUAVIZACION_EXPONENCIAL", 28, 0.45),
+        ("ETS_HOLT_WINTERS", 28, 0.30),
         ("MEDIA_MOVIL_PONDERADA", 21, 0.30),
         ("MEDIA_MOVIL", 28, 0.30),
     )
@@ -520,6 +599,10 @@ def _ejecutar_pronostico_tienda(
     dias_historia: int = 120,
     min_dias_historia: int = 14,
     id_sku: int | None = None,
+    proposito: str = "PRODUCCION",
+    id_experimento: str | None = None,
+    grupo_ab: str | None = None,
+    categoria: str | None = None,
 ) -> dict:
     """Entrena/calibra y persiste un modelo de pronóstico independiente para una tienda."""
     loc_row = one(
@@ -533,18 +616,24 @@ def _ejecutar_pronostico_tienda(
     fecha_fin = escalar("SELECT max(fecha) FROM analitica.v_demanda_diaria") or date.today()
     fecha_inicio = fecha_fin - timedelta(days=dias_historia)
 
-    condiciones = ["fecha >= :inicio", "id_locacion = :id_locacion"]
+    condiciones = ["v.fecha >= :inicio", "v.id_locacion = :id_locacion"]
     params: dict = {"inicio": fecha_inicio, "id_locacion": id_locacion}
     if id_sku:
-        condiciones.append("id_sku = :id_sku")
+        condiciones.append("v.id_sku = :id_sku")
         params["id_sku"] = id_sku
+    join_prod = ""
+    if categoria:
+        join_prod = "JOIN operacion.producto p ON p.id_sku = v.id_sku"
+        condiciones.append("p.categoria = :categoria")
+        params["categoria"] = categoria
 
     filas = query(
         f"""
-        SELECT id_sku, id_locacion, fecha, cantidad
-        FROM analitica.v_demanda_diaria
+        SELECT v.id_sku, v.id_locacion, v.fecha, v.cantidad
+        FROM analitica.v_demanda_diaria v
+        {join_prod}
         WHERE {' AND '.join(condiciones)}
-        ORDER BY id_sku, fecha
+        ORDER BY v.id_sku, v.fecha
         """,
         **params,
     )
@@ -642,9 +731,9 @@ def _ejecutar_pronostico_tienda(
                 """
                 INSERT INTO analitica.forecast_run
                     (id_locacion, metodo, parametros, periodo_inicio, periodo_fin,
-                     horizonte_dias, id_usuario, estado, n_series)
+                     horizonte_dias, id_usuario, estado, n_series, proposito, id_experimento)
                 VALUES (:loc, :metodo, CAST(:params AS jsonb), :inicio, :fin, :horizonte,
-                        CAST(:uid AS uuid), 'PARCIAL', 0)
+                        CAST(:uid AS uuid), 'PARCIAL', 0, :proposito, CAST(:id_exp AS uuid))
                 RETURNING id_run::text
                 """
             ),
@@ -656,20 +745,30 @@ def _ejecutar_pronostico_tienda(
                 "fin": fecha_fin,
                 "horizonte": horizonte,
                 "uid": usuario["id_usuario"],
+                "proposito": proposito,
+                "id_exp": id_experimento,
             },
         ).scalar()
 
         for res in resultados:
+            mod_aplicado = res.get("metodo_ganador", metodo)
             for punto in res["pronostico"]:
                 conn.execute(
                     text(
                         """
                         INSERT INTO analitica.forecast_result
                             (id_run, id_sku, id_locacion, fecha_objetivo,
-                             horizonte_dia, demanda_pronosticada)
-                        VALUES (CAST(:id_run AS uuid), :sku, :loc, :fecha, :h, :valor)
+                             horizonte_dia, demanda_pronosticada, desviacion_std,
+                             modelo_aplicado, id_experimento, grupo_ab)
+                        VALUES (CAST(:id_run AS uuid), :sku, :loc, :fecha, :h, :valor,
+                                :sigma, :mod_ap, CAST(:id_exp AS uuid), :grupo_ab)
                         ON CONFLICT (id_run, id_sku, id_locacion, fecha_objetivo)
-                        DO UPDATE SET demanda_pronosticada = EXCLUDED.demanda_pronosticada
+                        DO UPDATE SET
+                            demanda_pronosticada = EXCLUDED.demanda_pronosticada,
+                            desviacion_std = EXCLUDED.desviacion_std,
+                            modelo_aplicado = EXCLUDED.modelo_aplicado,
+                            id_experimento = EXCLUDED.id_experimento,
+                            grupo_ab = EXCLUDED.grupo_ab
                         """
                     ),
                     {
@@ -679,6 +778,10 @@ def _ejecutar_pronostico_tienda(
                         "fecha": punto["fecha"],
                         "h": punto["horizonte_dia"],
                         "valor": punto["valor"],
+                        "sigma": punto.get("desviacion_std"),
+                        "mod_ap": mod_aplicado,
+                        "id_exp": id_experimento,
+                        "grupo_ab": grupo_ab,
                     },
                 )
 
@@ -1607,3 +1710,190 @@ def consolidar_demanda_real() -> int:
             )
         )
         return res.rowcount or 0
+
+
+# ---------------------------------------------------------------------------
+# Contratos desacoplados para Etapas 1 y 4
+# ---------------------------------------------------------------------------
+def evaluar_salud_datos(
+    id_locacion: int | None = None,
+    dias_historia: int = 120,
+    ventana_reciente: int = 14,
+) -> dict:
+    """
+    Etapa 1 (Data Health): evalúa la calidad y deriva de ventas diarias antes de entrenar.
+    Mantiene todas las claves de `evaluar_salud_modelos` y agrega semáforo y avisos claros.
+    """
+    salud = evaluar_salud_modelos(
+        id_locacion=id_locacion,
+        dias_historia=dias_historia,
+        ventana_reciente=ventana_reciente,
+    )
+    ultima_fecha = escalar("SELECT max(fecha) FROM analitica.v_demanda_diaria")
+    rezago_dias = (date.today() - ultima_fecha).days if isinstance(ultima_fecha, date) else None
+
+    verdes = ambar = rojas = 0
+    for t in salud.get("tiendas", []):
+        est = t.get("estado")
+        if est == "CONFIABLE":
+            t["semaforo"] = "VERDE"
+            t["aviso_pre_entrenamiento"] = "Serie estable y sin quiebres recientes: lista para entrenar."
+            verdes += 1
+        elif est in ("VIGILANCIA", "SIN_DATOS"):
+            t["semaforo"] = "AMBAR"
+            cambio = t.get("cambio_nivel_pct") or 0
+            if t.get("delta_ceros_pp", 0) >= 20:
+                aviso = f"Aumento de días en cero (+{t['delta_ceros_pp']:g} pp): revisa si hubo desabasto en anaquel."
+            elif abs(cambio) >= 15:
+                aviso = f"Variación moderada de volumen ({cambio:+g}%): valida promociones o eventos antes de entrenar."
+            else:
+                aviso = t.get("motivos", [""])[0] or "Vigilar comportamiento antes de promover cambios."
+            t["aviso_pre_entrenamiento"] = aviso
+            ambar += 1
+        else:
+            t["semaforo"] = "ROJO"
+            cambio = t.get("cambio_nivel_pct") or 0
+            if t.get("delta_ceros_pp", 0) >= 35:
+                aviso = f"Demasiados ceros recientes (+{t['delta_ceros_pp']:g} pp): revisa si hubo quiebre de stock antes de entrenar."
+            elif abs(cambio) >= 20:
+                aviso = f"Esta tienda tuvo un cambio brusco de volumen ({cambio:+g}%): revisa si hubo quiebre o remodelación."
+            else:
+                aviso = t.get("motivos", [""])[0] or "Deriva crítica detectada; validar datos de venta."
+            t["aviso_pre_entrenamiento"] = aviso
+            rojas += 1
+
+    semaforo_global = "ROJO" if rojas > 0 else ("AMBAR" if ambar > 0 else "VERDE")
+    salud["salud_datos"] = {
+        "semaforo_global": semaforo_global,
+        "ultima_fecha_ventas": ultima_fecha.isoformat() if isinstance(ultima_fecha, date) else None,
+        "dias_rezago_ventas": rezago_dias,
+        "tiendas_verdes": verdes,
+        "tiendas_ambar": ambar,
+        "tiendas_rojas": rojas,
+    }
+    return salud
+
+
+def tabla_pronostico_estandar(
+    id_locacion: int | None = None,
+    limite: int = 300,
+) -> list[dict]:
+    """
+    Salida estándar desacoplada del módulo de pronóstico:
+    (fecha_rango, tienda, producto, media, desviacion_std, modelo_aplicado, grupo_ab).
+    No conoce FEFO ni costos de merma.
+    """
+    filtro_loc = "WHERE ut.id_locacion = :loc" if id_locacion else ""
+    params: dict = {"limite": limite, **({"loc": id_locacion} if id_locacion else {})}
+    filas = query(
+        f"""
+        WITH ultimas_tiendas AS (
+            SELECT DISTINCT ON (id_locacion) id_run, id_locacion, metodo, horizonte_dias
+            FROM analitica.forecast_run
+            WHERE estado = 'COMPLETADO' AND id_locacion IS NOT NULL
+            ORDER BY id_locacion, fecha_ejecucion DESC
+        )
+        SELECT p.id_sku, p.nombre AS producto, p.categoria, p.unidad_medida,
+               loc.id_locacion, loc.nombre AS locacion,
+               ut.id_run::text AS id_run,
+               COALESCE(MAX(fr.modelo_aplicado), ut.metodo) AS modelo_aplicado,
+               MAX(fr.grupo_ab) AS grupo_ab,
+               MAX(ut.horizonte_dias) AS horizonte_dias,
+               MIN(fr.fecha_objetivo) AS desde,
+               MAX(fr.fecha_objetivo) AS hasta,
+               COALESCE(SUM(CASE WHEN fr.horizonte_dia = 1
+                                 THEN fr.demanda_pronosticada END), 0) AS proximo_dia,
+               COALESCE(SUM(fr.demanda_pronosticada), 0) AS media_horizonte,
+               COALESCE(AVG(fr.desviacion_std), 0) AS desviacion_std_diaria,
+               SQRT(COALESCE(SUM(POWER(COALESCE(fr.desviacion_std, 0), 2)), 0)) AS desviacion_std_horizonte
+        FROM ultimas_tiendas ut
+        JOIN analitica.forecast_result fr ON fr.id_run = ut.id_run
+        JOIN operacion.producto p         ON p.id_sku = fr.id_sku
+        JOIN operacion.locacion loc       ON loc.id_locacion = fr.id_locacion
+        {filtro_loc}
+        GROUP BY p.id_sku, p.nombre, p.categoria, p.unidad_medida,
+                 loc.id_locacion, loc.nombre, ut.id_run, ut.metodo
+        ORDER BY loc.nombre, p.nombre
+        LIMIT :limite
+        """,
+        **params,
+    )
+    for f in filas:
+        dias = max(1, a_int(f.get("horizonte_dias"), 1))
+        media_h = a_float(f.get("media_horizonte"))
+        sigma_h = a_float(f.get("desviacion_std_horizonte"))
+        if sigma_h <= 0 and media_h > 0:
+            sigma_h = round(media_h * 0.12, 2)
+        f["proximo_dia"] = round(a_float(f.get("proximo_dia")), 2)
+        f["media_horizonte"] = round(media_h, 2)
+        f["media_diaria"] = round(media_h / dias, 2)
+        f["desviacion_std_diaria"] = round(a_float(f.get("desviacion_std_diaria")), 4)
+        f["desviacion_std_horizonte"] = round(sigma_h, 2)
+    return filas
+
+
+def pronostico_vigente_con_incertidumbre(
+    id_sku: int,
+    id_locacion: int,
+    dias: int,
+) -> dict:
+    """
+    Entrega demanda esperada (media) y desviación estándar para `dias` desde el
+    pronóstico vigente en BD (sin lógica FEFO ni económica).
+    """
+    fila = one(
+        """
+        SELECT fr.id_run::text,
+               COALESCE(SUM(fr.demanda_pronosticada), 0) AS total,
+               COUNT(*) AS dias,
+               SQRT(COALESCE(SUM(POWER(COALESCE(fr.desviacion_std, 0), 2)), 0)) AS sigma_total,
+               MAX(fr.modelo_aplicado) AS modelo_aplicado,
+               MAX(fr.grupo_ab) AS grupo_ab
+        FROM analitica.forecast_result fr
+        WHERE fr.id_sku = :sku AND fr.id_locacion = :loc
+          AND fr.id_run = (
+              SELECT r.id_run
+              FROM analitica.forecast_run r
+              WHERE r.estado = 'COMPLETADO'
+                AND (r.id_locacion = :loc OR r.id_locacion IS NULL)
+                AND EXISTS (
+                    SELECT 1 FROM analitica.forecast_result fr2
+                    WHERE fr2.id_run = r.id_run AND fr2.id_sku = :sku AND fr2.id_locacion = :loc
+                )
+              ORDER BY (CASE WHEN r.id_locacion = :loc THEN 0 ELSE 1 END),
+                       r.fecha_ejecucion DESC
+              LIMIT 1
+          )
+          AND fr.horizonte_dia <= :dias
+        GROUP BY fr.id_run
+        """,
+        sku=id_sku,
+        loc=id_locacion,
+        dias=dias,
+    )
+    if fila and fila["dias"]:
+        total = a_float(fila["total"])
+        dias_cubiertos = a_int(fila["dias"], 0)
+        sigma = a_float(fila["sigma_total"])
+        if dias_cubiertos < dias and dias_cubiertos > 0:
+            total = round(total / dias_cubiertos * dias, 2)
+            if sigma > 0:
+                sigma = round(sigma * math.sqrt(dias / dias_cubiertos), 4)
+        return {
+            "demanda_media": round(total, 2),
+            "desviacion_std": round(sigma, 4) if sigma > 0 else None,
+            "origen": "pronostico",
+            "modelo_aplicado": fila.get("modelo_aplicado"),
+            "id_run": fila.get("id_run"),
+            "grupo_ab": fila.get("grupo_ab"),
+        }
+
+    promedio = demanda_diaria_promedio(id_sku, id_locacion, 28)
+    return {
+        "demanda_media": round(promedio * dias, 2),
+        "desviacion_std": None,
+        "origen": "promedio_28d",
+        "modelo_aplicado": None,
+        "id_run": None,
+        "grupo_ab": None,
+    }

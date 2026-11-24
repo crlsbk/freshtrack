@@ -500,3 +500,24 @@ def test_logout_toma_el_candado_de_sesion(api, fake_http):
         assert api.session is not None
     hilo.join(2)
     assert terminado.is_set() and api.session is None
+
+
+def test_401_refresh_usa_el_refresh_token_y_lo_rota(api, fake_http):
+    """Con refresh token: se envía en <refresh_request> (sirve aunque el access ya expiró) y se rota."""
+    api.session = Session(token="tok-viejo", jti="jti-viejo", usuario={"rol": "buyer"},
+                          refresh_token="rt-viejo-" + "a" * 30)
+    fake_http.add("GET", "/api/v1/catalog/productos", status=401, body=error_xml(401, "token_invalido"))
+    fake_http.add("GET", "/api/v1/catalog/productos", body=PRODUCTOS)
+    nuevo = auth_xml(token="tok-nuevo").replace(
+        b"</auth_response>",
+        b"<refresh_token>rt-nuevo-" + b"b" * 30 + b"</refresh_token>"
+        b"<refresh_expira_en_segundos>27000</refresh_expira_en_segundos></auth_response>",
+    )
+    fake_http.add("POST", "/api/v1/auth/refresh", body=nuevo)
+    api.call("catalog", "GET", "/api/v1/catalog/productos")
+    refresh = fake_http.calls_to("POST", "/api/v1/auth/refresh")
+    assert len(refresh) == 1
+    assert "<refresh_request><refresh_token>rt-viejo-" in refresh[0].text
+    assert api.session.token == "tok-nuevo"
+    assert api.session.refresh_token == "rt-nuevo-" + "b" * 30
+    assert api.session.refresh_expira_en > 0

@@ -16,6 +16,8 @@ La verificación del hash se hace **dentro de PostgreSQL** con `crypt()`
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -182,12 +184,46 @@ def transaccion_texto(sql: str):
 # ---------------------------------------------------------------------------
 # JWT
 # ---------------------------------------------------------------------------
-def crear_token(usuario: dict, ip: str | None = None, user_agent: str | None = None) -> tuple[str, str]:
-    """Emite un JWT y lo persiste en operacion.sesion_usuario para poder revocarlo."""
+def _minutos_acceso() -> int:
+    """Vida del access token. Corta: si se filtra, sirve poco tiempo."""
+    try:
+        valor = int(escalar("SELECT analitica.fn_config('jwt_minutos_acceso', :d)", d=str(Config.JWT_MINUTOS_ACCESO)))
+    except Exception:
+        valor = Config.JWT_MINUTOS_ACCESO
+    return max(1, valor)
+
+
+def _hash_refresh(refresh_token: str) -> str:
+    return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+
+
+SEGUNDOS_GRACIA_REFRESH = 30
+
+
+def emitir_sesion(
+    usuario: dict,
+    ip: str | None = None,
+    user_agent: str | None = None,
+    *,
+    familia: str | None = None,
+    sesion_expira_en: datetime | None = None,
+) -> dict:
+    """
+    Emite un access token JWT corto + un refresh token opaco y los persiste.
+
+    - Access: `jwt_minutos_acceso` (15 min por defecto), nunca más allá del fin
+      de la sesión.
+    - Refresh: aleatorio de 256 bits; en PostgreSQL solo se guarda su SHA-256.
+    - `familia` / `sesion_expira_en`: se heredan al rotar, así la sesión tiene un
+      fin ABSOLUTO (`jwt_horas_vigencia` desde el login) que rotar no extiende.
+    """
     jti = uuid.uuid4().hex
-    horas = _horas_vigencia()
     emitido = _ahora()
-    expira = emitido + timedelta(hours=horas)
+    if sesion_expira_en is None:
+        sesion_expira_en = emitido + timedelta(hours=_horas_vigencia())
+    familia = familia or str(uuid.uuid4())
+    expira = min(emitido + timedelta(minutes=_minutos_acceso()), sesion_expira_en)
+    refresh_token = secrets.token_urlsafe(32)
 
     payload = {
         "sub": usuario["id_usuario"],
@@ -207,9 +243,10 @@ def crear_token(usuario: dict, ip: str | None = None, user_agent: str | None = N
             transaccion_texto(
                 """
                 INSERT INTO operacion.sesion_usuario
-                    (id_usuario, jti, emitido_en, expira_en, ip, user_agent)
+                    (id_usuario, jti, emitido_en, expira_en, ip, user_agent,
+                     refresh_hash, refresh_expira_en, familia)
                 VALUES (CAST(:u AS uuid), :jti, :emitido, :expira,
-                        CAST(:ip AS inet), :ua)
+                        CAST(:ip AS inet), :ua, :rh, :rexp, CAST(:fam AS uuid))
                 """
             ),
             {
@@ -219,10 +256,13 @@ def crear_token(usuario: dict, ip: str | None = None, user_agent: str | None = N
                 "expira": expira,
                 "ip": ip,
                 "ua": (user_agent or "")[:300] or None,
+                "rh": _hash_refresh(refresh_token),
+                "rexp": sesion_expira_en,
+                "fam": familia,
             },
         )
 
-    # Registrar sesión activa en Redis con sliding TTL
+    ttl_acceso = max(1, int((expira - emitido).total_seconds()))
     try:
         crear_sesion_redis(
             jti,
@@ -233,16 +273,165 @@ def crear_token(usuario: dict, ip: str | None = None, user_agent: str | None = N
                 "rol": usuario["rol_clave"],
                 "id_locacion": usuario["id_locacion"],
                 "jti": jti,
+                "familia": familia,
                 "ip": ip,
                 "user_agent": user_agent,
                 "login_en": emitido.isoformat(),
             },
-            ttl_segundos=int(horas * 3600),
+            ttl_segundos=ttl_acceso,
         )
     except Exception:
         pass
 
-    return token, jti
+    return {
+        "token": token,
+        "jti": jti,
+        "refresh_token": refresh_token,
+        "expira_en_segundos": ttl_acceso,
+        "refresh_expira_en_segundos": max(0, int((sesion_expira_en - emitido).total_seconds())),
+        "familia": familia,
+    }
+
+
+def crear_token(usuario: dict, ip: str | None = None, user_agent: str | None = None) -> tuple[str, str]:
+    """Compatibilidad: emite una sesión nueva y devuelve solo (access token, jti)."""
+    sesion = emitir_sesion(usuario, ip=ip, user_agent=user_agent)
+    return sesion["token"], sesion["jti"]
+
+
+def _usuario_vigente(id_usuario: str) -> dict | None:
+    """Datos ACTUALES del usuario (rol, sucursal…) para firmar el token renovado."""
+    return one(
+        """
+        SELECT u.id_usuario::text AS id_usuario, u.email, u.nombre_completo, u.id_locacion,
+               u.estado_activo, r.clave AS rol_clave
+        FROM operacion.usuario u JOIN operacion.rol r ON r.id_rol = u.id_rol
+        WHERE u.id_usuario = CAST(:u AS uuid)
+        """,
+        u=id_usuario,
+    )
+
+
+def revocar_familia(familia: str, motivo: str = "") -> int:
+    """Revoca todas las sesiones de una familia (PostgreSQL + Redis)."""
+    with transaccion() as conn:
+        filas = conn.execute(
+            transaccion_texto(
+                "UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now() "
+                "WHERE familia = CAST(:f AS uuid) AND NOT revocado "
+                "RETURNING jti, GREATEST(60, EXTRACT(EPOCH FROM expira_en - now())::int) AS ttl"
+            ),
+            {"f": familia},
+        ).mappings().all()
+    for fila in filas:
+        try:
+            revocar_jwt(fila["jti"], ttl_segundos=int(fila["ttl"]))
+            eliminar_sesion_redis(fila["jti"])
+        except Exception:
+            pass
+    return len(filas)
+
+
+def renovar_sesion(
+    *,
+    refresh_token: str | None = None,
+    jti_vigente: str | None = None,
+    ip: str | None = None,
+    user_agent: str | None = None,
+) -> dict | None:
+    """
+    Rota la sesión: revoca la fila actual y emite access + refresh nuevos en la
+    MISMA familia y con el MISMO fin absoluto. Devuelve None si no procede.
+
+    - Con `refresh_token` (flujo normal, aunque el access ya haya expirado).
+    - Con `jti_vigente` (compatibilidad: renovar con un access token válido).
+
+    Reutilización: presentar un refresh que YA se rotó indica robo (lo usaron el
+    dueño y el atacante). Se revoca la familia completa, salvo dentro de una
+    gracia de 30 s en la que se devuelve el mismo par nuevo (dos pestañas o dos
+    hilos que renuevan a la vez no deben cerrar la sesión).
+    """
+    from app.services.cache_service import get_json, set_json
+
+    if refresh_token:
+        hash_rt = _hash_refresh(refresh_token)
+        condicion, valor = "s.refresh_hash = :v", hash_rt
+    elif jti_vigente:
+        hash_rt = None
+        condicion, valor = "s.jti = :v", jti_vigente
+    else:
+        return None
+
+    with transaccion() as conn:
+        fila = conn.execute(
+            transaccion_texto(
+                f"""
+                SELECT s.id_usuario::text AS id_usuario, s.jti, s.revocado, s.familia::text AS familia,
+                       s.refresh_expira_en, s.expira_en
+                FROM operacion.sesion_usuario s
+                WHERE {condicion}
+                FOR UPDATE
+                """
+            ),
+            {"v": valor},
+        ).mappings().first()
+        if fila is None:
+            return None
+
+        reutilizado = bool(fila["revocado"])
+        if not reutilizado:
+            ahora = _ahora()
+            fin = fila["refresh_expira_en"] or (ahora + timedelta(hours=_horas_vigencia()))
+            if fin <= ahora:
+                return None
+            usuario = _usuario_vigente(fila["id_usuario"])
+            if usuario is None or not usuario["estado_activo"]:
+                return None
+            conn.execute(
+                transaccion_texto(
+                    "UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now() WHERE jti = :j"
+                ),
+                {"j": fila["jti"]},
+            )
+
+    if reutilizado:
+        if not hash_rt:
+            return None  # un access token revocado simplemente no renueva
+        previo = get_json(f"refresh:gracia:{hash_rt}")
+        if previo and verificar_sesion_respaldo_bd(previo.get("jti", "")):
+            return previo  # renovación concurrente legítima dentro de la gracia
+        # Solo es robo si la familia seguía viva (alguien usa el sucesor). Tras un
+        # logout o una revocación del admin no queda nada vivo: no hay alarma.
+        revocados = revocar_familia(fila["familia"]) if fila["familia"] else 0
+        if revocados:
+            auditoria.registrar(
+                "REFRESH_REUTILIZADO",
+                tabla="sesion_usuario",
+                id_registro=fila["id_usuario"],
+                descripcion=f"Refresh token reutilizado tras rotar: se revocaron {revocados} sesión(es) de la familia",
+                id_usuario=fila["id_usuario"],
+                ip=ip,
+                user_agent=user_agent,
+            )
+        return None
+
+    ttl_viejo = max(60, int((fila["expira_en"] - _ahora()).total_seconds()))
+    try:
+        revocar_jwt(fila["jti"], ttl_segundos=ttl_viejo)
+        eliminar_sesion_redis(fila["jti"])
+    except Exception:
+        pass
+
+    nueva = emitir_sesion(
+        usuario, ip=ip, user_agent=user_agent, familia=fila["familia"], sesion_expira_en=fin
+    )
+    nueva["usuario"] = usuario
+    if hash_rt:
+        try:
+            set_json(f"refresh:gracia:{hash_rt}", nueva, ttl_segundos=SEGUNDOS_GRACIA_REFRESH)
+        except Exception:
+            pass
+    return nueva
 
 
 def verificar_sesion_respaldo_bd(jti: str) -> bool:
@@ -337,25 +526,34 @@ def revocar_sesiones_usuario(id_usuario: str) -> int:
 
 
 def revocar_token(jti: str) -> None:
-    """Marca una sesión como revocada (logout)."""
+    """
+    Logout: revoca el token y TODA su familia (los access tokens y el refresh
+    token nacidos del mismo login), en PostgreSQL y en Redis.
+    """
     with transaccion() as conn:
-        conn.execute(
+        filas = conn.execute(
             transaccion_texto(
-                "UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now() "
-                "WHERE jti = :jti"
+                """
+                UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now()
+                WHERE NOT revocado
+                  AND (jti = :jti
+                       OR familia = (SELECT familia FROM operacion.sesion_usuario WHERE jti = :jti))
+                RETURNING jti
+                """
             ),
             {"jti": jti},
-        )
-    # Refleja la revocación en la denylist de Redis de inmediato y elimina la sesión
-    horas = _horas_vigencia()
-    revocar_jwt(jti, ttl_segundos=int(horas * 3600))
-    eliminar_sesion_redis(jti)
+        ).mappings().all()
+    # Refleja la revocación en la denylist de Redis de inmediato y elimina la sesión.
+    ttl = int(_horas_vigencia() * 3600)
+    for j in {jti, *(f["jti"] for f in filas)}:
+        revocar_jwt(j, ttl_segundos=ttl)
+        eliminar_sesion_redis(j)
 
 
 # ---------------------------------------------------------------------------
 # Sesión web
 # ---------------------------------------------------------------------------
-def iniciar_sesion_web(usuario: dict, token: str, jti: str) -> None:
+def iniciar_sesion_web(usuario: dict, token: str, jti: str, refresh_token: str | None = None) -> None:
     session.clear()
     session.permanent = True
     session["user_id"] = usuario["id_usuario"]
@@ -366,6 +564,8 @@ def iniciar_sesion_web(usuario: dict, token: str, jti: str) -> None:
     session["id_locacion"] = usuario["id_locacion"]
     session["jti"] = jti
     session["token"] = token
+    # Cookie firmada y HttpOnly: JavaScript no puede leerla.
+    session["refresh_token"] = refresh_token
 
 
 def cerrar_sesion_web() -> None:
@@ -431,6 +631,41 @@ def recurso_de_otro_proveedor(id_proveedor_recurso: int | None) -> bool:
     return not propio or id_proveedor_recurso is None or int(id_proveedor_recurso) != propio
 
 
+SEGUNDOS_MARGEN_RENOVACION = 60
+
+
+def _segundos_restantes(token: str | None) -> float:
+    """Segundos de vida que le quedan a un access token (lo firmamos nosotros)."""
+    if not token:
+        return 0.0
+    try:
+        exp = jwt.decode(token, options={"verify_signature": False}).get("exp", 0)
+    except jwt.PyJWTError:
+        return 0.0
+    return float(exp) - _ahora().timestamp()
+
+
+def _renovar_sesion_web() -> bool:
+    """Rota access + refresh de la sesión web y actualiza la cookie. False si no se pudo."""
+    nueva = renovar_sesion(
+        refresh_token=session.get("refresh_token"),
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    if not nueva:
+        return False
+    u = nueva.get("usuario") or {}
+    session["token"] = nueva["token"]
+    session["jti"] = nueva["jti"]
+    session["refresh_token"] = nueva["refresh_token"]
+    # Datos frescos de la base (un cambio de rol ya revoca sesiones; esto es redundancia).
+    if u:
+        session["role"] = u.get("rol_clave", session.get("role"))
+        session["id_locacion"] = u.get("id_locacion")
+        session["user_email"] = u.get("email", session.get("user_email"))
+    return True
+
+
 def sesion_web_vigente() -> bool:
     """
     True si la cookie de sesión pertenece a una sesión viva y no revocada.
@@ -438,20 +673,30 @@ def sesion_web_vigente() -> bool:
     Redis decide (denylist + session:{jti}); si Redis no responde, PostgreSQL
     decide (Fail-Closed). Una cookie sin jti no se acepta: todas las sesiones
     legítimas se abren con un JWT.
+
+    El access token dura minutos: si está por vencer, ya venció o lo rotó otra
+    petición simultánea de la misma sesión, se renueva con el refresh token de
+    la cookie. Si la sesión fue revocada (logout, admin) o llegó a su fin
+    absoluto, la renovación falla y la sesión termina.
     """
     if "user_id" not in session:
         return False
     jti = session.get("jti")
     if not jti:
         return False
-    if esta_jwt_revocado(jti):
-        return False
-    estado_redis = sesion_activa(jti)
-    if estado_redis is False:
-        return False
-    if estado_redis is None and not verificar_sesion_respaldo_bd(jti):
-        return False
-    return True
+
+    vigente = not esta_jwt_revocado(jti)
+    if vigente:
+        estado_redis = sesion_activa(jti)
+        if estado_redis is False:
+            vigente = False
+        elif estado_redis is None and not verificar_sesion_respaldo_bd(jti):
+            vigente = False
+    if vigente and _segundos_restantes(session.get("token")) > SEGUNDOS_MARGEN_RENOVACION:
+        return True
+    if not session.get("refresh_token"):
+        return vigente  # sesiones anteriores al refresh token: hasta su expiración
+    return _renovar_sesion_web()
 
 
 def login_required(f):

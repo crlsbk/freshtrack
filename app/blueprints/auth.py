@@ -30,7 +30,7 @@ from app.services import clientes
 from app.security import (
     autenticar,
     cerrar_sesion_web,
-    crear_token,
+    emitir_sesion,
     iniciar_sesion_web,
     token_requerido,
 )
@@ -67,8 +67,8 @@ def _login_por_svc_auth(email: str, password: str):
     )
     if status != 200:
         if status == 0:
-            return None, None, None, "El módulo de autenticación no está disponible en este momento."
-        return None, None, None, (r or {}).get("mensaje") or "Correo o contraseña incorrectos."
+            return None, None, None, None, "El módulo de autenticación no está disponible en este momento."
+        return None, None, None, None, (r or {}).get("mensaje") or "Correo o contraseña incorrectos."
     u = r["usuario"]
     rol = one("SELECT nombre_rol FROM operacion.rol WHERE clave = :c", c=u["rol"]) or {}
     usuario = {
@@ -79,7 +79,7 @@ def _login_por_svc_auth(email: str, password: str):
         "nombre_rol": rol.get("nombre_rol", u["rol"]),
         "id_locacion": u["id_locacion"],
     }
-    return usuario, r["token"], r["jti"], None
+    return usuario, r["token"], r["jti"], r.get("refresh_token"), None
 
 
 _LIMITE_LOGIN = 10        # intentos por (IP, correo) por ventana
@@ -130,19 +130,18 @@ def login():
                 "login.html", error="Demasiados intentos. Espera un minuto antes de volver a intentar.", email=email
             ), 429
         if clientes.activo():
-            usuario, token, jti, error = _login_por_svc_auth(email, password)
+            usuario, token, jti, refresh_token, error = _login_por_svc_auth(email, password)
         else:
             usuario, error = autenticar(
                 email, password, ip=_ip(), user_agent=request.headers.get("User-Agent")
             )
-            token = jti = None
+            token = jti = refresh_token = None
             if usuario:
-                token, jti = crear_token(
-                    usuario, ip=_ip(), user_agent=request.headers.get("User-Agent")
-                )
+                sesion = emitir_sesion(usuario, ip=_ip(), user_agent=request.headers.get("User-Agent"))
+                token, jti, refresh_token = sesion["token"], sesion["jti"], sesion["refresh_token"]
 
         if usuario:
-            iniciar_sesion_web(usuario, token, jti)
+            iniciar_sesion_web(usuario, token, jti, refresh_token)
             auditoria.registrar(
                 "LOGIN",
                 tabla="usuario",
@@ -193,7 +192,8 @@ def api_token():
     if usuario is None:
         return jsonify({"error": "credenciales_invalidas", "mensaje": error}), 401
 
-    token, jti = crear_token(usuario, ip=_ip(), user_agent=request.headers.get("User-Agent"))
+    sesion = emitir_sesion(usuario, ip=_ip(), user_agent=request.headers.get("User-Agent"))
+    token, jti = sesion["token"], sesion["jti"]
     auditoria.registrar(
         "LOGIN",
         tabla="usuario",
@@ -207,6 +207,9 @@ def api_token():
         {
             "token": token,
             "jti": jti,
+            "expira_en_segundos": sesion["expira_en_segundos"],
+            "refresh_token": sesion["refresh_token"],
+            "refresh_expira_en_segundos": sesion["refresh_expira_en_segundos"],
             "usuario": {
                 "id": usuario["id_usuario"],
                 "nombre": usuario["nombre_completo"],

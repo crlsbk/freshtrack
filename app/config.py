@@ -67,6 +67,8 @@ class Config:
     ).hexdigest()
     JWT_ALGORITHM = "HS256"
     JWT_HORAS_VIGENCIA = int(os.getenv("JWT_HORAS_VIGENCIA", "8"))
+    # Vida del access token (el refresh token lo renueva hasta JWT_HORAS_VIGENCIA).
+    JWT_MINUTOS_ACCESO = int(os.getenv("JWT_MINUTOS_ACCESO", "15"))
 
     # --- Redis (Caché, Bloqueos, Denylist JWT y Bus de Eventos) ------------
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")

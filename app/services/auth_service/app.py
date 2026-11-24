@@ -20,7 +20,7 @@ from flask import g, request
 from sqlalchemy import text
 
 from app.db import one, query, transaccion
-from app.security import autenticar, crear_token, decodificar_token, revocar_token
+from app.security import autenticar, decodificar_token, emitir_sesion, renovar_sesion, revocar_token
 from app.services import cache_service
 from app.services.common.auth import requiere_auth
 from app.services.common.rate_limit import limite_tasa
@@ -90,13 +90,15 @@ def login():
         cache_service.incrementar_contador("auth", "login_failed")
         return error_response(401, "credenciales_invalidas", error)
 
-    token, jti = crear_token(usuario, ip=ip, user_agent=user_agent)
+    sesion = emitir_sesion(usuario, ip=ip, user_agent=user_agent)
     cache_service.incrementar_contador("auth", "login_success")
     return render_response({
-        "token": token,
-        "jti": jti,
+        "token": sesion["token"],
+        "jti": sesion["jti"],
         "token_type": "Bearer",
-        "expira_en_segundos": cache_service.obtener_ttl(f"session:{jti}"),
+        "expira_en_segundos": sesion["expira_en_segundos"],
+        "refresh_token": sesion["refresh_token"],
+        "refresh_expira_en_segundos": sesion["refresh_expira_en_segundos"],
         "usuario": {
             "id_usuario": str(usuario["id_usuario"]),
             "email": usuario["email"],
@@ -119,39 +121,66 @@ def logout():
 
 @app.post("/api/v1/auth/refresh")
 @documentar(
-    "Renovación del JWT (emite uno nuevo y revoca el actual)",
-    respuesta={"token": "eyJhbGciOiJIUzI1NiIs...", "jti": "a1b2c3", "token_type": "Bearer", "expira_en_segundos": 28800, "usuario": _USUARIO_EJEMPLO},
+    "Renovación de la sesión con el refresh token (rota access y refresh)",
+    cuerpo={"refresh_token": "Q2x5c2Vh..."},
+    raiz_xml="refresh_request",
+    contrato_xsd="refresh_request",
+    respuesta={"token": "eyJhbGciOiJIUzI1NiIs...", "jti": "a1b2c3", "token_type": "Bearer", "expira_en_segundos": 900,
+               "refresh_token": "Zm9vYmFy...", "refresh_expira_en_segundos": 27000, "usuario": _USUARIO_EJEMPLO},
     raiz_respuesta="auth_response",
-    errores=("401", "429"),
+    errores=("400", "401", "429"),
     exito="200",
 )
-@requiere_auth()
-@limite_tasa(limite=30, ventana_segundos=60)
+@limite_tasa(limite=30, ventana_segundos=60, clave_func=lambda: _clave_rate_refresh())
 def refrescar():
-    """Emite un JWT nuevo para el usuario del token vigente y revoca el jti anterior."""
-    p = g.usuario_actual
-    usuario = {
-        "id_usuario": p.get("sub"),
-        "email": p.get("email"),
-        "nombre_completo": p.get("nombre"),
-        "rol_clave": p.get("rol"),
-        "id_locacion": p.get("id_locacion"),
-    }
-    token, jti = crear_token(usuario, ip=request.remote_addr, user_agent=request.headers.get("User-Agent"))
-    revocar_token(p.get("jti"))
+    """
+    Flujo normal: cuerpo con `refresh_token` (sirve aunque el access ya expiró).
+    Cada uso ROTA el par: el refresh anterior deja de servir; reutilizarlo revoca
+    la sesión completa. La sesión no se extiende más allá de jwt_horas_vigencia.
+
+    Compatibilidad: sin refresh_token, renueva con el access token vigente
+    (Authorization: Bearer), dentro del mismo tope de la sesión.
+    """
+    datos = leer_cuerpo("refresh_request") if request.get_data(cache=True) else {}
+    refresh_token = str(datos.get("refresh_token") or "").strip() or None
+    jti_vigente = None
+    if not refresh_token:
+        cab = request.headers.get("Authorization", "")
+        payload = decodificar_token(cab[7:].strip()) if cab.startswith("Bearer ") else None
+        if not payload:
+            return error_response(401, "refresh_invalido", "Envíe refresh_token o un access token vigente.")
+        jti_vigente = payload["jti"]
+    nueva = renovar_sesion(
+        refresh_token=refresh_token,
+        jti_vigente=jti_vigente,
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    if not nueva:
+        cache_service.incrementar_contador("auth", "refresh_rechazado")
+        return error_response(401, "refresh_invalido", "La sesión expiró o fue revocada. Inicie sesión de nuevo.")
+    cache_service.incrementar_contador("auth", "refresh_ok")
+    u = nueva["usuario"]
     return render_response({
-        "token": token,
-        "jti": jti,
+        "token": nueva["token"],
+        "jti": nueva["jti"],
         "token_type": "Bearer",
-        "expira_en_segundos": cache_service.obtener_ttl(f"session:{jti}"),
+        "expira_en_segundos": nueva["expira_en_segundos"],
+        "refresh_token": nueva["refresh_token"],
+        "refresh_expira_en_segundos": nueva["refresh_expira_en_segundos"],
         "usuario": {
-            "id_usuario": usuario["id_usuario"],
-            "email": usuario["email"],
-            "nombre": usuario["nombre_completo"],
-            "rol": usuario["rol_clave"],
-            "id_locacion": usuario["id_locacion"],
+            "id_usuario": u["id_usuario"],
+            "email": u["email"],
+            "nombre": u["nombre_completo"],
+            "rol": u["rol_clave"],
+            "id_locacion": u["id_locacion"],
         },
     }, status=200, root_tag="auth_response")
+
+
+def _clave_rate_refresh() -> str:
+    ip = request.remote_addr or "?"
+    return f"refresh:ip:{ip}"
 
 
 @app.post("/api/v1/auth/verify")

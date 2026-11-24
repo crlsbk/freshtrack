@@ -270,7 +270,13 @@ class ApiClient:
             if token_fallido and self.session.token != token_fallido:
                 return True  # otro hilo ya renovó: reintentar con el token nuevo
             try:
-                datos = self._ejecutar("auth", "POST", "/api/v1/auth/refresh",
+                # Con refresh token: funciona aunque el access ya haya expirado.
+                # Sin él (servidor anterior): se renueva con el Bearer vigente.
+                cuerpo = None
+                if self.session.refresh_token:
+                    cuerpo = to_xml({"refresh_token": self.session.refresh_token}, "refresh_request")
+                    validate(cuerpo, "refresh_request")
+                datos = self._ejecutar("auth", "POST", "/api/v1/auth/refresh", data=cuerpo,
                                        expect_root="auth_response", reintentar=False)
             except XmlContractError:
                 raise

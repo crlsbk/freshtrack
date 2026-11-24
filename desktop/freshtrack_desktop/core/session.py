@@ -14,7 +14,9 @@ class Session:
     token: str
     jti: str
     usuario: dict = field(default_factory=dict)
-    expira_en: float = 0.0  # epoch (segundos)
+    expira_en: float = 0.0  # epoch (segundos) del access token
+    refresh_token: str = ""  # renueva el access token hasta el fin de la sesión
+    refresh_expira_en: float = 0.0  # epoch (segundos): fin absoluto de la sesión
 
     DESKTOP_ROLES: ClassVar[set[str]] = {"buyer", "planner", "admin"}
 
@@ -27,6 +29,8 @@ class Session:
             jti=str(datos.get("jti") or ""),
             usuario=dict(usuario),
             expira_en=time.time() + num(datos.get("expira_en_segundos"), 0.0),
+            refresh_token=str(datos.get("refresh_token") or ""),
+            refresh_expira_en=time.time() + num(datos.get("refresh_expira_en_segundos"), 0.0),
         )
 
     @property

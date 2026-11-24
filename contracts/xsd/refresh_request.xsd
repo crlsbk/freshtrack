@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-auth POST /api/v1/auth/refresh (petición) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="refresh_request">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="refresh_token">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:minLength value="20"/>
+              <xs:maxLength value="200"/>
+              <xs:pattern value="[A-Za-z0-9_\-]+"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

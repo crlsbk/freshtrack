@@ -262,3 +262,30 @@ Consultas lentas: Postgres registra todo lo que tarde más de 500 ms:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs postgres | grep duration
 ```
+
+### 4.7 Endurecimiento de seguridad (en caliente)
+
+Dos cambios de esquema pequeños e idempotentes, más el código nuevo:
+
+```bash
+cd ~/iac-proyecto && git pull
+for f in 09_usuario_proveedor.sql 10_refresh_token.sql; do
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+    sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/$f"
+done
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+```
+
+- **09**: `usuario.id_proveedor`. Un usuario con rol Proveedor solo ve y modifica
+  productos, órdenes de compra y avisos ASN de su proveedor. Se asigna en /usuarios.
+- **10**: refresh tokens. El access token dura `JWT_MINUTOS_ACCESO` (15 min) y el
+  refresh token lo renueva (rotándolo) hasta `jwt_horas_vigencia` (8 h) desde el
+  login. Reutilizar un refresh ya rotado revoca la sesión completa y queda como
+  `REFRESH_REUTILIZADO` en la bitácora.
+- **App móvil**: `POST /api/v1/auth/login` ahora devuelve también `refresh_token` y
+  `refresh_expira_en_segundos`. Para renovar: `POST /api/v1/auth/refresh` con
+  `{"refresh_token": "..."}` (o `<refresh_request>` en XML). Mientras la app no lo
+  implemente, renovar con el Bearer vigente sigue funcionando; si eso no basta,
+  sube `JWT_MINUTOS_ACCESO` en el `.env` de la VM.
+- Tras desplegar, las sesiones abiertas antes del cambio siguen hasta su
+  expiración; los inicios de sesión nuevos ya usan el esquema de refresh.

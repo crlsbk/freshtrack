@@ -49,6 +49,7 @@ SCRIPTS = [
     "07_seed_base.sql",
     "08_optimizacion.sql",
     "09_usuario_proveedor.sql",
+    "10_refresh_token.sql",
 ]
 
 

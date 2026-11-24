@@ -19,6 +19,7 @@ ACCIONES = {
     "LOGIN": "Inicio de sesión",
     "LOGOUT": "Cierre de sesión",
     "LOGIN_FALLIDO": "Intento de acceso fallido",
+    "REFRESH_REUTILIZADO": "Refresh token reutilizado (posible robo de sesión)",
     "CREATE_PRODUCT": "Alta de producto",
     "UPDATE_PRODUCT": "Edición de producto",
     "DEACTIVATE_PRODUCT": "Producto desactivado",

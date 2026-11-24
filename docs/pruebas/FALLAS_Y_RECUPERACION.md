@@ -8,7 +8,19 @@ Cada simulacro detiene (`docker stop`) o congela (`docker pause`) una sola depen
 - Bitácoras y datos: `docs/pruebas/fallas/<escenario>.txt|.json`.
 - Al terminar se verificaron los 14 contenedores (healthy) y /health 200 en la web y en 5001–5008.
 
-## Resumen
+## Correcciones aplicadas tras los simulacros (commit 5a99079)
+
+Los simulacros encontraron tres fallas de severidad alta. Se corrigieron el mismo día, con pruebas de regresión (`tests/unit/test_dependencias_caidas.py` y `tests/unit/test_app_movil.py`; 374/374 pruebas unitarias pasan), y se **re-ejecutaron los simulacros en vivo** contra el stack local el 24/11/2026 a las 15:08 CST:
+
+| Hallazgo | Antes | Corrección | Después |
+|---|---|---|---|
+| Fotos de hasta 8 MB rechazadas | 413 desde 4 MB, mensaje en inglés | `MAX_CONTENT_LENGTH` global a 9 MB (configurable con `MAX_CONTENT_LENGTH_MB`); 413 en español | En vivo: foto de 6 MB → **201**; 10 MB → **413** «La petición excede el tamaño máximo permitido (9 MB).» |
+| Redis/MongoDB caídos después del arranque | El cliente guardado se seguía usando: peticiones de 5–28 s; alertas 200 vacío, ASN 500 | El cliente se verifica con PING cada 5 s; si falla se descarta y por 10 s se responde sin intentar conectar | En vivo: Mongo caído → alerts/active **503 `mongo_no_disponible`** (2.5 s la primera vez, 0.0 s las siguientes) e inventario sigue 200 en 0.1 s. Redis caído → catálogo **200 en 0.0 s** (antes 28.2 s) |
+| PostgreSQL caído | Token válido → 401 `token_invalido` (las apps cerraban sesión) | Se distingue «sesión inválida» de «base de datos no responde» | En vivo: PostgreSQL detenido → inventario con token válido **503 `sesion_no_verificable` en 0.1 s** (fail-closed; el cliente reintenta en vez de mandar al login). Al restaurar, todo responde 200 |
+
+Los hallazgos de severidad media y baja (sección «Hallazgos») siguen abiertos y quedan como trabajo futuro.
+
+## Resumen (corrida original, antes de las correcciones)
 
 | Escenario | Comportamiento esperado | Observado | ¿Cumple? | Recuperación |
 |---|---|---|---|---|

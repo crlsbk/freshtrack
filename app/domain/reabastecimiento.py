@@ -215,17 +215,17 @@ def riesgo_por_lote(
     id_sku: int, id_locacion: int, dias_ventana: int | None = None
 ) -> list[dict]:
     """
-    Simula consumo FEFO secuencial lote a lote (hoy → mañana → 2 días → ...)
-    para estimar cuántas unidades caducarán antes de poder venderse:
+    Para cada lote con existencia estima cuántas unidades van a sobrar:
 
-        demanda_acumulada_hasta_caducidad = demanda_diaria * min(dias, dias_ventana)
-        vendible_lote = min(disponible, max(0, demanda_acumulada - vendido_acumulado))
-        unidades_en_riesgo = disponible - vendible_lote
+        unidades_en_riesgo = cantidad_disponible − demanda esperada antes de caducar
+
+    Es el cálculo que hace útil el módulo: 80 unidades que vencen en 3 días no
+    equivalen a 80 unidades utilizables si en 3 días solo se van a vender 47.
     """
     if dias_ventana is None:
         dias_ventana = a_int(config_valor("dias_ventana_riesgo_lote", "5"), 5)
 
-    demanda_diaria = pronostico.demanda_diaria_vigente(id_sku, id_locacion)
+    promedio_diario = pronostico.demanda_diaria_promedio(id_sku, id_locacion, 28)
 
     lotes = query(
         """
@@ -241,7 +241,6 @@ def riesgo_por_lote(
     )
 
     salida = []
-    vendido_acumulado = 0.0
     for lote in lotes:
         dias = a_int(lote["dias_restantes"], 0)
         disponible = a_float(lote["cantidad_disponible"])
@@ -249,10 +248,7 @@ def riesgo_por_lote(
             demanda_antes = 0.0
         else:
             dias_utiles = min(dias, dias_ventana)
-            demanda_acum = demanda_diaria * dias_utiles
-            demanda_antes = round(max(0.0, demanda_acum - vendido_acumulado), 2)
-            vendible = min(disponible, demanda_antes)
-            vendido_acumulado += vendible
+            demanda_antes = round(promedio_diario * dias_utiles, 2)
 
         en_riesgo = max(0.0, round(disponible - demanda_antes, 2))
         salida.append(
@@ -315,10 +311,8 @@ def analizar_sku_locacion(
     inventario_riesgo = round(sum(l["unidades_en_riesgo"] for l in lotes), 2)
     inventario_util = round(inventario_fisico - inventario_riesgo, 2)
 
-    # --- Demanda e incertidumbre desacopladas del módulo de pronóstico
-    fc = pronostico.pronostico_vigente_con_incertidumbre(id_sku, id_locacion, horizonte)
-    demanda_horizonte = fc["demanda_media"]
-    origen_demanda = fc["origen"]
+    # --- Demanda
+    demanda_horizonte, origen_demanda = demanda_proyectada(id_sku, id_locacion, horizonte)
     lead_time = a_int(producto["lead_time_dias"], 3)
     demanda_lead_time, _ = demanda_proyectada(id_sku, id_locacion, lead_time)
     demanda_diaria = round(demanda_horizonte / horizonte, 2) if horizonte else 0.0
@@ -399,14 +393,11 @@ def analizar_sku_locacion(
         demanda_horizonte + stock_seguridad - inventario_util - entradas, 2
     )
     vida_util = a_int(producto["vida_util_estandar"], 15)
-    if fc.get("desviacion_std") is not None and fc["desviacion_std"] > 0:
-        sigma_horizonte = max(float(fc["desviacion_std"]), demanda_horizonte * 0.10)
-    else:
-        sigma_diaria = _desviacion_diaria(id_sku, id_locacion, 28)
-        sigma_horizonte = max(
-            sigma_diaria * math.sqrt(max(1, horizonte)),
-            demanda_horizonte * 0.10,
-        )
+    sigma_diaria = _desviacion_diaria(id_sku, id_locacion, 28)
+    sigma_horizonte = max(
+        sigma_diaria * math.sqrt(max(1, horizonte)),
+        demanda_horizonte * 0.10,
+    )
     nv = optimizar_newsvendor(
         precio_venta=a_float(producto["precio_venta"]),
         precio_costo=a_float(producto["precio_costo"]),
@@ -553,10 +544,6 @@ def analizar_sku_locacion(
         "stock_seguridad": stock_seguridad,
         "necesidad_neta": necesidad,
         "necesidad_politica_simple": necesidad_simple,
-        "desviacion_std": round(sigma_horizonte, 2),
-        "cuantil_optimo": nv["stock_objetivo_newsvendor"],
-        "modelo_aplicado": fc.get("modelo_aplicado"),
-        "grupo_ab": fc.get("grupo_ab"),
         "newsvendor": nv,
         "cantidad_sugerida": round(cantidad_sugerida, 2),
         "prioridad": prioridad,
@@ -1021,274 +1008,3 @@ def demanda_por_vencer(id_sku: int, id_locacion: int) -> float:
     dias = a_int(config_valor("dias_ventana_riesgo_lote", "5"), 5)
     valor, _ = demanda_proyectada(id_sku, id_locacion, dias)
     return valor
-
-
-# ---------------------------------------------------------------------------
-# Etapa 4: Pipeline desacoplado Pronóstico (μ, σ) → Inventario FEFO → Newsvendor
-# ---------------------------------------------------------------------------
-def pipeline_produccion_newsvendor_fefo(
-    id_locacion: int | None = None,
-    horizonte: int | None = None,
-    limite: int = 120,
-) -> dict:
-    """
-    Orquesta en solo lectura la vista integrada de Etapa 4:
-      1. Tabla estándar del módulo Pronóstico: (fecha, tienda, producto, media, desviacion_std).
-      2. Stock FEFO por fecha de caducidad desde `inventario.desglose_inventario_fefo`.
-      3. Cruce Newsvendor FEFO: cuantil óptimo Q*, inventario útil descontando riesgo y orden sugerida.
-    """
-    from app.domain import inventario as dom_inv
-
-    if horizonte is None:
-        horizonte = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
-    dias_ventana_riesgo = a_int(config_valor("dias_ventana_riesgo_lote", "5"), 5)
-
-    tabla_fc = pronostico.tabla_pronostico_estandar(id_locacion=id_locacion, limite=limite)
-    if not tabla_fc:
-        return {
-            "horizonte": horizonte,
-            "resumen": {
-                "total_series": 0,
-                "con_orden_sugerida": 0,
-                "unidades_sugeridas": 0.0,
-                "inventario_en_riesgo": 0.0,
-                "ahorro_esperado": 0.0,
-            },
-            "filas": [],
-        }
-
-    fefo_map = dom_inv.desglose_inventario_fefo(id_locacion=id_locacion)
-
-    prods = query(
-        """
-        SELECT p.id_sku, p.precio_venta, p.precio_costo, p.vida_util_estandar,
-               p.stock_seguridad, COALESCE(p.moq_lote, pr.moq, 1) AS moq,
-               COALESCE(pr.lead_time_dias, 3) AS lead_time_dias
-        FROM operacion.producto p
-        LEFT JOIN operacion.proveedor pr ON pr.id_proveedor = p.id_proveedor
-        WHERE p.activo = true
-        """
-    )
-    prod_map = {p["id_sku"]: p for p in prods}
-
-    entradas_rows = query(
-        """
-        SELECT id_sku, id_locacion,
-               COALESCE(SUM(COALESCE(cantidad_aprobada, cantidad_sugerida)), 0) AS total
-        FROM analitica.orden_reabastecimiento
-        WHERE estado IN ('PENDIENTE', 'APROBADA')
-        GROUP BY id_sku, id_locacion
-        """
-    )
-    entradas_map = {
-        (r["id_sku"], r["id_locacion"]): a_float(r["total"])
-        for r in entradas_rows
-    }
-
-    filas_out: list[dict] = []
-    con_orden = 0
-    total_sugerido = 0.0
-    total_riesgo = 0.0
-    total_ahorro = 0.0
-
-    for fc in tabla_fc:
-        sku = fc["id_sku"]
-        loc = fc["id_locacion"]
-        p_info = prod_map.get(sku) or {}
-        fefo = fefo_map.get((loc, sku)) or {
-            "caduca_hoy": 0.0,
-            "caduca_manana": 0.0,
-            "caduca_2_dias": 0.0,
-            "caduca_3_5_dias": 0.0,
-            "caduca_mas_5_dias": 0.0,
-            "stock_fisico": 0.0,
-            "lotes": [],
-        }
-
-        demanda_diaria = a_float(fc["media_diaria"])
-        media_h = a_float(fc["media_horizonte"])
-        sigma_h = max(a_float(fc["desviacion_std_horizonte"]), media_h * 0.10)
-
-        # Riesgo FEFO secuencial sobre lotes próximos a caducar dentro de la ventana
-        vendido_acum = 0.0
-        riesgo_fefo = 0.0
-        for lote in fefo.get("lotes", []):
-            d_rest = a_int(lote.get("dias_restantes"), 0)
-            cant = a_float(lote.get("cantidad"))
-            if d_rest < 0:
-                riesgo_fefo += cant
-            else:
-                d_util = min(d_rest, dias_ventana_riesgo)
-                dem_acum = demanda_diaria * d_util
-                disponible_vender = max(0.0, dem_acum - vendido_acum)
-                vendible = min(cant, disponible_vender)
-                vendido_acum += vendible
-                riesgo_fefo += max(0.0, cant - vendible)
-
-        riesgo_fefo = round(riesgo_fefo, 2)
-        stock_fisico = round(a_float(fefo["stock_fisico"]), 2)
-        inv_util = round(max(0.0, stock_fisico - riesgo_fefo), 2)
-        entradas = round(entradas_map.get((sku, loc), 0.0), 2)
-
-        nv = optimizar_newsvendor(
-            precio_venta=a_float(p_info.get("precio_venta")) or 20.0,
-            precio_costo=a_float(p_info.get("precio_costo")) or 10.0,
-            demanda_media=media_h,
-            desviacion_estandar=sigma_h,
-            vida_util_dias=a_int(p_info.get("vida_util_estandar"), 15),
-            demanda_diaria=demanda_diaria,
-            stock_util=inv_util,
-            entradas=entradas,
-            stock_seguridad_simple=a_float(p_info.get("stock_seguridad")),
-        )
-        necesidad = nv["cantidad_newsvendor"]
-        moq = max(1.0, a_float(p_info.get("moq")) or 1.0)
-        if necesidad <= 0:
-            sugerida = 0.0
-        elif necesidad < moq:
-            sugerida = moq
-        else:
-            sugerida = round(necesidad)
-            if moq > 1:
-                mult = round(necesidad / moq)
-                if mult * moq >= necesidad:
-                    sugerida = mult * moq
-
-        lead_time = a_int(p_info.get("lead_time_dias"), 3)
-        cobertura = (inv_util / demanda_diaria) if demanda_diaria > 0 else 999.0
-        prioridad = "BAJA"
-        if sugerida > 0:
-            if cobertura <= max(1, lead_time):
-                prioridad = "ALTA"
-            elif cobertura <= max(1, a_int(fc.get("horizonte_dias"), horizonte)):
-                prioridad = "MEDIA"
-            con_orden += 1
-            total_sugerido += sugerida
-
-        total_riesgo += riesgo_fefo
-        total_ahorro += nv["ahorro_esperado"]
-
-        filas_out.append(
-            {
-                "id_sku": sku,
-                "producto": fc["producto"],
-                "categoria": fc.get("categoria"),
-                "unidad_medida": fc["unidad_medida"],
-                "id_locacion": loc,
-                "locacion": fc["locacion"],
-                "desde": fc["desde"],
-                "hasta": fc["hasta"],
-                "modelo_aplicado": fc.get("modelo_aplicado"),
-                "grupo_ab": fc.get("grupo_ab"),
-                "media": media_h,
-                "media_diaria": demanda_diaria,
-                "desviacion_std": round(sigma_h, 2),
-                "fractil_critico": nv["fractil_critico"],
-                "cuantil_optimo": nv["stock_objetivo_newsvendor"],
-                "caduca_hoy": fefo["caduca_hoy"],
-                "caduca_manana": fefo["caduca_manana"],
-                "caduca_2_dias": fefo["caduca_2_dias"],
-                "caduca_3_5_dias": fefo["caduca_3_5_dias"],
-                "caduca_mas_5_dias": fefo["caduca_mas_5_dias"],
-                "stock_fisico": stock_fisico,
-                "inventario_riesgo": riesgo_fefo,
-                "inventario_util": inv_util,
-                "entradas_confirmadas": entradas,
-                "orden_sugerida": round(sugerida, 2),
-                "prioridad": prioridad,
-                "ahorro_esperado": nv["ahorro_esperado"],
-            }
-        )
-
-    filas_out.sort(
-        key=lambda x: (
-            0 if x["prioridad"] == "ALTA" else (1 if x["prioridad"] == "MEDIA" else 2),
-            -x["orden_sugerida"],
-            x["locacion"],
-            x["producto"],
-        )
-    )
-
-    return {
-        "horizonte": horizonte,
-        "resumen": {
-            "total_series": len(filas_out),
-            "con_orden_sugerida": con_orden,
-            "unidades_sugeridas": round(total_sugerido, 2),
-            "inventario_en_riesgo": round(total_riesgo, 2),
-            "ahorro_esperado": round(total_ahorro, 2),
-        },
-        "filas": filas_out,
-    }
-
-
-def ejecutar_pipeline_produccion(
-    *,
-    usuario: dict,
-    id_locacion: int | None = None,
-    horizonte: int | None = None,
-) -> dict:
-    """
-    Ejecuta en cadena el pipeline completo de Producción:
-      1. Inferencia por tienda respetando Campeón vigente o experimento A/B activo.
-      2. Si hay A/B Test activo, consolida la bitácora contra ventas/mermas reales.
-      3. Cruza distribución (media, sigma) contra inventario FEFO → órdenes Newsvendor.
-    """
-    from app.domain import experimentos_ab as dom_ab
-
-    if horizonte is None:
-        horizonte = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
-
-    if id_locacion:
-        locaciones = [{"id_locacion": id_locacion}]
-    else:
-        locaciones = query(
-            """
-            SELECT DISTINCT v.id_locacion
-            FROM analitica.v_demanda_diaria v
-            JOIN operacion.locacion l ON l.id_locacion = v.id_locacion
-            WHERE l.activo = true
-            ORDER BY v.id_locacion
-            """
-        )
-
-    tiendas_inferidas = 0
-    series_inferidas = 0
-    for t in locaciones:
-        loc_id = t["id_locacion"]
-        cfg = dom_ab.modelo_activo_para_tienda(loc_id)
-        res_t = pronostico._ejecutar_pronostico_tienda(
-            usuario=usuario,
-            id_locacion=loc_id,
-            metodo=cfg["metodo"],
-            horizonte=horizonte,
-            proposito=cfg["proposito"],
-            id_experimento=cfg["id_experimento"],
-            grupo_ab=cfg["grupo_ab"],
-        )
-        if res_t.get("id_run"):
-            tiendas_inferidas += 1
-            series_inferidas += res_t.get("series", 0)
-
-    exp_activo = dom_ab.obtener_experimento_activo()
-    if exp_activo:
-        try:
-            dom_ab.consolidar_experimento_ab(exp_activo["id_experimento"], usuario=usuario)
-        except Exception:
-            pass
-
-    res_reab = generar_recomendaciones(
-        usuario=usuario,
-        horizonte=horizonte,
-        id_locacion=id_locacion,
-    )
-
-    return {
-        "horizonte": horizonte,
-        "tiendas_inferidas": tiendas_inferidas,
-        "series_inferidas": series_inferidas,
-        "ordenes_generadas": res_reab["total"],
-        "ordenes_actualizadas": res_reab["actualizadas"],
-        "revisadas": res_reab["revisadas"],
-        "experimento_activo": exp_activo["nombre"] if exp_activo else None,
-    }

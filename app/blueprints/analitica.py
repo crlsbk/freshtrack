@@ -9,18 +9,13 @@ Blueprint de analítica.
 
 from __future__ import annotations
 
-from datetime import date
-import json
-
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import a_int, config_valor, sql_error
 from app.domain import alertas as motor_alertas
 from app.domain import descuentos as dom_desc
-from app.domain import experimentos_ab as dom_ab
 from app.domain import inventario as dom_inv
-from app.domain import laboratorio as dom_lab
 from app.domain import mermas as dom_mermas
 from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as motor_reab
@@ -31,387 +26,49 @@ from app.services import clientes
 
 bp = Blueprint("analitica", __name__)
 
-ETAPAS_PRONOSTICO = ("salud", "laboratorio", "abtest", "produccion")
-
 
 # ===========================================================================
-# PRONÓSTICO (Flujo guiado de 4 etapas en una sola pantalla)
+# PRONÓSTICO
 # ===========================================================================
-def _construir_guia_etapas(
-    *,
-    etapa_activa: str,
-    salud: dict | None,
-    gobernanza: dict,
-    ab_activo: dict | None,
-    pipeline: dict | None,
-) -> tuple[list[dict], dict]:
-    sd = (salud or {}).get("salud_datos") or {}
-    rojas = sd.get("tiendas_rojas", 0)
-    ambar = sd.get("tiendas_ambar", 0)
-    if rojas > 0:
-        sub_salud, tono_salud = f"{rojas} tienda(s) con drift crítico", "danger"
-    elif ambar > 0:
-        sub_salud, tono_salud = f"{ambar} tienda(s) por revisar", "warning"
-    else:
-        sub_salud, tono_salud = "Datos estables", "success"
-
-    retador = gobernanza.get("retador")
-    campeon = gobernanza.get("campeon") or {"metodo": "AUTO", "etiqueta": "Automático"}
-    sub_lab = f"Retador: {retador['etiqueta']}" if retador else f"Campeón: {campeon['etiqueta']}"
-    tono_lab = "info" if retador else "neutral"
-
-    if ab_activo:
-        sub_ab = f"Día {ab_activo['dia_actual']} de {ab_activo['duracion_dias']}"
-        tono_ab = "info"
-    else:
-        sub_ab = "Listo para iniciar" if retador else "Sin test activo"
-        tono_ab = "warning" if retador else "neutral"
-
-    tot_prod = ((pipeline or {}).get("resumen") or {}).get("total_series", 0)
-    sub_prod = f"{tot_prod} series FEFO + NV" if tot_prod else "Listo para inferencia"
-    tono_prod = "success" if tot_prod else "neutral"
-
-    stepper = [
-        {"id": "salud", "num": 1, "titulo": "Salud de Datos", "sub": sub_salud, "tono": tono_salud},
-        {"id": "laboratorio", "num": 2, "titulo": "Laboratorio Offline", "sub": sub_lab, "tono": tono_lab},
-        {"id": "abtest", "num": 3, "titulo": "Gestor de A/B Test", "sub": sub_ab, "tono": tono_ab},
-        {"id": "produccion", "num": 4, "titulo": "Producción (NV + FEFO)", "sub": sub_prod, "tono": tono_prod},
-    ]
-
-    if etapa_activa == "salud":
-        if rojas > 0:
-            guia = {
-                "titulo": f"Atención previa al entrenamiento: {rojas} tienda(s) muestran deriva crítica.",
-                "detalle": "Revisa si hubo quiebres de inventario, promociones o remodelaciones antes de calibrar modelos.",
-                "cta_texto": "Ir al Laboratorio Offline →",
-                "cta_etapa": "laboratorio",
-            }
-        else:
-            guia = {
-                "titulo": "Tus series de venta diaria están listas para evaluación.",
-                "detalle": "Pasa al Laboratorio Offline para comparar WMAPE, Bias, FVA y Merma Simulada Newsvendor.",
-                "cta_texto": "Evaluar Modelos en Laboratorio →",
-                "cta_etapa": "laboratorio",
-            }
-    elif etapa_activa == "laboratorio":
-        guia = {
-            "titulo": "Compara precisión estadística (WMAPE, Bias, FVA) e impacto económico (Merma Simulada).",
-            "detalle": "Elige el alcance, evalúa los modelos y promueve el mejor candidato a Retador para validarlo en A/B Test.",
-            "cta_texto": "Ir al Gestor de A/B Test →",
-            "cta_etapa": "abtest",
-        }
-    elif etapa_activa == "abtest":
-        if ab_activo:
-            guia = {
-                "titulo": f"Experimento en curso (Día {ab_activo['dia_actual']} de {ab_activo['duracion_dias']}): Control vs. Tratamiento.",
-                "detalle": ab_activo.get("texto_veredicto") or "Compara merma real y ventas reales antes de promover a producción.",
-                "cta_texto": "Ver Pipeline de Producción →",
-                "cta_etapa": "produccion",
-            }
-        else:
-            guia = {
-                "titulo": "Asigna tiendas al grupo Control (Campeón) y Tratamiento (Retador).",
-                "detalle": "El sistema audita diariamente cada predicción contra las ventas y mermas reales.",
-                "cta_texto": "Ir a Producción →",
-                "cta_etapa": "produccion",
-            }
-    else:
-        guia = {
-            "titulo": f"Pipeline desacoplado activo con Campeón Global: {campeon['etiqueta']}.",
-            "detalle": "Pronóstico entrega (media, desviación std) → Inventario entrega buckets FEFO → Newsvendor calcula orden sugerida.",
-            "cta_texto": "Revisar Salud de Datos →",
-            "cta_etapa": "salud",
-        }
-
-    return stepper, guia
-
-
 @bp.route("/pronostico")
 @login_required
 @requiere_vista("forecast")
 def pronostico():
-    etapa = (request.args.get("etapa") or "salud").lower()
-    if etapa not in ETAPAS_PRONOSTICO:
-        etapa = "salud"
-
     id_loc = int(request.args["locacion"]) if request.args.get("locacion") else None
-    categoria = (request.args.get("categoria") or "").strip() or None
-    horizonte_def = a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
-    horizonte = a_int(request.args.get("horizonte"), horizonte_def) or horizonte_def
+    corrida = motor_pron.ultima_corrida(id_locacion=id_loc)
+    id_run = request.args.get("run")
 
-    # Establece Campeón Global si aún no existía y recupera Retador actual
-    gobernanza = dom_lab.obtener_campeon_y_retador(id_locacion=id_loc, categoria=categoria)
-
-    # Inicializa A/B Test con ventas y mermas reales si es la primera vez que se accede
-    usr = usuario_actual()
-    if usr and usr.get("rol_clave") in ("admin", "planner"):
-        dom_ab.inicializar_experimento_si_vacio(usr)
+    series = (
+        motor_pron.pronostico_por_serie(id_run)
+        if id_run
+        else motor_pron.pronostico_vigente_por_tienda(id_locacion=id_loc)
+    )
 
     salud = None
     try:
-        if clientes.activo() and etapa == "salud":
+        if clientes.activo():
             ruta = "/api/v1/planning/forecast/drift" + (f"?id_locacion={id_loc}" if id_loc else "")
             st, resp = clientes.como_usuario("planning", "GET", ruta, timeout=10)
-            if st == 200 and isinstance(resp, dict) and "tiendas" in resp and "salud_datos" in resp:
+            if st == 200 and isinstance(resp, dict) and "tiendas" in resp:
                 salud = resp
         if salud is None:
-            salud = motor_pron.evaluar_salud_datos(id_locacion=id_loc)
+            salud = motor_pron.evaluar_salud_modelos(id_locacion=id_loc)
     except Exception:
-        salud = {
-            "resumen": {"total_tiendas": 0, "confiables": 0, "vigilancia": 0, "no_confiables": 0, "sin_datos": 0, "total_anomalias_sku": 0},
-            "salud_datos": {"semaforo_global": "AMBAR", "ultima_fecha_ventas": None, "dias_rezago_ventas": None, "tiendas_verdes": 0, "tiendas_ambar": 0, "tiendas_rojas": 0},
-            "tiendas": [],
-            "anomalias_sku": [],
-        }
-
-    exp_activo_row = dom_ab.obtener_experimento_activo()
-    ab_resumen = (
-        dom_ab.resumen_experimento_ab(exp_activo_row["id_experimento"])
-        if exp_activo_row
-        else None
-    )
-
-    lab_resultado = None
-    categorias = []
-    if etapa == "laboratorio":
-        categorias = dom_lab.categorias_con_historia()
-        lab_resultado = dom_lab.evaluar_modelos_laboratorio(
-            id_locacion=id_loc,
-            categoria=categoria,
-            horizonte=horizonte,
-        )
-
-    asignacion_sugerida = []
-    ab_historial = []
-    fecha_inicio_ab_def = dom_ab.fecha_inicio_sugerida_real(14).isoformat()
-    if etapa == "abtest":
-        categorias = categorias or dom_lab.categorias_con_historia()
-        asignacion_sugerida = dom_ab.sugerir_asignacion_balanceada(categoria=categoria)
-        ab_historial = dom_ab.listar_experimentos_ab(10)
-
-    pipeline_prod = None
-    corridas = []
-    if etapa == "produccion":
-        pipeline_prod = motor_reab.pipeline_produccion_newsvendor_fefo(
-            id_locacion=id_loc,
-            horizonte=horizonte,
-        )
-        corridas = motor_pron.corridas(15, id_locacion=id_loc)
-
-    stepper, guia = _construir_guia_etapas(
-        etapa_activa=etapa,
-        salud=salud,
-        gobernanza=gobernanza,
-        ab_activo=ab_resumen,
-        pipeline=pipeline_prod,
-    )
+        salud = {"resumen": {"total_tiendas": 0, "confiables": 0, "vigilancia": 0, "no_confiables": 0, "sin_datos": 0, "total_anomalias_sku": 0}, "tiendas": [], "anomalias_sku": []}
 
     return render_template(
         "analitica/pronostico.html",
         active="forecast",
-        etapa_activa=etapa,
-        stepper=stepper,
-        guia=guia,
-        gobernanza=gobernanza,
+        corrida=corrida,
+        corridas=motor_pron.corridas(15, id_locacion=id_loc),
+        series=series,
         salud=salud,
-        lab=lab_resultado,
-        categorias=categorias,
-        categoria_sel=categoria or "",
-        ab_resumen=ab_resumen,
-        ab_historial=ab_historial,
-        asignacion_sugerida=asignacion_sugerida,
-        fecha_inicio_ab_def=fecha_inicio_ab_def,
-        pipeline=pipeline_prod,
-        corridas=corridas,
+        id_run=id_run,
         id_locacion=id_loc,
-        horizonte_defecto=horizonte,
         metodos=motor_pron.METODOS,
+        horizonte_defecto=a_int(config_valor("horizonte_pronostico_dias", "7"), 7),
         locaciones=dom_inv.locaciones_activas("Tienda"),
     )
-
-
-@bp.post("/pronostico/laboratorio/evaluar")
-@login_required
-@requiere_vista("forecast")
-@requiere_rol("admin", "planner")
-def pronostico_lab_evaluar():
-    id_loc = int(request.form["id_locacion"]) if request.form.get("id_locacion") else None
-    categoria = (request.form.get("categoria") or "").strip() or None
-    horizonte = a_int(request.form.get("horizonte"), 7) or 7
-    return redirect(
-        url_for(
-            "analitica.pronostico",
-            etapa="laboratorio",
-            locacion=id_loc,
-            categoria=categoria,
-            horizonte=horizonte,
-        )
-    )
-
-
-@bp.post("/pronostico/laboratorio/retador")
-@login_required
-@requiere_vista("forecast")
-@requiere_rol("admin", "planner")
-def pronostico_promover_retador():
-    metodo = (request.form.get("metodo") or "").upper()
-    id_loc = int(request.form["id_locacion"]) if request.form.get("id_locacion") else None
-    categoria = (request.form.get("categoria") or "").strip() or None
-    metricas_raw = request.form.get("metricas_json") or "{}"
-    try:
-        metricas_lab = json.loads(metricas_raw)
-    except ValueError:
-        metricas_lab = {}
-    try:
-        res = dom_lab.promover_a_retador(
-            metodo=metodo,
-            usuario=usuario_actual(),
-            id_locacion=id_loc,
-            categoria=categoria,
-            metricas_lab=metricas_lab,
-        )
-        flash(f"Modelo «{res['etiqueta']}» promovido a Retador. Configura o lanza tu A/B Test aquí.", "ok")
-        return redirect(url_for("analitica.pronostico", etapa="abtest", locacion=id_loc))
-    except (ValueError, SQLAlchemyError) as e:
-        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
-        return redirect(url_for("analitica.pronostico", etapa="laboratorio", locacion=id_loc))
-
-
-@bp.post("/pronostico/laboratorio/campeon")
-@login_required
-@requiere_vista("forecast")
-@requiere_rol("admin", "planner")
-def pronostico_promover_campeon():
-    metodo = (request.form.get("metodo") or "").upper()
-    categoria = (request.form.get("categoria") or "").strip() or None
-    try:
-        res = dom_lab.promover_a_campeon(
-            metodo=metodo,
-            usuario=usuario_actual(),
-            id_locacion=None,
-            categoria=categoria,
-        )
-        flash(f"Campeón Global actualizado a «{res['etiqueta']}» para producción.", "ok")
-        return redirect(url_for("analitica.pronostico", etapa="produccion"))
-    except (ValueError, SQLAlchemyError) as e:
-        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
-        return redirect(url_for("analitica.pronostico", etapa="laboratorio"))
-
-
-@bp.post("/pronostico/abtest/crear")
-@login_required
-@requiere_vista("forecast")
-@requiere_rol("admin", "planner")
-def pronostico_ab_crear():
-    nombre = (request.form.get("nombre") or "Experimento A/B").strip()
-    modelo_campeon = (request.form.get("modelo_campeon") or "AUTO").upper()
-    modelo_retador = (request.form.get("modelo_retador") or "ETS_HOLT_WINTERS").upper()
-    categoria = (request.form.get("categoria") or "").strip() or None
-    duracion = a_int(request.form.get("duracion_dias"), 21) or 21
-    horizonte = a_int(request.form.get("horizonte_dias"), 7) or 7
-    fecha_raw = (request.form.get("fecha_inicio") or "").strip()
-    try:
-        f_ini = date.fromisoformat(fecha_raw) if fecha_raw else None
-    except ValueError:
-        f_ini = None
-
-    ctrl = [
-        int(k.split("_")[-1])
-        for k, v in request.form.items()
-        if k.startswith("grupo_loc_") and v == "CONTROL"
-    ]
-    trat = [
-        int(k.split("_")[-1])
-        for k, v in request.form.items()
-        if k.startswith("grupo_loc_") and v == "TRATAMIENTO"
-    ]
-    if not ctrl or not trat:
-        asig = dom_ab.sugerir_asignacion_balanceada(categoria=categoria)
-        ctrl = [t["id_locacion"] for t in asig if t["grupo"] == "CONTROL"]
-        trat = [t["id_locacion"] for t in asig if t["grupo"] == "TRATAMIENTO"]
-
-    try:
-        res = dom_ab.crear_experimento_ab(
-            nombre=nombre,
-            modelo_campeon=modelo_campeon,
-            modelo_retador=modelo_retador,
-            tiendas_control=ctrl,
-            tiendas_tratamiento=trat,
-            usuario=usuario_actual(),
-            duracion_dias=duracion,
-            horizonte_dias=horizonte,
-            categoria=categoria,
-            fecha_inicio=f_ini,
-        )
-        flash(
-            f"A/B Test «{res['experimento']['nombre']}» iniciado sobre datos reales "
-            f"(Día {res['dia_actual']} de {res['duracion_dias']}).",
-            "ok",
-        )
-    except (ValueError, SQLAlchemyError) as e:
-        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
-    return redirect(url_for("analitica.pronostico", etapa="abtest"))
-
-
-@bp.post("/pronostico/abtest/<id_exp>/consolidar")
-@login_required
-@requiere_vista("forecast")
-@requiere_rol("admin", "planner")
-def pronostico_ab_consolidar(id_exp: str):
-    try:
-        res = dom_ab.consolidar_experimento_ab(id_exp, usuario=usuario_actual())
-        flash(
-            f"Bitácora A/B consolidada contra ventas y mermas reales (Día {res['dia_actual']} de {res['duracion_dias']}).",
-            "ok",
-        )
-    except (ValueError, SQLAlchemyError) as e:
-        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
-    return redirect(url_for("analitica.pronostico", etapa="abtest"))
-
-
-@bp.post("/pronostico/abtest/<id_exp>/decidir")
-@login_required
-@requiere_vista("forecast")
-@requiere_rol("admin", "planner")
-def pronostico_ab_decidir(id_exp: str):
-    decision = (request.form.get("decision") or "").upper()
-    notas = (request.form.get("notas") or "").strip()
-    try:
-        res = dom_ab.decidir_experimento_ab(
-            id_exp, decision=decision, usuario=usuario_actual(), notas=notas
-        )
-        if res["decision"] == "PROMOVIDO":
-            flash("Retador promovido como Campeón Global de producción.", "ok")
-            return redirect(url_for("analitica.pronostico", etapa="produccion"))
-        flash("Experimento descartado; el Campeón actual se mantiene en producción.", "ok")
-    except (ValueError, SQLAlchemyError) as e:
-        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
-    return redirect(url_for("analitica.pronostico", etapa="abtest"))
-
-
-@bp.post("/pronostico/produccion/ejecutar")
-@login_required
-@requiere_vista("forecast")
-@requiere_rol("admin", "planner")
-def pronostico_produccion_ejecutar():
-    id_loc = int(request.form["id_locacion"]) if request.form.get("id_locacion") else None
-    horizonte = a_int(request.form.get("horizonte"), 0) or a_int(config_valor("horizonte_pronostico_dias", "7"), 7)
-    try:
-        res = motor_reab.ejecutar_pipeline_produccion(
-            usuario=usuario_actual(),
-            id_locacion=id_loc,
-            horizonte=horizonte,
-        )
-        flash(
-            f"Pipeline ejecutado ({res['horizonte']} d): {res['tiendas_inferidas']} tienda(s), "
-            f"{res['series_inferidas']} series con (μ, σ) → "
-            f"{res['ordenes_generadas']} orden(es) nuevas y {res['ordenes_actualizadas']} actualizada(s) en Newsvendor FEFO.",
-            "ok",
-        )
-        motor_alertas.generar_alertas(usuario_actual())
-    except (ValueError, SQLAlchemyError) as e:
-        flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
-    return redirect(url_for("analitica.pronostico", etapa="produccion", locacion=id_loc, horizonte=horizonte))
 
 
 @bp.post("/pronostico/ejecutar")

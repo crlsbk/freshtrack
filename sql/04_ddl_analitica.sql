@@ -46,31 +46,17 @@ CREATE TABLE IF NOT EXISTS analitica.forecast_run (
     naive_wmape      numeric(8,4),
     observaciones    text,
     CONSTRAINT chk_fc_metodo CHECK (metodo IN (
-        'AUTO', 'ETS_HOLT_WINTERS', 'MEDIA_MOVIL', 'MEDIA_MOVIL_PONDERADA', 'SUAVIZACION_EXPONENCIAL'
+        'AUTO', 'MEDIA_MOVIL', 'MEDIA_MOVIL_PONDERADA', 'SUAVIZACION_EXPONENCIAL'
     )),
     CONSTRAINT chk_fc_horizonte CHECK (horizonte_dias BETWEEN 1 AND 90),
     CONSTRAINT chk_fc_estado CHECK (estado IN ('COMPLETADO', 'ERROR', 'PARCIAL'))
 );
 
 ALTER TABLE analitica.forecast_run
-    ADD COLUMN IF NOT EXISTS id_locacion    integer REFERENCES operacion.locacion(id_locacion),
-    ADD COLUMN IF NOT EXISTS sesgo          numeric(12,4),
-    ADD COLUMN IF NOT EXISTS naive_mae      numeric(12,4),
-    ADD COLUMN IF NOT EXISTS naive_wmape    numeric(8,4),
-    ADD COLUMN IF NOT EXISTS proposito      varchar(20) NOT NULL DEFAULT 'PRODUCCION',
-    ADD COLUMN IF NOT EXISTS id_experimento uuid;
-
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_fc_metodo') THEN
-        ALTER TABLE analitica.forecast_run DROP CONSTRAINT chk_fc_metodo;
-    END IF;
-    ALTER TABLE analitica.forecast_run
-        ADD CONSTRAINT chk_fc_metodo CHECK (metodo IN (
-            'AUTO', 'ETS_HOLT_WINTERS', 'MEDIA_MOVIL', 'MEDIA_MOVIL_PONDERADA', 'SUAVIZACION_EXPONENCIAL'
-        ));
-END
-$$;
+    ADD COLUMN IF NOT EXISTS id_locacion integer REFERENCES operacion.locacion(id_locacion),
+    ADD COLUMN IF NOT EXISTS sesgo       numeric(12,4),
+    ADD COLUMN IF NOT EXISTS naive_mae   numeric(12,4),
+    ADD COLUMN IF NOT EXISTS naive_wmape numeric(8,4);
 
 CREATE INDEX IF NOT EXISTS idx_fcrun_fecha ON analitica.forecast_run (fecha_ejecucion DESC);
 CREATE INDEX IF NOT EXISTS idx_fcrun_loc_fecha ON analitica.forecast_run (id_locacion, fecha_ejecucion DESC);
@@ -86,110 +72,13 @@ CREATE TABLE IF NOT EXISTS analitica.forecast_result (
     fecha_objetivo        date    NOT NULL,
     horizonte_dia         integer NOT NULL,
     demanda_pronosticada  numeric(12,2) NOT NULL,
-    desviacion_std        numeric(12,4),
-    modelo_aplicado       varchar(40),
-    id_experimento        uuid,
-    grupo_ab              varchar(20),
     demanda_real          numeric(12,2),
     error_absoluto        numeric(12,2),
     CONSTRAINT uq_fc_resultado UNIQUE (id_run, id_sku, id_locacion, fecha_objetivo)
 );
 
-ALTER TABLE analitica.forecast_result
-    ADD COLUMN IF NOT EXISTS desviacion_std  numeric(12,4),
-    ADD COLUMN IF NOT EXISTS modelo_aplicado varchar(40),
-    ADD COLUMN IF NOT EXISTS id_experimento  uuid,
-    ADD COLUMN IF NOT EXISTS grupo_ab        varchar(20);
-
 CREATE INDEX IF NOT EXISTS idx_fcres_serie ON analitica.forecast_result (id_sku, id_locacion, fecha_objetivo);
 CREATE INDEX IF NOT EXISTS idx_fcres_run   ON analitica.forecast_result (id_run);
-
--- -----------------------------------------------------------------------------
--- Gobernanza de modelos: Campeón en producción y Retador de laboratorio
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS analitica.modelo_produccion (
-    id_config        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    id_locacion      integer REFERENCES operacion.locacion(id_locacion),
-    categoria        varchar(80),
-    rol_modelo       varchar(20) NOT NULL,
-    metodo           varchar(40) NOT NULL,
-    parametros       jsonb NOT NULL DEFAULT '{}'::jsonb,
-    metricas_lab     jsonb NOT NULL DEFAULT '{}'::jsonb,
-    activo           boolean NOT NULL DEFAULT true,
-    promovido_por    uuid REFERENCES operacion.usuario(id_usuario),
-    fecha_promocion  timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_mp_rol CHECK (rol_modelo IN ('CAMPEON', 'RETADOR'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_mp_activo
-    ON analitica.modelo_produccion (rol_modelo, activo, fecha_promocion DESC);
-
-INSERT INTO analitica.modelo_produccion (id_locacion, categoria, rol_modelo, metodo, parametros, metricas_lab, activo)
-SELECT NULL, NULL, 'CAMPEON', 'AUTO', '{"horizonte": 7, "ventana": 28, "alpha": 0.30}'::jsonb, '{}'::jsonb, true
-WHERE NOT EXISTS (
-    SELECT 1 FROM analitica.modelo_produccion
-    WHERE rol_modelo = 'CAMPEON' AND id_locacion IS NULL AND categoria IS NULL AND activo = true
-);
-
--- -----------------------------------------------------------------------------
--- Experimentos A/B (Control vs. Tratamiento con bitácora diaria auditable)
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS analitica.experimento_ab (
-    id_experimento       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    nombre               varchar(140) NOT NULL,
-    estado               varchar(20) NOT NULL DEFAULT 'ACTIVO',
-    categoria            varchar(80),
-    horizonte_dias       integer NOT NULL DEFAULT 7,
-    modelo_campeon       varchar(40) NOT NULL,
-    parametros_campeon   jsonb NOT NULL DEFAULT '{}'::jsonb,
-    modelo_retador       varchar(40) NOT NULL,
-    parametros_retador   jsonb NOT NULL DEFAULT '{}'::jsonb,
-    fecha_inicio         date NOT NULL DEFAULT CURRENT_DATE,
-    duracion_dias        integer NOT NULL DEFAULT 21,
-    fecha_fin_estimada   date NOT NULL,
-    fecha_cierre         timestamptz,
-    decision_final       varchar(20),
-    notas_decision       text,
-    id_usuario_crea      uuid REFERENCES operacion.usuario(id_usuario),
-    id_usuario_decide    uuid REFERENCES operacion.usuario(id_usuario),
-    creado_en            timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_ab_estado CHECK (estado IN ('ACTIVO', 'PROMOVIDO', 'DESCARTADO')),
-    CONSTRAINT chk_ab_duracion CHECK (duracion_dias BETWEEN 3 AND 90)
-);
-
-CREATE INDEX IF NOT EXISTS idx_ab_estado
-    ON analitica.experimento_ab (estado, creado_en DESC);
-
-CREATE TABLE IF NOT EXISTS analitica.experimento_ab_asignacion (
-    id_experimento  uuid    NOT NULL REFERENCES analitica.experimento_ab(id_experimento) ON DELETE CASCADE,
-    id_locacion     integer NOT NULL REFERENCES operacion.locacion(id_locacion),
-    grupo           varchar(20) NOT NULL,
-    modelo_asignado varchar(40) NOT NULL,
-    PRIMARY KEY (id_experimento, id_locacion),
-    CONSTRAINT chk_aba_grupo CHECK (grupo IN ('CONTROL', 'TRATAMIENTO'))
-);
-
-CREATE TABLE IF NOT EXISTS analitica.experimento_ab_bitacora (
-    id_registro          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_experimento       uuid    NOT NULL REFERENCES analitica.experimento_ab(id_experimento) ON DELETE CASCADE,
-    fecha                date    NOT NULL,
-    id_locacion          integer NOT NULL REFERENCES operacion.locacion(id_locacion),
-    id_sku               integer NOT NULL REFERENCES operacion.producto(id_sku),
-    grupo                varchar(20) NOT NULL,
-    id_run               uuid REFERENCES analitica.forecast_run(id_run) ON DELETE SET NULL,
-    modelo_usado         varchar(40) NOT NULL,
-    demanda_media        numeric(12,2) NOT NULL DEFAULT 0,
-    desviacion_std       numeric(12,4) NOT NULL DEFAULT 0,
-    demanda_real         numeric(12,2),
-    error_absoluto       numeric(12,2),
-    ventas_reales_valor  numeric(14,2) NOT NULL DEFAULT 0,
-    merma_real_unidades  numeric(12,2) NOT NULL DEFAULT 0,
-    merma_real_valor     numeric(14,2) NOT NULL DEFAULT 0,
-    CONSTRAINT uq_ab_bitacora UNIQUE (id_experimento, fecha, id_locacion, id_sku)
-);
-
-CREATE INDEX IF NOT EXISTS idx_ab_bit_exp_fecha
-    ON analitica.experimento_ab_bitacora (id_experimento, fecha, grupo);
 
 -- -----------------------------------------------------------------------------
 -- Órdenes de reabastecimiento (recomendación + aprobación humana)

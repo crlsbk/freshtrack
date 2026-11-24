@@ -45,7 +45,6 @@ load_dotenv(RAIZ / ".env")
 
 from app.db import get_engine, one, query  # noqa: E402
 from app.domain import kpis as dom_kpis  # noqa: E402
-from app.domain import laboratorio as dom_lab  # noqa: E402
 from app.domain import pronostico as dom_pron  # noqa: E402
 from app.domain import reabastecimiento as dom_reab  # noqa: E402
 from app.domain import ventas as dom_ventas  # noqa: E402
@@ -404,7 +403,7 @@ def medir_cache_y_redis() -> tuple[dict, list[dict]]:
         ("KPIs Panel Principal", dom_kpis.panel_principal),
         ("Mapa Tiendas GPS (30d)", lambda: dom_kpis.metricas_por_locacion(30)),
         ("Métricas Periodo (30d)", lambda: dom_kpis.metricas_periodo(30)),
-        ("Salud de Datos Etapa 1", lambda: dom_pron.evaluar_salud_datos()),
+        ("Salud de datos (drift)", lambda: dom_pron.evaluar_salud_modelos()),
     ]
     comparativa: list[dict] = []
     prev_flag = os.environ.get("CACHE_WEB_ACTIVA")
@@ -443,15 +442,15 @@ def medir_procesamiento_analitico() -> dict:
     os.environ["CACHE_WEB_ACTIVA"] = "false"
     try:
         t0 = time.perf_counter()
-        salud = dom_pron.evaluar_salud_datos()
+        salud = dom_pron.evaluar_salud_modelos()
         t_salud = round(time.perf_counter() - t0, 3)
 
         t1 = time.perf_counter()
-        lab = dom_lab.evaluar_modelos_laboratorio(horizonte=7, max_series=400)
+        backtest = dom_pron.evaluar_backtest_comparativo(horizonte=7)
         t_lab = round(time.perf_counter() - t1, 3)
 
         t2 = time.perf_counter()
-        prod = dom_reab.pipeline_produccion_newsvendor_fefo(horizonte=7, limite=250)
+        riesgo = dom_reab.sobreinventario(horizonte=7, limite=250)
         t_prod = round(time.perf_counter() - t2, 3)
     finally:
         if prev is None:
@@ -465,18 +464,22 @@ def medir_procesamiento_analitico() -> dict:
         p = a.get("perfil_demanda") or "SIN_PERFIL"
         conteo_perfiles[p] = conteo_perfiles.get(p, 0) + 1
 
+    naive = (backtest.get("resumen_global") or {}).get("NAIVE", {}) or {}
     return {
         "salud_datos_seg": t_salud,
-        "anomalias_detectadas": salud.get("resumen", {}).get("total_anomalias_sku", 0),
+        "anomalias_detectadas": len(anomalias),
         "anomalias_por_perfil": conteo_perfiles,
         "laboratorio_seg": t_lab,
-        "series_evaluadas_lab": lab["alcance"]["series_evaluadas"],
+        "series_evaluadas_lab": backtest.get("total_series", 0),
         "modelos_lab": [
-            {"modelo": m["modelo"], "wmape": m["wmape"], "fva_pp": m["fva_pp"], "costo": m["costo_total_simulado"]}
-            for m in lab["modelos"]
+            {"modelo": nombre, "wmape": m.get("wmape"),
+             "fva_pp": (round(naive["wmape"] - m["wmape"], 2)
+                        if naive.get("wmape") is not None and m.get("wmape") is not None else None),
+             "costo": m.get("mae")}
+            for nombre, m in (backtest.get("resumen_global") or {}).items()
         ],
         "pipeline_newsvendor_fefo_seg": t_prod,
-        "series_produccion": prod["resumen"]["total_series"],
+        "series_produccion": len(riesgo),
     }
 
 
@@ -571,7 +574,7 @@ def medir_escalabilidad(
 ) -> dict:
     cookie_header = _obtener_cookie_sesion(base_url, email, password)
     modo = "http_web_mixto" if cookie_header else "db_concurrente_mixto"
-    rutas = ["/panel", "/mapa", "/pronostico?etapa=salud", "/reabastecimiento", "/lotes", "/inventario"]
+    rutas = ["/panel", "/mapa", "/pronostico", "/reabastecimiento", "/lotes", "/inventario"]
 
     candidatos_stock = query(
         """
@@ -759,10 +762,10 @@ def _generar_markdown(rep: dict) -> str:
     pr = rep["procesamiento"]
     lines.extend([
         "", "## 5. Tiempo de Procesamiento y Discriminación de Perfiles", "",
-        f"- **Etapa 1 (Salud / Drift):** `{pr['salud_datos_seg']}s` · Anomalías detectadas: `{pr['anomalias_detectadas']}` (`{pr['anomalias_por_perfil']}`)",
-        f"- **Etapa 2 (Laboratorio Backtest + Newsvendor):** `{pr['laboratorio_seg']}s` · Series evaluadas: `{pr['series_evaluadas_lab']}`",
-        f"- **Etapa 4 (Pipeline Newsvendor FEFO):** `{pr['pipeline_newsvendor_fefo_seg']}s` · Series: `{pr['series_produccion']}`",
-        "", "| Modelo | WMAPE (%) | FVA vs Naive (pp) | Costo Simulado NV ($) |", "| --- | ---: | ---: | ---: |",
+        f"- **Salud de datos / Drift:** `{pr['salud_datos_seg']}s` · Anomalías detectadas: `{pr['anomalias_detectadas']}` (`{pr['anomalias_por_perfil']}`)",
+        f"- **Backtest comparativo (walk-forward):** `{pr['laboratorio_seg']}s` · Series evaluadas: `{pr['series_evaluadas_lab']}`",
+        f"- **Riesgo de sobreinventario (Newsvendor/FEFO):** `{pr['pipeline_newsvendor_fefo_seg']}s` · Series: `{pr['series_produccion']}`",
+        "", "| Modelo | WMAPE (%) | FVA vs Naive (pp) | MAE |", "| --- | ---: | ---: | ---: |",
     ])
     for m in pr["modelos_lab"]:
         lines.append(f"| {m['modelo']} | {m['wmape']} | {m['fva_pp']} | {m['costo']} |")

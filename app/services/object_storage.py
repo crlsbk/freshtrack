@@ -226,6 +226,73 @@ def descargar_pdf(
     return None
 
 
+class AlmacenamientoNoDisponible(RuntimeError):
+    """El bucket no aceptó el archivo (caído, sin credenciales o sin red)."""
+
+
+def subir_objeto(object_key: str, contenido: bytes, content_type: str, bucket: str | None = None) -> dict:
+    """
+    Sube un archivo privado al bucket. A diferencia de `subir_pdf` no guarda copia
+    local: un archivo que no está en el bucket no se puede compartir con URL firmada.
+    """
+    cfg = _config_actual()
+    bkt = bucket or cfg["bucket"]
+    key = object_key.lstrip("/")
+    status, _, hdrs = _peticion_s3("PUT", f"{bkt}/{key}", cuerpo=contenido, content_type=content_type, timeout=15.0)
+    if status == 404 and asegurar_bucket(bkt):
+        status, _, hdrs = _peticion_s3("PUT", f"{bkt}/{key}", cuerpo=contenido, content_type=content_type, timeout=15.0)
+    if status not in (200, 201, 204):
+        raise AlmacenamientoNoDisponible(f"El bucket respondió {status or 'sin conexión'}.")
+    sha256 = hashlib.sha256(contenido).hexdigest()
+    return {
+        "storage_provider": _proveedor_storage(cfg["endpoint"]),
+        "bucket": bkt,
+        "object_key": key,
+        "etag": (hdrs.get("etag") or "").strip('"') or sha256[:32],
+        "sha256": sha256,
+        "tamano_bytes": len(contenido),
+        "content_type": content_type,
+    }
+
+
+def url_firmada(object_key: str, bucket: str | None = None, expira_segundos: int = 900) -> str:
+    """
+    URL GET pre-firmada (AWS Signature V4 por query string; GCS la acepta con llaves HMAC).
+    La firma es la única autorización: quien tenga la URL puede leer el objeto hasta que expire.
+    `OBJECT_STORAGE_PUBLIC_ENDPOINT` permite firmar con un host alcanzable desde fuera
+    cuando el endpoint interno (p. ej. http://minio:9000) no lo es.
+    """
+    cfg = _config_actual()
+    endpoint = os.getenv("OBJECT_STORAGE_PUBLIC_ENDPOINT", "").rstrip("/") or cfg["endpoint"]
+    parsed = urllib.parse.urlparse(endpoint)
+    host = parsed.netloc
+    bkt = bucket or cfg["bucket"]
+    canonical_uri = urllib.parse.quote(f"{parsed.path.rstrip('/')}/{bkt}/{object_key.lstrip('/')}", safe="/-_.~")
+
+    ahora = datetime.now(timezone.utc)
+    amz_date = ahora.strftime("%Y%m%dT%H%M%SZ")
+    date_stamp = ahora.strftime("%Y%m%d")
+    scope = f"{date_stamp}/{cfg['region']}/s3/aws4_request"
+    params = {
+        "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+        "X-Amz-Credential": f"{cfg['access_key']}/{scope}",
+        "X-Amz-Date": amz_date,
+        "X-Amz-Expires": str(int(max(1, min(expira_segundos, 604800)))),
+        "X-Amz-SignedHeaders": "host",
+    }
+    query = "&".join(
+        f"{urllib.parse.quote(k, safe='-_.~')}={urllib.parse.quote(v, safe='-_.~')}" for k, v in sorted(params.items())
+    )
+    canonical_request = "\n".join(["GET", canonical_uri, query, f"host:{host}\n", "host", "UNSIGNED-PAYLOAD"])
+    string_to_sign = "\n".join(
+        ["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical_request.encode("utf-8")).hexdigest()]
+    )
+    firma = hmac.new(
+        _signing_key(cfg["secret_key"], date_stamp, cfg["region"]), string_to_sign.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    return f"{parsed.scheme}://{host}{canonical_uri}?{query}&X-Amz-Signature={firma}"
+
+
 def verificar_salud() -> bool:
     """Comprueba conectividad hacia Cloud Object Storage (S3/Silo local o GCS HMAC)."""
     cfg = _config_actual()

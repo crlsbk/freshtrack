@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-inventory POST /api/v1/inventory/counts (conteo cíclico desde la app móvil) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:simpleType name="uuid"><xs:restriction base="xs:string"><xs:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"/></xs:restriction></xs:simpleType>
+  <xs:element name="count_request">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="id_locacion" type="xs:positiveInteger"/>
+        <xs:element name="id_sku" type="xs:positiveInteger" minOccurs="0"/>
+        <xs:element name="lineas">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="linea" maxOccurs="200">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="id_lote" type="uuid"/>
+                    <xs:element name="cantidad_contada"><xs:simpleType><xs:restriction base="xs:decimal"><xs:minInclusive value="0"/></xs:restriction></xs:simpleType></xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="observacion" minOccurs="0"><xs:simpleType><xs:restriction base="xs:string"><xs:maxLength value="500"/></xs:restriction></xs:simpleType></xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

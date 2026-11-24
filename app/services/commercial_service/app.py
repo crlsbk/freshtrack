@@ -24,9 +24,10 @@ from redis.exceptions import RedisError
 from app.domain.cache_web import contar_cacheado
 from app.db import a_float, query
 from app.domain import mermas as dom_mermas
+from app.domain import movil as dom_movil
 from app.domain import saga_venta
 from app.domain import ventas as dom_ventas
-from app.services import cache_service
+from app.services import cache_service, object_storage
 from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
 from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import (
@@ -188,6 +189,9 @@ def registrar_merma():
         )
     except ValueError as err:
         return error_response(409, "regla_negocio", str(err))
+    if datos.get("id_evidencia") and res.get("id_merma"):
+        dom_movil.ligar_evidencia_a_merma(validar_uuid(datos["id_evidencia"], "id_evidencia"), res["id_merma"])
+        res["id_evidencia"] = datos["id_evidencia"]
     cache_service.incrementar_contador("commercial", "shrinkage_registered")
     return render_response(res, status=201, root_tag="merma_registrada")
 
@@ -329,6 +333,90 @@ def historial_ventas():
         status=200,
         root_tag="historial_ventas",
     )
+
+
+MAX_EVIDENCIA_BYTES = 8 * 1024 * 1024
+
+
+@app.post("/api/v1/commercial/evidence")
+@documentar(
+    "Sube una foto de evidencia (multipart: archivo, tipo, referencia_tipo, referencia_id, descripcion, id_locacion) al bucket privado",
+    raiz_respuesta="evidencia",
+    errores=("400", "403", "413", "415", "503"),
+    exito="201",
+)
+@requiere_auth("store_manager", "warehouse")
+@limite_tasa(limite=20, ventana_segundos=60)
+def subir_evidencia_api():
+    """Valida el tipo real por magic bytes y el tamaño, sube al bucket y devuelve una URL firmada."""
+    archivo = request.files.get("archivo")
+    if archivo is None:
+        return error_response(400, "campos_requeridos", "Envía la imagen en el campo multipart 'archivo'.")
+    contenido = archivo.read(MAX_EVIDENCIA_BYTES + 1)
+    if not contenido:
+        return error_response(400, "archivo_vacio", "El archivo está vacío.")
+    if len(contenido) > MAX_EVIDENCIA_BYTES:
+        return error_response(413, "archivo_demasiado_grande", f"La imagen excede {MAX_EVIDENCIA_BYTES // (1024 * 1024)} MB.")
+    try:
+        content_type = dom_movil.tipo_imagen(contenido)
+    except ValueError as err:
+        return error_response(415, "tipo_no_soportado", str(err))
+    tipo = (request.form.get("tipo") or "OTRO").upper()
+    if tipo not in dom_movil.TIPOS_EVIDENCIA:
+        return error_response(400, "parametro_invalido", f"Tipo inválido. Valores: {list(dom_movil.TIPOS_EVIDENCIA)}")
+    id_loc = entero(request.form, "id_locacion", minimo=1) or (getattr(g, "contexto", None) or {}).get("location_id")
+    if id_loc is None:
+        id_loc = (getattr(g, "usuario_actual", None) or {}).get("id_locacion")
+    validar_alcance_locacion(id_loc)
+    try:
+        res = dom_movil.guardar_evidencia(
+            contenido=contenido,
+            content_type=content_type,
+            tipo=tipo,
+            referencia_tipo=(request.form.get("referencia_tipo") or None),
+            referencia_id=(request.form.get("referencia_id") or None),
+            descripcion=((request.form.get("descripcion") or "")[:500] or None),
+            id_locacion=int(id_loc) if id_loc else None,
+            usuario=usuario_desde_token(),
+        )
+    except object_storage.AlmacenamientoNoDisponible:
+        return error_response(503, "almacenamiento_no_disponible",
+                              "El almacenamiento de archivos no está disponible; la operación puede registrarse sin foto.")
+    cache_service.incrementar_contador("commercial", "evidence_uploaded")
+    return render_response(res, status=201, root_tag="evidencia")
+
+
+@app.get("/api/v1/commercial/evidence")
+@documentar(
+    "Lista las evidencias fotográficas (sin URL; se pide aparte y expira)",
+    consulta=[("id_locacion", "integer", "Tienda"), ("limite", "integer", "Máximo registros (≤100)")],
+    raiz_respuesta="evidencias",
+)
+@requiere_auth("store_manager", "warehouse", "admin", "auditor")
+def listar_evidencias_api():
+    id_loc = entero(request.args, "id_locacion", minimo=1)
+    rol = ((getattr(g, "usuario_actual", None) or {}).get("rol") or "").lower()
+    if rol in ("store_manager", "warehouse"):
+        id_loc = id_loc or (getattr(g, "usuario_actual", None) or {}).get("id_locacion")
+        validar_alcance_locacion(id_loc)
+    limite = min(entero(request.args, "limite", minimo=1, defecto=50) or 50, 100)
+    filas = dom_movil.listar_evidencias(id_locacion=id_loc, limite=limite)
+    return render_response({"total": len(filas), "evidencias": filas}, status=200, root_tag="evidencias")
+
+
+@app.get("/api/v1/commercial/evidence/<id_evidencia>/url")
+@documentar(
+    "URL firmada (15 min) para ver una evidencia del bucket privado",
+    raiz_respuesta="evidencia",
+    errores=("403", "404"),
+)
+@requiere_auth("store_manager", "warehouse", "admin", "auditor")
+def url_evidencia_api(id_evidencia: str):
+    ev = dom_movil.evidencia_con_url(validar_uuid(id_evidencia, "id_evidencia"))
+    if ev is None:
+        return error_response(404, "no_encontrado", "La evidencia no existe.")
+    validar_alcance_locacion(ev.get("id_locacion"))
+    return render_response(ev, status=200, root_tag="evidencia")
 
 
 if __name__ == "__main__":

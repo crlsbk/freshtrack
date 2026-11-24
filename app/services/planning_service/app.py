@@ -22,6 +22,7 @@ from app.domain.cache_web import contar_cacheado
 from app.db import a_float, escalar, one, query
 from app.domain import compras as dom_compras
 from app.domain import descuentos as dom_desc
+from app.domain import movil as dom_movil
 from app.domain import pronostico as motor_pron
 from app.domain import reabastecimiento as dom_reab
 from app.domain import transferencias as dom_tr
@@ -35,6 +36,7 @@ from app.services.common.auth import (
     validar_alcance_locacion,
     validar_alcance_proveedor,
 )
+from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import (
     ErrorApi,
     decimal_pos,
@@ -362,6 +364,41 @@ def listar_transferencias_api():
         status=200,
         root_tag="transfers_list",
     )
+
+
+@app.post("/api/v1/planning/transfers")
+@documentar(
+    "Solicitud manual de transferencia desde la tienda (queda SUGERIDA para aprobación)",
+    cuerpo={"id_lote": "0f8b6f8e-6a7c-4b1e-9d1a-2b3c4d5e6f70", "id_locacion_origen": 3, "id_locacion_destino": 4,
+            "cantidad": 10, "motivo": "Exceso que vence pronto"},
+    raiz_xml="transfer_request",
+    contrato_xsd="transfer_request",
+    raiz_respuesta="transfer_requested",
+    errores=("400", "403", "409"),
+    exito="201",
+)
+@requiere_auth("store_manager", "warehouse", "planner")
+@limite_tasa(limite=20, ventana_segundos=60)
+def solicitar_transferencia_api():
+    """Valida stock en origen y vigencia del lote y crea la propuesta SUGERIDA."""
+    datos = leer_cuerpo("transfer_request", requerido=True)
+    requerir_campos(datos, "id_lote", "id_locacion_origen", "id_locacion_destino", "cantidad")
+    origen = entero(datos, "id_locacion_origen", minimo=1)
+    destino = entero(datos, "id_locacion_destino", minimo=1)
+    validar_alcance_locacion(origen)
+    try:
+        res = dom_movil.solicitar_transferencia(
+            id_lote=validar_uuid(datos["id_lote"], "id_lote"),
+            id_locacion_origen=origen,
+            id_locacion_destino=destino,
+            cantidad=decimal_pos(datos, "cantidad"),
+            motivo=datos.get("motivo"),
+            usuario=usuario_desde_token(),
+        )
+    except ValueError as err:
+        return error_response(409, "regla_negocio", str(err))
+    publicar_evento("TRANSFERENCIA_SOLICITADA", {"id_transferencia": res["id_transferencia"], "cantidad": res["cantidad"]})
+    return render_response(res, status=201, root_tag="transfer_requested")
 
 
 @app.post("/api/v1/planning/transfers/detect")

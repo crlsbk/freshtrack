@@ -73,6 +73,7 @@ _DESCRIPCION_ERRORES = {
     "403": ("El rol del usuario no tiene permiso", "acceso_denegado", "El rol 'auditor' no tiene permiso para esta operación."),
     "404": ("Registro inexistente", "no_encontrado", "El recurso solicitado no existe."),
     "409": ("Conflicto con una regla de negocio", "conflicto", "La operación viola una regla de negocio."),
+    "413": ("Archivo demasiado grande", "archivo_demasiado_grande", "La imagen excede 8 MB."),
     "415": ("Content-Type no soportado", "tipo_no_soportado", "Use application/json o application/xml."),
     "429": ("Límite de peticiones excedido (rate limit en Redis)", "limite_excedido", "Intente de nuevo en 42 segundos."),
     "500": ("Error interno controlado (sin exponer detalles)", "error_interno", "Ocurrió un error inesperado."),

@@ -23,6 +23,7 @@ from sqlalchemy import text
 from app.domain.cache_web import contar_cacheado
 from app.db import a_float, one, query, transaccion
 from app.domain import inventario as dom_inv
+from app.domain import movil as dom_movil
 from app.domain import recepcion as dom_recepcion
 from app.domain.ventas import _lotes_para_consumo, repartir_fefo
 from app.services import cache_service
@@ -444,6 +445,61 @@ def recibir_por_escaneo():
 
     cache_service.incrementar_contador("inventory", "qr_receive")
     return render_response(res, status=res.get("codigo_http", 201), root_tag="receive_scan_response")
+
+
+@app.post("/api/v1/inventory/counts")
+@documentar(
+    "Conteo cíclico desde la app móvil: ajusta diferencias con movimiento AJUSTE (idempotente)",
+    cuerpo={"id_locacion": 3, "id_sku": 5, "lineas": [{"id_lote": "0f8b6f8e-6a7c-4b1e-9d1a-2b3c4d5e6f70", "cantidad_contada": 12}],
+            "observacion": "Conteo de anaquel"},
+    raiz_xml="count_request",
+    contrato_xsd="count_request",
+    raiz_respuesta="count_result",
+    errores=("400", "403", "409"),
+    exito="201",
+)
+@requiere_auth("store_manager", "warehouse")
+@limite_tasa(limite=30, ventana_segundos=60)
+def registrar_conteo_api():
+    """Compara lo contado contra la existencia y deja la diferencia en el kardex."""
+    datos = leer_cuerpo("count_request", requerido=True)
+    id_loc = entero(datos, "id_locacion", minimo=1) or (getattr(g, "contexto", None) or {}).get("location_id")
+    if not id_loc:
+        return error_response(400, "campos_requeridos", "Debes indicar 'id_locacion'.")
+    validar_alcance_locacion(id_loc)
+    crudas = datos.get("lineas") or []
+    if isinstance(crudas, dict):  # XML: <lineas><linea>…</linea></lineas>
+        crudas = crudas.get("linea") or []
+        crudas = crudas if isinstance(crudas, list) else [crudas]
+    if not isinstance(crudas, list) or not crudas:
+        return error_response(400, "campos_requeridos", "El conteo debe traer al menos una línea en 'lineas'.")
+    if len(crudas) > 200:
+        return error_response(400, "parametro_invalido", "Máximo 200 líneas por conteo.")
+    lineas = []
+    for ln in crudas:
+        if not isinstance(ln, dict):
+            return error_response(400, "parametro_invalido", "Cada línea debe tener 'id_lote' y 'cantidad_contada'.")
+        try:
+            contada = float(ln.get("cantidad_contada"))
+        except (TypeError, ValueError):
+            return error_response(400, "parametro_invalido", "'cantidad_contada' debe ser numérica.")
+        if contada < 0:
+            return error_response(400, "parametro_invalido", "'cantidad_contada' no puede ser negativa.")
+        lineas.append({"id_lote": validar_uuid(ln.get("id_lote"), "id_lote"), "cantidad_contada": contada})
+    idem = request.headers.get("Idempotency-Key") or datos.get("idempotency_key")
+    try:
+        res = dom_movil.registrar_conteo(
+            id_locacion=int(id_loc),
+            id_sku=entero(datos, "id_sku", minimo=1),
+            lineas=lineas,
+            observacion=(str(datos["observacion"])[:500] if datos.get("observacion") else None),
+            usuario=usuario_desde_token(),
+            idempotency_key=str(idem) if idem else None,
+        )
+    except ValueError as err:
+        return error_response(409, "regla_negocio", str(err))
+    cache_service.incrementar_contador("inventory", "cycle_count")
+    return render_response(res, status=200 if res.get("repetido") else 201, root_tag="count_result")
 
 
 if __name__ == "__main__":

@@ -51,6 +51,7 @@ SCRIPTS = [
     "09_usuario_proveedor.sql",
     "10_refresh_token.sql",
     "11_pruebas_carga.sql",
+    "12_app_movil.sql",
 ]
 
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- svc-planning POST /api/v1/planning/transfers (solicitud manual desde la tienda) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="transfer_request">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="id_lote"><xs:simpleType><xs:restriction base="xs:string"><xs:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"/></xs:restriction></xs:simpleType></xs:element>
+        <xs:element name="id_locacion_origen" type="xs:positiveInteger"/>
+        <xs:element name="id_locacion_destino" type="xs:positiveInteger"/>
+        <xs:element name="cantidad"><xs:simpleType><xs:restriction base="xs:decimal"><xs:minExclusive value="0"/></xs:restriction></xs:simpleType></xs:element>
+        <xs:element name="motivo" minOccurs="0"><xs:simpleType><xs:restriction base="xs:string"><xs:maxLength value="500"/></xs:restriction></xs:simpleType></xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

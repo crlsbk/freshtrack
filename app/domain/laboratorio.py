@@ -442,8 +442,8 @@ def _promover_rol_modelo(
                    SET activo = false
                  WHERE rol_modelo = :rol
                    AND activo = true
-                   AND ((id_locacion IS NULL AND :loc IS NULL) OR id_locacion = :loc)
-                   AND ((categoria IS NULL AND :cat IS NULL) OR categoria = :cat)
+                   AND id_locacion IS NOT DISTINCT FROM CAST(:loc AS integer)
+                   AND categoria IS NOT DISTINCT FROM CAST(:cat AS varchar)
                 """
             ),
             {"rol": rol, "loc": id_locacion, "cat": cat},

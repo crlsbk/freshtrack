@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from flask import g, request
 from redis.exceptions import RedisError
+from sqlalchemy.exc import IntegrityError
 
 from app.domain.cache_web import contar_cacheado
 from app.db import a_float, query
@@ -163,7 +164,7 @@ def consumir_carrito_temporal(cart_id: str):
 
 @app.post("/api/v1/commercial/shrinkage")
 @documentar(
-    "Registro justificado de merma",
+    "Registro justificado de merma (idempotente con la cabecera Idempotency-Key)",
     cuerpo={"id_lote": "0f8b6f8e-6a7c-4b1e-9d1a-2b3c4d5e6f70", "id_locacion": 2, "cantidad": 1.5, "causa": "CADUCIDAD", "observacion": "Producto vencido en anaquel"},
     raiz_xml="merma_request",
     contrato_xsd="merma_request",
@@ -178,6 +179,10 @@ def registrar_merma():
     causa = str(datos["causa"]).upper()
     if causa not in CAUSAS_MERMA:
         raise ErrorApi(400, "parametro_invalido", f"Causa inválida. Valores: {sorted(CAUSAS_MERMA)}")
+    # Idempotency-Key: la app móvil la genera al capturar; al reenviar una merma
+    # guardada sin conexión, la repetición devuelve la ya registrada (200).
+    idem = request.headers.get("Idempotency-Key") or datos.get("idempotency_key")
+    idem = str(idem).strip()[:80] if idem else None
     try:
         res = dom_mermas.registrar_merma(
             id_lote=validar_uuid(datos["id_lote"], "id_lote"),
@@ -186,9 +191,18 @@ def registrar_merma():
             causa=causa,
             observacion=datos.get("observacion"),
             usuario=usuario_desde_token(),
+            idempotency_key=idem,
         )
     except ValueError as err:
         return error_response(409, "regla_negocio", str(err))
+    except IntegrityError:
+        # Dos envíos simultáneos con la misma llave: el índice UNIQUE frenó el segundo.
+        res = dom_mermas.merma_por_idempotencia(idem) if idem else None
+        if res is None:
+            raise
+    if res.get("repetido"):
+        cache_service.incrementar_contador("commercial", "shrinkage_replayed")
+        return render_response(res, status=200, root_tag="merma_registrada")
     if datos.get("id_evidencia") and res.get("id_merma"):
         dom_movil.ligar_evidencia_a_merma(validar_uuid(datos["id_evidencia"], "id_evidencia"), res["id_merma"])
         res["id_evidencia"] = datos["id_evidencia"]

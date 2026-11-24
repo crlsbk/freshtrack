@@ -7,6 +7,7 @@ Responsabilidad:
 - Emisión y validación de tokens JWT (HS256) con claims RBAC.
 - Sesiones en Redis (session:{jti}) y revocación con denylist (jwt:denylist:{jti}).
 - Administración de usuarios, estados de activación y sesiones activas.
+- Registro seguro de dispositivos móviles (alta, consulta y revocación).
 """
 
 from __future__ import annotations
@@ -20,9 +21,10 @@ from flask import g, request
 from sqlalchemy import text
 
 from app.db import one, query, transaccion
+from app.domain import dispositivos as dom_dispositivos
 from app.security import autenticar, decodificar_token, emitir_sesion, renovar_sesion, revocar_token
 from app.services import cache_service
-from app.services.common.auth import requiere_auth
+from app.services.common.auth import requiere_auth, usuario_desde_token
 from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import (
     ErrorApi,
@@ -383,6 +385,94 @@ def ver_contadores_operacion():
         status=200,
         root_tag="operational_counters",
     )
+
+
+# ---------------------------------------------------------------------------
+# Dispositivos móviles (app Android)
+# ---------------------------------------------------------------------------
+_DISPOSITIVO_EJEMPLO = {
+    "id_dispositivo": "3f6c1d2e-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+    "modelo": "Google Pixel 8",
+    "version_so": "15 (API 35)",
+    "version_app": "1.3.0",
+}
+
+
+def _ip_cliente() -> str | None:
+    reenviada = request.headers.get("X-Forwarded-For", "")
+    return (reenviada.split(",")[0].strip() or request.remote_addr) or None
+
+
+@app.post("/api/v1/auth/devices")
+@documentar(
+    "Registra (o actualiza) el dispositivo móvil del usuario autenticado",
+    cuerpo=_DISPOSITIVO_EJEMPLO,
+    raiz_xml="device_register_request",
+    contrato_xsd="device_register_request",
+    respuesta={"id_registro": "9a8b…", "id_dispositivo": _DISPOSITIVO_EJEMPLO["id_dispositivo"], "nuevo": True, "estado": "REGISTRADO"},
+    raiz_respuesta="device_registered",
+    errores=("400", "403", "429"),
+    exito="201",
+)
+@requiere_auth()
+@limite_tasa(limite=20, ventana_segundos=60)
+def registrar_dispositivo():
+    """
+    El dispositivo queda ligado al usuario del JWT. Si un administrador lo revocó,
+    responde 403 dispositivo_revocado y la app cierra la sesión.
+    """
+    datos = leer_cuerpo("device_register_request", requerido=True)
+    requerir_campos(datos, "id_dispositivo")
+    try:
+        res = dom_dispositivos.registrar(
+            id_dispositivo=validar_uuid(str(datos["id_dispositivo"]), "id_dispositivo"),
+            modelo=datos.get("modelo"),
+            version_so=datos.get("version_so"),
+            version_app=datos.get("version_app"),
+            usuario=usuario_desde_token(),
+            ip=_ip_cliente(),
+        )
+    except dom_dispositivos.DispositivoRevocado as err:
+        cache_service.incrementar_contador("auth", "device_revoked_rejected")
+        return error_response(403, "dispositivo_revocado", str(err))
+    cache_service.incrementar_contador("auth", "device_registered")
+    return render_response(res, status=201 if res["nuevo"] else 200, root_tag="device_registered")
+
+
+@app.get("/api/v1/auth/devices")
+@documentar(
+    "Dispositivos registrados (los propios; el administrador ve todos o filtra por usuario)",
+    consulta=[("id_usuario", "string", "Solo administrador: UUID del usuario")],
+    raiz_respuesta="devices_list",
+)
+@requiere_auth()
+def listar_dispositivos():
+    """Un usuario solo ve sus dispositivos; el administrador puede ver los de cualquiera."""
+    yo = usuario_desde_token()
+    if yo["rol_clave"] == "admin":
+        filtro = request.args.get("id_usuario")
+        id_usuario = validar_uuid(filtro, "id_usuario") if filtro else None
+    else:
+        id_usuario = yo["id_usuario"]
+    filas = dom_dispositivos.listar(id_usuario=id_usuario)
+    return render_response({"total": len(filas), "dispositivos": filas}, status=200, root_tag="devices_list")
+
+
+@app.post("/api/v1/auth/devices/<id_registro>/revoke")
+@documentar(
+    "Revoca un dispositivo móvil (ya no podrá volver a registrarse)",
+    respuesta={"id_registro": "9a8b…", "id_usuario": "6b1d…", "revocado": True},
+    raiz_respuesta="device_revoked",
+    errores=("400", "404"),
+)
+@requiere_auth("admin")
+def revocar_dispositivo(id_registro: str):
+    """Marca el dispositivo como revocado y lo audita."""
+    id_registro = validar_uuid(id_registro, "id_registro")
+    res = dom_dispositivos.revocar(id_registro, admin=usuario_desde_token(), ip=_ip_cliente())
+    if res is None:
+        return error_response(404, "no_encontrado", f"Dispositivo {id_registro} no encontrado.")
+    return render_response(res, status=200, root_tag="device_revoked")
 
 
 if __name__ == "__main__":

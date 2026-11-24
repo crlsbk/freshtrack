@@ -46,13 +46,25 @@ def registrar_merma(
     causa: str,
     observacion: str | None,
     usuario: dict,
+    idempotency_key: str | None = None,
 ) -> dict:
     """
     Registra una merma real y descuenta el inventario.
 
     Todo ocurre dentro de una transacción: si la validación de existencia
     falla, no se inserta nada.
+
+    Con `idempotency_key` (la app móvil la genera al capturar y la reenvía al
+    sincronizar lo guardado sin conexión) una repetición devuelve la merma ya
+    registrada con `repetido: True` y no descuenta inventario otra vez. La
+    llave es UNIQUE en PostgreSQL (sql/13_dispositivos_idempotencia.sql), así
+    que dos envíos simultáneos tampoco pueden registrarla dos veces.
     """
+    clave = str(idempotency_key).strip()[:80] if idempotency_key else None
+    if clave:
+        previa = merma_por_idempotencia(clave)
+        if previa:
+            return previa
     cantidad = a_float(cantidad)
     if cantidad <= 0:
         raise ValueError("La cantidad de merma debe ser mayor que cero.")
@@ -99,15 +111,17 @@ def registrar_merma(
         costo = a_float(existencia["costo_unitario"])
         restante = disponible - cantidad
 
-        # --- Insertar la merma
+        # --- Insertar la merma (la columna idempotency_key solo se usa si llega
+        # la llave, así la web sigue funcionando aunque falte sql/13).
+        col_idem, val_idem = (", idempotency_key", ", :idem") if clave else ("", "")
         fila = conn.execute(
             text(
-                """
+                f"""
                 INSERT INTO operacion.merma
                     (id_lote, id_locacion, id_usuario, cantidad, causa_merma,
-                     costo_unitario, observacion)
+                     costo_unitario, observacion{col_idem})
                 VALUES (CAST(:id_lote AS uuid), :id_locacion, CAST(:uid AS uuid),
-                        :cantidad, :causa, :costo, :observacion)
+                        :cantidad, :causa, :costo, :observacion{val_idem})
                 RETURNING id_merma::text AS id_merma, valor_merma, fecha_registro
                 """
             ),
@@ -119,6 +133,7 @@ def registrar_merma(
                 "causa": causa,
                 "costo": costo,
                 "observacion": observacion,
+                **({"idem": clave} if clave else {}),
             },
         ).mappings().first()
 
@@ -214,6 +229,37 @@ def registrar_merma(
         "codigo_lote_prov": existencia["codigo_lote_prov"],
         "existencia_restante": round(restante, 2),
         "unidad_medida": existencia["unidad_medida"],
+    }
+
+
+def merma_por_idempotencia(clave: str) -> dict | None:
+    """Merma ya registrada con esa Idempotency-Key (respuesta de una repetición)."""
+    fila = one(
+        """
+        SELECT m.id_merma::text AS id_merma, m.cantidad, m.causa_merma, m.valor_merma,
+               p.nombre AS producto, l.codigo_lote_prov, p.unidad_medida,
+               COALESCE(e.cantidad_disponible, 0) AS existencia_restante
+        FROM operacion.merma m
+        JOIN operacion.lote l     ON l.id_lote = m.id_lote
+        JOIN operacion.producto p ON p.id_sku = l.id_sku
+        LEFT JOIN operacion.existencia e ON e.id_lote = m.id_lote AND e.id_locacion = m.id_locacion
+        WHERE m.idempotency_key = :k
+        """,
+        k=clave,
+    )
+    if not fila:
+        return None
+    return {
+        "id_merma": fila["id_merma"],
+        "cantidad": a_float(fila["cantidad"]),
+        "causa": fila["causa_merma"],
+        "causa_etiqueta": ETIQUETA_CAUSA.get(fila["causa_merma"], fila["causa_merma"]),
+        "valor_merma": a_float(fila["valor_merma"]),
+        "producto": fila["producto"],
+        "codigo_lote_prov": fila["codigo_lote_prov"],
+        "existencia_restante": round(a_float(fila["existencia_restante"]), 2),
+        "unidad_medida": fila["unidad_medida"],
+        "repetido": True,
     }
 
 

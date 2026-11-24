@@ -50,6 +50,8 @@ ACCIONES = {
     "RUN_ALERTS": "Motor de alertas ejecutado",
     "REQUEST_PASSWORD_RESET": "Solicitud de recuperación de contraseña",
     "RESET_PASSWORD": "Contraseña restablecida por enlace de recuperación",
+    "REGISTER_DEVICE": "Registro de dispositivo móvil",
+    "DEACTIVATE_DEVICE": "Dispositivo móvil revocado",
 }
 
 

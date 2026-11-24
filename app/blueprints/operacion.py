@@ -37,7 +37,13 @@ from app.domain import inventario as dom_inv
 from app.domain import mermas as dom_mermas
 from app.domain import recepcion as dom_recepcion
 from app.domain import ventas as dom_ventas
-from app.security import login_required, requiere_vista, usuario_actual
+from app.security import (
+    login_required,
+    proveedor_de_sesion,
+    recurso_de_otro_proveedor,
+    requiere_vista,
+    usuario_actual,
+)
 from app.services import clientes
 
 bp = Blueprint("operacion", __name__)
@@ -532,6 +538,26 @@ def trazabilidad():
 # ===========================================================================
 # DESPACHOS DE PROVEEDOR (ASN + HOJA QR) Y RECEPCIÓN POR ESCANEO
 # ===========================================================================
+def _oc_de_otro_proveedor(id_oc: str) -> bool:
+    if not id_oc or proveedor_de_sesion() is None:
+        return False
+    try:
+        prov = query("SELECT id_proveedor FROM operacion.orden_compra WHERE id_oc = CAST(:i AS uuid)", i=id_oc)
+    except Exception:
+        return True
+    return recurso_de_otro_proveedor(prov[0]["id_proveedor"] if prov else None)
+
+
+def _asn_de_otro_proveedor(folio_asn: str) -> bool:
+    if proveedor_de_sesion() is None:
+        return False
+    from app.services.doc_store import get_mongo_db
+
+    db = get_mongo_db()
+    doc = db.avisos_asn.find_one({"folio_asn": folio_asn}, {"id_proveedor": 1}) if db is not None else None
+    return recurso_de_otro_proveedor(doc.get("id_proveedor") if doc else None)
+
+
 @bp.route("/despachos", methods=["GET", "POST"])
 @login_required
 @requiere_vista("dispatches")
@@ -544,6 +570,9 @@ def despachos():
             return redirect(url_for("operacion.despachos"))
 
         id_oc = (request.form.get("id_oc") or "").strip()
+        if _oc_de_otro_proveedor(id_oc):
+            flash("Solo puedes despachar órdenes de compra dirigidas a tu proveedor.", "error")
+            return redirect(url_for("operacion.despachos"))
         transporte = {
             "chofer": (request.form.get("chofer") or "").strip() or None,
             "placas": (request.form.get("placas") or "").strip() or None,
@@ -612,12 +641,21 @@ def despachos():
             flash(sql_error(e) if isinstance(e, SQLAlchemyError) else str(e), "error")
             return redirect(url_for("operacion.despachos", id_oc=id_oc, tab="despachar"))
 
-    ordenes_pendientes = dom_recepcion.listar_ordenes_para_despacho()
+    # Un proveedor solo ve SUS órdenes por despachar y SUS avisos ASN
+    # (0 = supplier sin proveedor asignado: no ve ninguno).
+    prov_sesion = proveedor_de_sesion()
+    ordenes_pendientes = (
+        dom_recepcion.listar_ordenes_para_despacho()
+        if prov_sesion is None
+        else (dom_recepcion.listar_ordenes_para_despacho(id_proveedor=prov_sesion) if prov_sesion else [])
+    )
     id_oc_sel = (request.args.get("id_oc") or "").strip() or (
         ordenes_pendientes[0]["id_oc"] if ordenes_pendientes else ""
     )
+    if id_oc_sel and _oc_de_otro_proveedor(id_oc_sel):
+        id_oc_sel = ""
     oc_sel = dom_compras.obtener_orden_compra(id_oc_sel) if id_oc_sel else None
-    despachos_lista = dom_recepcion.listar_despachos_recientes(limite=40)
+    despachos_lista = dom_recepcion.listar_despachos_recientes(limite=40, id_proveedor=prov_sesion)
 
     folio_sel = (request.args.get("folio") or "").strip()
     asn_sel = next((d for d in despachos_lista if d.get("folio_asn") == folio_sel), None) if folio_sel else None
@@ -666,6 +704,9 @@ def despachos():
 @login_required
 @requiere_vista("dispatches")
 def despacho_pdf(folio_asn: str):
+    if _asn_de_otro_proveedor(folio_asn):
+        flash("El despacho solicitado no existe.", "error")
+        return redirect(url_for("operacion.despachos"))
     descargar = request.args.get("descargar") == "1"
     if clientes.activo():
         ruta = f"/api/v1/asn/{folio_asn}/labels-pdf" + ("?download=1" if descargar else "")
@@ -694,6 +735,9 @@ def despacho_pdf(folio_asn: str):
 @login_required
 @requiere_vista("dispatches")
 def despacho_enviar_correo(folio_asn: str):
+    if _asn_de_otro_proveedor(folio_asn):
+        flash("El despacho solicitado no existe.", "error")
+        return redirect(url_for("operacion.despachos"))
     """Envía la Hoja QR (PDF) por correo: vía svc-asn si está activo; si no, con el dominio local."""
     correo = (request.form.get("correo") or "").strip()
     mensaje = (request.form.get("mensaje") or "").strip()

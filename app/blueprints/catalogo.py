@@ -16,10 +16,18 @@ from flask import Blueprint, Response, flash, redirect, render_template, request
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Config
-from app.db import a_int, sql_error
+from app.db import a_int, escalar, sql_error
 from app.domain import compras as dom_compras
 from app.repos import catalogo as repo
-from app.security import login_required, requiere_rol, requiere_vista, usuario_actual
+from app.navegacion import ruta_inicial
+from app.security import (
+    login_required,
+    proveedor_de_sesion,
+    recurso_de_otro_proveedor,
+    requiere_rol,
+    requiere_vista,
+    usuario_actual,
+)
 from app.services import clientes
 
 CAMPOS_PRODUCTO = (
@@ -62,7 +70,14 @@ def productos():
                 flash(f"El producto no se registró: {clientes.mensaje_error('catalog', status, r)}", "error")
             return redirect(url_for("catalogo.productos"))
         try:
-            resultado = repo.crear_producto(request.form, usuario)
+            datos_form = request.form
+            propio = proveedor_de_sesion()
+            if propio is not None:
+                if not propio:
+                    raise ValueError("Tu usuario de proveedor no está ligado a ningún proveedor.")
+                datos_form = request.form.to_dict()
+                datos_form["id_proveedor"] = str(propio)  # solo productos propios
+            resultado = repo.crear_producto(datos_form, usuario)
             flash(f"Producto «{resultado['nombre']}» registrado correctamente.", "ok")
         except ValueError as e:
             flash(str(e), "error")
@@ -74,13 +89,35 @@ def productos():
         "catalogo/productos.html",
         active="products",
         productos=repo.listar_productos(
-            texto=request.args.get("q"), categoria=request.args.get("categoria")
+            texto=request.args.get("q"),
+            categoria=request.args.get("categoria"),
+            id_proveedor=proveedor_de_sesion(),  # un proveedor ve solo sus productos
         ),
         proveedores=repo.listar_proveedores(solo_activos=True),
         categorias=repo.categorias(),
         filtro=request.args.get("q", ""),
         filtro_categoria=request.args.get("categoria", ""),
     )
+
+
+def _producto_ajeno(id_sku: int) -> bool:
+    """Para un supplier: True si el producto no es de su proveedor."""
+    if proveedor_de_sesion() is None:
+        return False
+    return recurso_de_otro_proveedor(
+        escalar("SELECT id_proveedor FROM operacion.producto WHERE id_sku = :s", s=id_sku)
+    )
+
+
+def _orden_ajena(id_oc: str) -> bool:
+    """Para un supplier: True si la orden de compra no es de su proveedor (o no existe)."""
+    if proveedor_de_sesion() is None:
+        return False
+    try:
+        prov = escalar("SELECT id_proveedor FROM operacion.orden_compra WHERE id_oc = CAST(:i AS uuid)", i=id_oc)
+    except Exception:
+        return True
+    return recurso_de_otro_proveedor(prov)
 
 
 @bp.post("/productos/<int:id_sku>/editar")
@@ -90,6 +127,9 @@ def editar_producto(id_sku: int):
     if usuario_actual()["rol_clave"] not in ("admin", "supplier"):
         flash("Solo el proveedor o el administrador puede modificar productos.", "error")
         return redirect(url_for("catalogo.proveedores" if usuario_actual()["rol_clave"] == "buyer" else "catalogo.productos"))
+    if _producto_ajeno(id_sku):
+        flash("Solo puedes modificar productos de tu propio proveedor.", "error")
+        return redirect(url_for("catalogo.productos"))
     if clientes.activo():
         status, r = clientes.como_usuario("catalog", "PATCH", f"/api/v1/catalog/products/{id_sku}", _producto_desde_formulario())
         if status == 200:
@@ -98,7 +138,12 @@ def editar_producto(id_sku: int):
             flash(f"El producto no cambió: {clientes.mensaje_error('catalog', status, r)}", "error")
         return redirect(url_for("catalogo.productos"))
     try:
-        repo.actualizar_producto(id_sku, request.form, usuario_actual())
+        datos_form = request.form
+        propio = proveedor_de_sesion()
+        if propio:
+            datos_form = request.form.to_dict()
+            datos_form["id_proveedor"] = str(propio)  # no puede pasar el producto a otro proveedor
+        repo.actualizar_producto(id_sku, datos_form, usuario_actual())
         flash(f"Producto SKU {id_sku} actualizado.", "ok")
     except ValueError as e:
         flash(str(e), "error")
@@ -115,6 +160,9 @@ def estado_producto(id_sku: int):
         flash("Solo el proveedor o el administrador puede activar o desactivar productos.", "error")
         return redirect(url_for("catalogo.proveedores" if usuario_actual()["rol_clave"] == "buyer" else "catalogo.productos"))
     activo = request.form.get("activo") == "1"
+    if _producto_ajeno(id_sku):
+        flash("Solo puedes modificar productos de tu propio proveedor.", "error")
+        return redirect(url_for("catalogo.productos"))
     if clientes.activo():
         status, r = clientes.como_usuario("catalog", "PATCH", f"/api/v1/catalog/products/{id_sku}", {"activo": activo})
         if status == 200:
@@ -365,6 +413,11 @@ def crear_orden_compra():
 @login_required
 @requiere_rol("admin", "buyer", "supplier", "warehouse", "auditor")
 def orden_compra_detalle(id_oc: str):
+    # Antes de consultar nada: si el servicio respondiera 403, la web caería al
+    # modo local y se saltaría el control.
+    if _orden_ajena(id_oc):
+        flash("La orden de compra solicitada no existe.", "error")
+        return redirect(url_for(ruta_inicial(usuario_actual()["rol_clave"])))
     orden = None
     if clientes.activo():
         st, resp = clientes.como_usuario("planning", "GET", f"/api/v1/planning/purchase-orders/{id_oc}", timeout=10)
@@ -403,6 +456,9 @@ def orden_compra_detalle(id_oc: str):
 @login_required
 @requiere_rol("admin", "buyer", "supplier", "warehouse", "auditor")
 def orden_compra_pdf(id_oc: str):
+    if _orden_ajena(id_oc):
+        flash("La orden de compra solicitada no existe.", "error")
+        return redirect(url_for(ruta_inicial(usuario_actual()["rol_clave"])))
     descargar = request.args.get("descargar") == "1"
     if clientes.activo():
         ruta = f"/api/v1/planning/purchase-orders/{id_oc}/pdf" + ("?download=1" if descargar else "")

@@ -232,6 +232,7 @@ def usuarios():
         filtros_pag={"q": texto} if texto else {},
         roles=repo.roles(),
         locaciones=dom_inv.locaciones_activas(),
+        proveedores=repo.listar_proveedores(solo_activos=True),
         filtro=request.args.get("q", ""),
     )
 

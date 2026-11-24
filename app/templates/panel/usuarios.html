@@ -60,6 +60,15 @@
           {% endfor %}
         </select>
       </div>
+      <div>
+        <label class="form-label">Proveedor (solo rol Proveedor)</label>
+        <select class="input" name="id_proveedor">
+          <option value="">No aplica</option>
+          {% for p in proveedores %}
+            <option value="{{ p.id_proveedor }}">{{ p.razon_social }}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" type="submit">Crear usuario</button>
@@ -93,7 +102,7 @@
           <td style="font-weight:600;">{{ u.nombre_completo }}</td>
           <td class="mono" style="font-size:11.5px;">{{ u.email }}</td>
           <td><span class="badge badge-info">{{ u.rol_clave }}</span></td>
-          <td style="font-size:12px;">{{ u.locacion or '—' }}</td>
+          <td style="font-size:12px;">{{ u.locacion or '—' }}{% if u.proveedor %}<br><span class="text-muted">Proveedor: {{ u.proveedor }}</span>{% endif %}</td>
           <td class="mono" style="font-size:11px;">
             {{ u.ultimo_acceso or 'nunca' }}
             {% if u.bloqueado_hasta %}
@@ -157,6 +166,18 @@
                         <option value="{{ l.id_locacion }}"
                                 {% if l.id_locacion == u.id_locacion %}selected{% endif %}>
                           {{ l.nombre }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label">Proveedor (solo rol Proveedor)</label>
+                    <select class="input" name="id_proveedor">
+                      <option value="">No aplica</option>
+                      {% for p in proveedores %}
+                        <option value="{{ p.id_proveedor }}"
+                                {% if p.id_proveedor == u.id_proveedor %}selected{% endif %}>
+                          {{ p.razon_social }}
                         </option>
                       {% endfor %}
                     </select>

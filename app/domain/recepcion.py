@@ -931,14 +931,15 @@ def listar_ordenes_para_despacho(id_proveedor: int | None = None) -> list[dict]:
     return filas
 
 
-def listar_despachos_recientes(limite: int = 40) -> list[dict]:
+def listar_despachos_recientes(limite: int = 40, id_proveedor: int | None = None) -> list[dict]:
     """Recupera los avisos de despacho recientes desde MongoDB con conteo de etiquetas."""
     db = doc_store.get_mongo_db()
     if db is None:
         return []
     try:
         provs = {p["id_proveedor"]: p["razon_social"] for p in query("SELECT id_proveedor, razon_social FROM operacion.proveedor")}
-        docs = list(db.avisos_asn.find().sort([("fecha_embarque", -1)]).limit(limite))
+        filtro = {"id_proveedor": id_proveedor} if id_proveedor is not None else {}
+        docs = list(db.avisos_asn.find(filtro).sort([("fecha_embarque", -1)]).limit(limite))
         out: list[dict] = []
         for d in docs:
             etqs = d.get("etiquetas") or []

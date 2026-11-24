@@ -20,11 +20,17 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from flask import Response, g, request
 
-from app.db import query
+from app.db import escalar, query
 from app.domain import recepcion as dom_recepcion
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service, doc_store
-from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
+from app.services.common.auth import (
+    proveedor_forzado,
+    requiere_auth,
+    usuario_desde_token,
+    validar_alcance_locacion,
+    validar_alcance_proveedor,
+)
 from app.services.common.response import (
     ErrorApi,
     decimal_pos,
@@ -104,6 +110,16 @@ def _detalle_valido(detalle) -> list[dict]:
     return limpio
 
 
+def _validar_asn_propio(folio_asn: str) -> None:
+    """Para un supplier: el ASN debe ser de su proveedor (404 si no existe)."""
+    if proveedor_forzado() is None:
+        return
+    doc = _mongo().avisos_asn.find_one({"folio_asn": folio_asn}, {"id_proveedor": 1})
+    if not doc:
+        raise ErrorApi(404, "no_encontrado", f"ASN {folio_asn} no encontrado.")
+    validar_alcance_proveedor(doc.get("id_proveedor"))
+
+
 @app.post("/api/v1/asn")
 @documentar(
     "Ingesta de un ASN (JSON o XML)",
@@ -125,6 +141,7 @@ def crear_aviso_asn():
     requerir_campos(datos, "folio_asn", "id_proveedor", "detalle_carga")
     folio = str(datos["folio_asn"]).strip()
     id_proveedor = entero(datos, "id_proveedor", minimo=1)
+    validar_alcance_proveedor(id_proveedor)  # un proveedor solo avisa embarques propios
     folio_oc = str(datos.get("folio_oc") or "").strip() or None
     id_oc = str(datos.get("id_oc") or "").strip() or None
     transporte = datos.get("transporte") if isinstance(datos.get("transporte"), dict) else None
@@ -200,6 +217,11 @@ def listar_asns():
     db = _mongo()
     filtro: dict = {}
     id_proveedor = entero(request.args, "id_proveedor", minimo=1)
+    propio = proveedor_forzado()
+    if propio is not None:
+        if id_proveedor:
+            validar_alcance_proveedor(id_proveedor)
+        id_proveedor = propio  # un proveedor solo ve sus avisos
     if id_proveedor:
         filtro["id_proveedor"] = id_proveedor
     if request.args.get("estado"):
@@ -233,6 +255,7 @@ def detalle_asn(folio_asn: str):
     doc = _mongo().avisos_asn.find_one({"folio_asn": folio_asn})
     if not doc:
         return error_response(404, "no_encontrado", f"ASN {folio_asn} no encontrado.")
+    validar_alcance_proveedor(doc.get("id_proveedor"))
     doc["_id"] = str(doc["_id"])
     return render_response(doc, status=200, root_tag="asn_detalle")
 
@@ -332,6 +355,11 @@ def crear_despacho_desde_oc_api():
     datos = leer_cuerpo(requerido=True)
     requerir_campos(datos, "id_oc", "partidas")
     id_oc = validar_uuid(datos["id_oc"], "id_oc")
+    if proveedor_forzado() is not None:
+        prov_oc = escalar("SELECT id_proveedor FROM operacion.orden_compra WHERE id_oc = CAST(:i AS uuid)", i=id_oc)
+        if prov_oc is None:
+            return error_response(404, "no_encontrado", f"Orden de compra {id_oc} no encontrada.")
+        validar_alcance_proveedor(prov_oc)  # solo despacha órdenes dirigidas a él
     partidas = datos["partidas"] if isinstance(datos["partidas"], list) else []
     transporte = datos.get("transporte") if isinstance(datos.get("transporte"), dict) else {}
     try:
@@ -376,6 +404,7 @@ def consultar_etiqueta_api(codigo: str | None = None):
 def descargar_hoja_qr_api(folio_asn: str):
     """Retorna el PDF de la Hoja de Empaque con QR vectoriales desde Cloud Object Storage."""
     descargar = request.args.get("download") == "1"
+    _validar_asn_propio(folio_asn)
     try:
         pdf_bytes, _ = dom_recepcion.obtener_pdf_hoja_asn(folio_asn, usuario=usuario_desde_token())
     except dom_recepcion.ErrorRecepcion as err:
@@ -406,6 +435,7 @@ def descargar_hoja_qr_api(folio_asn: str):
 @limite_tasa(limite=10, ventana_segundos=60)
 def enviar_hoja_qr_correo_api(folio_asn: str):
     """Adjunta el PDF de etiquetas QR y lo envía al correo indicado vía SMTP (Mailpit en Docker)."""
+    _validar_asn_propio(folio_asn)
     datos = leer_cuerpo("send_email_request", requerido=True)
     requerir_campos(datos, "correo")
     try:

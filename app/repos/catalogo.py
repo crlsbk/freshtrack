@@ -68,12 +68,18 @@ def normalizar_gtin(valor: str | None) -> str:
 # PRODUCTOS
 # ===========================================================================
 def listar_productos(
-    texto: str | None = None, categoria: str | None = None, solo_activos: bool = False
+    texto: str | None = None,
+    categoria: str | None = None,
+    solo_activos: bool = False,
+    id_proveedor: int | None = None,
 ) -> list[dict]:
     condiciones = []
     params: dict = {}
     if solo_activos:
         condiciones.append("p.activo")
+    if id_proveedor is not None:
+        condiciones.append("p.id_proveedor = :id_proveedor")
+        params["id_proveedor"] = id_proveedor
     if categoria:
         condiciones.append("p.categoria = :categoria")
         params["categoria"] = categoria
@@ -628,12 +634,13 @@ def listar_usuarios(texto: str | None = None, limite: int = 150, offset: int = 0
         f"""
         SELECT u.id_usuario::text, u.nombre_completo, u.email, u.estado_activo,
                u.intentos_fallidos, u.bloqueado_hasta, u.ultimo_acceso, u.fecha_alta,
-               u.id_rol, u.id_locacion,
+               u.id_rol, u.id_locacion, u.id_proveedor,
                r.nombre_rol, r.clave AS rol_clave,
-               loc.nombre AS locacion
+               loc.nombre AS locacion, pv.razon_social AS proveedor
         FROM operacion.usuario u
         JOIN operacion.rol r ON r.id_rol = u.id_rol
         LEFT JOIN operacion.locacion loc ON loc.id_locacion = u.id_locacion
+        LEFT JOIN operacion.proveedor pv ON pv.id_proveedor = u.id_proveedor
         {where}
         ORDER BY u.estado_activo DESC, u.nombre_completo, u.id_usuario
         LIMIT :limite OFFSET :offset
@@ -644,6 +651,22 @@ def listar_usuarios(texto: str | None = None, limite: int = 150, offset: int = 0
 
 def roles() -> list[dict]:
     return query("SELECT id_rol, nombre_rol, clave, descripcion FROM operacion.rol ORDER BY id_rol")
+
+
+def _proveedor_para_rol(id_rol: int, datos: dict) -> int | None:
+    """
+    id_proveedor a guardar: obligatorio para el rol supplier (si no, ese usuario
+    no podría operar nada) y siempre NULL para los demás roles.
+    """
+    clave = escalar("SELECT clave FROM operacion.rol WHERE id_rol = :r", r=id_rol)
+    if clave != "supplier":
+        return None
+    id_prov = a_int(datos.get("id_proveedor"), 0)
+    if not id_prov:
+        raise ValueError("Un usuario con rol Proveedor debe estar ligado a un proveedor.")
+    if not escalar("SELECT 1 FROM operacion.proveedor WHERE id_proveedor = :p", p=id_prov):
+        raise ValueError("El proveedor seleccionado no existe.")
+    return id_prov
 
 
 def crear_usuario(datos: dict, usuario: dict) -> dict:
@@ -659,6 +682,7 @@ def crear_usuario(datos: dict, usuario: dict) -> dict:
         raise ValueError("La contraseña debe tener al menos 8 caracteres.")
     if not id_rol:
         raise ValueError("Debes asignar un rol.")
+    id_proveedor = _proveedor_para_rol(id_rol, datos)
 
     with transaccion(
         id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
@@ -667,8 +691,8 @@ def crear_usuario(datos: dict, usuario: dict) -> dict:
             text(
                 """
                 INSERT INTO operacion.usuario
-                    (id_rol, id_locacion, nombre_completo, email, password_hash, estado_activo)
-                VALUES (:rol, :loc, :nombre, :email,
+                    (id_rol, id_locacion, id_proveedor, nombre_completo, email, password_hash, estado_activo)
+                VALUES (:rol, :loc, :prov, :nombre, :email,
                         public.crypt(:password, public.gen_salt('bf')), true)
                 RETURNING id_usuario::text
                 """
@@ -676,6 +700,7 @@ def crear_usuario(datos: dict, usuario: dict) -> dict:
             {
                 "rol": id_rol,
                 "loc": datos.get("id_locacion") or None,
+                "prov": id_proveedor,
                 "nombre": nombre,
                 "email": email,
                 "password": password,
@@ -696,7 +721,7 @@ def crear_usuario(datos: dict, usuario: dict) -> dict:
 
 def actualizar_usuario(id_usuario: str, datos: dict, usuario: dict) -> None:
     anterior = one(
-        "SELECT id_usuario::text, nombre_completo, email, id_rol, id_locacion "
+        "SELECT id_usuario::text, nombre_completo, email, id_rol, id_locacion, id_proveedor "
         "FROM operacion.usuario WHERE id_usuario = CAST(:id AS uuid)",
         id=id_usuario,
     )
@@ -707,6 +732,7 @@ def actualizar_usuario(id_usuario: str, datos: dict, usuario: dict) -> None:
     id_rol = a_int(datos.get("id_rol"), 0)
     if not nombre or not email or not id_rol:
         raise ValueError("Nombre, correo y rol son obligatorios.")
+    id_proveedor = _proveedor_para_rol(id_rol, datos)
 
     with transaccion(
         id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
@@ -716,7 +742,7 @@ def actualizar_usuario(id_usuario: str, datos: dict, usuario: dict) -> None:
                 """
                 UPDATE operacion.usuario
                    SET nombre_completo = :nombre, email = :email, id_rol = :rol,
-                       id_locacion = :loc
+                       id_locacion = :loc, id_proveedor = :prov
                  WHERE id_usuario = CAST(:id AS uuid)
                 """
             ),
@@ -725,6 +751,7 @@ def actualizar_usuario(id_usuario: str, datos: dict, usuario: dict) -> None:
                 "email": email,
                 "rol": id_rol,
                 "loc": datos.get("id_locacion") or None,
+                "prov": id_proveedor,
                 "id": id_usuario,
             },
         )
@@ -736,6 +763,7 @@ def actualizar_usuario(id_usuario: str, datos: dict, usuario: dict) -> None:
         int(anterior["id_rol"]) != id_rol
         or (anterior["id_locacion"] or None) != nueva_loc
         or (anterior["email"] or "").lower() != email
+        or (anterior.get("id_proveedor") or None) != id_proveedor
     ):
         revocar_sesiones_usuario(id_usuario)
 

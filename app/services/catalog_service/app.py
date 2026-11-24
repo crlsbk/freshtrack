@@ -27,7 +27,8 @@ from app.events.dispatcher import publicar_evento
 from app.repos import catalogo as repo_cat
 from app.repos.catalogo import normalizar_gtin
 from app.services import cache_service
-from app.services.common.auth import requiere_auth, usuario_desde_token
+from app.security import decodificar_token
+from app.services.common.auth import proveedor_forzado, requiere_auth, usuario_desde_token, validar_alcance_proveedor
 from app.services.common.rate_limit import limite_tasa
 from app.services.common.response import (
     ErrorApi,
@@ -126,6 +127,18 @@ def _validar_margen(venta: float | None, costo: float | None) -> None:
         raise ErrorApi(409, "regla_negocio", "El precio de venta no puede ser menor que el costo.")
 
 
+def _proveedor_si_supplier() -> int | None:
+    """En un endpoint público: si viene un JWT VÁLIDO de supplier, su proveedor."""
+    cab = request.headers.get("Authorization", "")
+    if not cab.startswith("Bearer "):
+        return None
+    payload = decodificar_token(cab[7:].strip())
+    if not payload or (payload.get("rol") or "").lower() != "supplier":
+        return None
+    g.usuario_actual = payload
+    return proveedor_forzado()
+
+
 @app.get("/api/v1/catalog/products")
 @documentar(
     "Listado paginado de productos (Cache-Aside en Redis)",
@@ -140,8 +153,11 @@ def listar_productos():
     categoria = request.args.get("categoria")
     q = request.args.get("q")
     activo = request.args.get("activo")
+    # El catálogo es de consulta abierta, pero si quien llama es un proveedor
+    # autenticado, ve solo sus productos (la caché se separa por proveedor).
+    id_prov = _proveedor_si_supplier()
 
-    firma = hashlib.sha1(f"{categoria}|{q}|{activo}|{pagina}|{por_pagina}".encode()).hexdigest()[:16]
+    firma = hashlib.sha1(f"{categoria}|{q}|{activo}|{pagina}|{por_pagina}|{id_prov}".encode()).hexdigest()[:16]
     clave = f"{CACHE_PREFIX_PRODUCTS}{firma}"
     cached = cache_service.get_json(clave)
     if cached:
@@ -161,6 +177,9 @@ def listar_productos():
     if activo in ("true", "false"):
         condiciones.append("p.activo = :act")
         params["act"] = activo == "true"
+    if id_prov is not None:
+        condiciones.append("p.id_proveedor = :prov")
+        params["prov"] = id_prov
     where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
     filas = query(
         f"""
@@ -209,6 +228,13 @@ def _invalidar_y_publicar(evento: str, payload: dict) -> None:
 def crear_producto():
     """Crea un producto en PostgreSQL, invalida la caché de Redis y emite PRODUCTO_CREADO."""
     datos = _validar_producto(leer_cuerpo("producto_request", requerido=True), parcial=False)
+    propio = proveedor_forzado()
+    if propio is not None:
+        # Un proveedor solo da de alta productos propios: si no manda id_proveedor
+        # se fija el suyo; si manda otro, 403.
+        if datos.get("id_proveedor") is not None:
+            validar_alcance_proveedor(datos["id_proveedor"])
+        datos["id_proveedor"] = propio
     _validar_margen(datos["precio_venta"], datos["precio_costo"])
     datos.setdefault("unidad_medida", "Pieza")
     datos.setdefault("vida_util_estandar", 7)
@@ -231,10 +257,13 @@ def crear_producto():
 
 
 def _actualizar(id_sku: int, parcial: bool):
-    actual = one("SELECT precio_venta, precio_costo FROM operacion.producto WHERE id_sku = :s", s=id_sku)
+    actual = one("SELECT precio_venta, precio_costo, id_proveedor FROM operacion.producto WHERE id_sku = :s", s=id_sku)
     if not actual:
         return error_response(404, "no_encontrado", f"SKU {id_sku} no encontrado.")
+    validar_alcance_proveedor(actual["id_proveedor"])
     datos = _validar_producto(leer_cuerpo("producto_request", requerido=True), parcial=parcial)
+    if "id_proveedor" in datos:
+        validar_alcance_proveedor(datos["id_proveedor"])  # no puede «regalar» el producto a otro proveedor
     _validar_margen(
         datos.get("precio_venta", a_float(actual["precio_venta"])),
         datos.get("precio_costo", a_float(actual["precio_costo"])),
@@ -287,6 +316,10 @@ def modificar_producto(id_sku: int):
 @requiere_auth("supplier")
 def desactivar_producto(id_sku: int):
     """Desactiva el producto (no se borra: conserva la trazabilidad de sus lotes)."""
+    actual = one("SELECT id_proveedor FROM operacion.producto WHERE id_sku = :s", s=id_sku)
+    if not actual:
+        return error_response(404, "no_encontrado", f"SKU {id_sku} no encontrado.")
+    validar_alcance_proveedor(actual["id_proveedor"])
     with transaccion(id_usuario=g.usuario_actual.get("sub"), usuario_email=g.usuario_actual.get("email")) as conn:
         res = conn.execute(text("UPDATE operacion.producto SET activo = false WHERE id_sku = :s"), {"s": id_sku})
         if res.rowcount == 0:

@@ -404,6 +404,33 @@ def usuario_actual() -> dict | None:
 # ---------------------------------------------------------------------------
 # Decoradores de protección de rutas
 # ---------------------------------------------------------------------------
+def proveedor_de_sesion() -> int | None:
+    """
+    Para una sesión web con rol supplier, el id de SU proveedor (leído de la
+    base en cada llamada, así una reasignación aplica de inmediato). Devuelve 0
+    si el usuario no tiene proveedor asignado (no coincide con ninguno) y None
+    para los demás roles (sin restricción).
+    """
+    if session.get("role") != "supplier":
+        return None
+    try:
+        valor = escalar(
+            "SELECT id_proveedor FROM operacion.usuario WHERE id_usuario = CAST(:u AS uuid)",
+            u=session.get("user_id"),
+        )
+    except Exception:
+        return 0
+    return int(valor) if valor is not None else 0
+
+
+def recurso_de_otro_proveedor(id_proveedor_recurso: int | None) -> bool:
+    """True si la sesión es de un supplier y el recurso NO es de su proveedor."""
+    propio = proveedor_de_sesion()
+    if propio is None:
+        return False
+    return not propio or id_proveedor_recurso is None or int(id_proveedor_recurso) != propio
+
+
 def sesion_web_vigente() -> bool:
     """
     True si la cookie de sesión pertenece a una sesión viva y no revocada.

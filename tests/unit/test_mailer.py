@@ -122,12 +122,27 @@ def test_endpoint_envia_hoja_qr_en_xml(cliente_asn, monkeypatch):
                 "estado_envio_correo": mailer.ENVIADO, "enviado_real": True}
 
     monkeypatch.setattr(asn_mod.dom_recepcion, "enviar_hoja_asn_correo", falso)
-    r = c.post("/api/v1/asn/ASN-2026-000001/send-email",
-               data=b"<send_email_request><correo>prov@ejemplo.com</correo><mensaje>Hola</mensaje></send_email_request>",
-               headers={**_auth("supplier"), "Content-Type": "application/xml", "Accept": "application/xml"})
+    # El usuario supplier está ligado al proveedor 3; el ASN 000001 es suyo y el 000002 no.
+    monkeypatch.setattr(auth_mod, "proveedor_del_usuario", lambda _u: 3)
+
+    class _Col:
+        def find_one(self, filtro, proyeccion=None):
+            return {"id_proveedor": 3 if filtro["folio_asn"].endswith("1") else 5}
+
+    class _Db:
+        avisos_asn = _Col()
+
+    monkeypatch.setattr(asn_mod, "_mongo", lambda: _Db())
+    cuerpo = b"<send_email_request><correo>prov@ejemplo.com</correo><mensaje>Hola</mensaje></send_email_request>"
+    cab = {**_auth("supplier"), "Content-Type": "application/xml", "Accept": "application/xml"}
+    r = c.post("/api/v1/asn/ASN-2026-000001/send-email", data=cuerpo, headers=cab)
     assert r.status_code == 200, r.data
     assert b"<send_email_result>" in r.data and b"ENVIADO_SMTP" in r.data
     assert llamadas == [("ASN-2026-000001", "prov@ejemplo.com", "Hola")]
+    # ASN de otro proveedor: 403 y no se envía nada.
+    r = c.post("/api/v1/asn/ASN-2026-000002/send-email", data=cuerpo, headers=cab)
+    assert r.status_code == 403 and b"proveedor_no_autorizado" in r.data
+    assert len(llamadas) == 1
 
 
 def test_endpoint_rechaza_correo_invalido_por_xsd(cliente_asn):

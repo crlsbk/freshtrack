@@ -102,6 +102,7 @@ def test_repo_usuarios_revoca_al_desactivar_y_al_cambiar_rol(monkeypatch):
         yield _C()
 
     monkeypatch.setattr(repo, "transaccion", _tx)
+    monkeypatch.setattr(repo, "escalar", lambda *a, **k: "planner")  # clave del rol: no supplier
     admin = {"id_usuario": "adm", "email": "admin@x.mx"}
 
     monkeypatch.setattr(repo, "one", lambda *a, **k: {

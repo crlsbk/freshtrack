@@ -55,6 +55,57 @@ def validar_alcance_locacion(id_locacion_objetivo: int | None) -> None:
         )
 
 
+def proveedor_del_usuario(id_usuario: str | None) -> int | None:
+    """Proveedor ligado a un usuario (operacion.usuario.id_proveedor), leído de la base."""
+    if not id_usuario:
+        return None
+    from app.db import escalar
+
+    try:
+        valor = escalar(
+            "SELECT id_proveedor FROM operacion.usuario WHERE id_usuario = CAST(:u AS uuid)", u=str(id_usuario)
+        )
+    except Exception:
+        return None
+    return int(valor) if valor is not None else None
+
+
+def proveedor_forzado() -> int | None:
+    """
+    Para un usuario con rol supplier devuelve SU proveedor (lo usan los listados
+    para filtrar y las altas para fijarlo); para cualquier otro rol, None.
+    Un supplier sin proveedor asignado recibe 403: no puede ver ni operar nada
+    de ningún proveedor.
+    """
+    payload = getattr(g, "usuario_actual", None) or {}
+    if (payload.get("rol") or "").lower() != "supplier":
+        return None
+    propio = proveedor_del_usuario(payload.get("sub"))
+    if propio is None:
+        incrementar_contador("auth", "access_denied_supplier_unlinked")
+        raise ErrorApi(
+            403,
+            "proveedor_no_asignado",
+            "Tu usuario de proveedor no está ligado a ningún proveedor. Pide al administrador que lo asigne.",
+        )
+    return propio
+
+
+def validar_alcance_proveedor(id_proveedor_objetivo: int | None) -> None:
+    """Un supplier solo opera sobre recursos de su propio proveedor (403 si no)."""
+    propio = proveedor_forzado()
+    if propio is None:
+        return
+    if id_proveedor_objetivo is None or int(id_proveedor_objetivo) != propio:
+        incrementar_contador("auth", "access_denied_supplier")
+        raise ErrorApi(
+            403,
+            "proveedor_no_autorizado",
+            "Solo puedes operar sobre productos, órdenes y avisos de tu propio proveedor.",
+            {"id_proveedor_usuario": propio, "id_proveedor_solicitado": id_proveedor_objetivo},
+        )
+
+
 def obtener_contexto() -> dict[str, Any]:
     """Contexto del request para trazabilidad y reglas de negocio."""
     payload = getattr(g, "usuario_actual", None) or {}

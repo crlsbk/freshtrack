@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from flask import Response, g, request
 
 from app.domain.cache_web import contar_cacheado
-from app.db import a_float, one, query
+from app.db import a_float, escalar, one, query
 from app.domain import compras as dom_compras
 from app.domain import descuentos as dom_desc
 from app.domain import pronostico as motor_pron
@@ -28,7 +28,13 @@ from app.domain import transferencias as dom_tr
 from app.domain import triaje as dom_triaje
 from app.events.dispatcher import publicar_evento
 from app.services import cache_service, doc_store, mailer
-from app.services.common.auth import requiere_auth, usuario_desde_token, validar_alcance_locacion
+from app.services.common.auth import (
+    proveedor_forzado,
+    requiere_auth,
+    usuario_desde_token,
+    validar_alcance_locacion,
+    validar_alcance_proveedor,
+)
 from app.services.common.response import (
     ErrorApi,
     decimal_pos,
@@ -701,6 +707,11 @@ def crear_orden_compra_api():
 @requiere_auth("buyer", "supplier", "warehouse", "auditor")
 def listar_ordenes_compra_api():
     id_prov = entero(request.args, "id_proveedor", minimo=1)
+    propio = proveedor_forzado()
+    if propio is not None:
+        if id_prov is not None:
+            validar_alcance_proveedor(id_prov)
+        id_prov = propio  # un proveedor solo lista sus órdenes
     estado = (request.args.get("estado") or "").upper() or None
     limite = min(entero(request.args, "limite", minimo=1, defecto=50) or 50, 200)
     ordenes = dom_compras.listar_ordenes_compra(id_proveedor=id_prov, estado=estado, limite=limite)
@@ -715,6 +726,7 @@ def detalle_orden_compra_api(id_oc: str):
     orden = dom_compras.obtener_orden_compra(id_oc)
     if orden is None:
         return error_response(404, "no_encontrado", f"Orden de compra {id_oc} no encontrada.")
+    validar_alcance_proveedor(orden.get("id_proveedor"))
     return render_response(orden, status=200, root_tag="purchase_order")
 
 
@@ -727,6 +739,11 @@ def detalle_orden_compra_api(id_oc: str):
 @requiere_auth("buyer", "supplier", "warehouse", "auditor")
 def pdf_orden_compra_api(id_oc: str):
     id_oc = validar_uuid(id_oc, "id_oc")
+    if proveedor_forzado() is not None:
+        prov_oc = escalar("SELECT id_proveedor FROM operacion.orden_compra WHERE id_oc = CAST(:i AS uuid)", i=id_oc)
+        if prov_oc is None:
+            return error_response(404, "no_encontrado", f"Orden de compra {id_oc} no encontrada.")
+        validar_alcance_proveedor(prov_oc)
     try:
         pdf_bytes, orden = dom_compras.obtener_pdf_orden_compra(id_oc, usuario=usuario_desde_token())
     except ValueError as err:

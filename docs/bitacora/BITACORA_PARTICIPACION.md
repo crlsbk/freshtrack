@@ -4,11 +4,11 @@ Registro de la participación de cada integrante construido a partir del histori
 
 ## 1. Resumen por integrante
 
-| Integrante | Cuentas de git | Commits | Primer commit | Último commit | Áreas principales |
-| --- | --- | --- | --- | --- | --- |
-| Juan Nicolás Núñez Mendoza | `crlsbk` | 72 | 2026-08-25 | 2026-11-24 | App de escritorio (PySide6, XML/XSD), contratos XSD, servicio de correo, recuperación de contraseña, notificaciones, endpoints móviles, pruebas de sistema y de fallas, documentación y despliegue |
-| Santiago López Cervantes | `vrdtska` | 45 | 2026-09-07 | 2026-11-24 | Microservicios y dominio (pronóstico, reabastecimiento, triaje), volumetría masiva, optimización de PostgreSQL y Redis, Locust, seguridad (CSRF, refresh token) |
-| Fabián Azaed Orta Singlaterry | `Fabian Orta`, `fivi` (rFaos) | 22 | 2026-09-08 | 2026-11-24 | App Android (Kotlin: escáner QR, recepción, FEFO, mermas con foto, transferencias, alertas); contratos JSON/XML con XSD, errores uniformes, JWT con sesión en Redis; interfaz web y optimización del panel |
+| Integrante | Commits | Primer commit | Último commit | Áreas principales |
+| --- | --- | --- | --- | --- |
+| Juan Nicolás Núñez Mendoza | 72 | 2026-08-25 | 2026-11-24 | App de escritorio (PySide6, XML/XSD), contratos XSD, servicio de correo, recuperación de contraseña, notificaciones, endpoints móviles, pruebas de sistema y de fallas, documentación y despliegue |
+| Santiago López Cervantes | 45 | 2026-09-07 | 2026-11-24 | Microservicios y dominio (pronóstico, reabastecimiento, triaje), volumetría masiva, optimización de PostgreSQL y Redis, Locust, seguridad (CSRF, refresh token) |
+| Fabián Azaed Orta Singlaterry | 22 | 2026-09-08 | 2026-11-24 | App Android (Kotlin: escáner QR, recepción, FEFO, mermas con foto, transferencias, alertas); contratos JSON/XML con XSD, errores uniformes, JWT con sesión en Redis; interfaz web y optimización del panel |
 
 > Fabián Azaed Orta Singlaterry trabajó con dos cuentas de git: `Fabian Orta` y `fivi` (usuario de GitHub `rFaos`).
 

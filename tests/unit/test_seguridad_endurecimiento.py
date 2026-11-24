@@ -214,7 +214,7 @@ def _login_web(c, rol, id_locacion=3):
     cache_service.crear_sesion_redis("j-web", {"id_usuario": "u-1"})
     with c.session_transaction() as s:
         s.update(user_id="u-1", user_email="u@x.mx", user_name="U", role=rol, role_label=rol,
-                 id_locacion=id_locacion, jti="j-web")
+                 id_locacion=id_locacion, jti="j-web", csrf_token="tok-prueba")
 
 
 @pytest.mark.parametrize("rol,accion,loc,permitido", [
@@ -234,6 +234,7 @@ def test_triaje_accion_lote_respeta_rol_y_sucursal(web, monkeypatch, rol, accion
     monkeypatch.setattr(analitica.motor_alertas, "generar_alertas", lambda *a, **k: None)
     c = web.test_client()
     _login_web(c, rol)
-    r = c.post("/triaje/accion-lote", data={"id_lote": "l-1", "tipo_accion": accion, "id_locacion": str(loc)})
+    r = c.post("/triaje/accion-lote", data={"id_lote": "l-1", "tipo_accion": accion, "id_locacion": str(loc),
+                                            "csrf_token": "tok-prueba"})
     assert r.status_code == 302
     assert bool(ejecutadas) is permitido

@@ -198,6 +198,8 @@ a { color: var(--primary); }
   cursor: pointer; text-decoration: none; display: flex; align-items: center;
 }
 .topbar-logout:hover { background: var(--muted); }
+.topbar-logout-form { margin: 0; display: inline; }
+button.topbar-logout { font: inherit; cursor: pointer; }
 
 .topbar-db {
   display: flex; align-items: center; gap: 8px; padding: 6px 12px;

@@ -231,7 +231,10 @@ async function dispararSimuladorPOS() {
   try {
     const resp = await fetch(URL_SIMULAR_POS, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+      },
       body: JSON.stringify({
         id_locacion: document.getElementById('sim-loc').value || null,
         id_sku: document.getElementById('sim-sku').value || null,

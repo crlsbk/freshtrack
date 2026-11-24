@@ -95,7 +95,9 @@
         {{ user_initials }}
       </div>
 
-      <a href="{{ url_for('auth.logout') }}" class="topbar-logout">Salir</a>
+      <form method="post" action="{{ url_for('auth.logout') }}" class="topbar-logout-form">
+        <button type="submit" class="topbar-logout">Salir</button>
+      </form>
     </header>
 
     <div class="content">

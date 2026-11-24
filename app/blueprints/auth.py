@@ -161,8 +161,13 @@ def login():
     return render_template("login.html", error=error, email=email)
 
 
-@bp.route("/logout")
+@bp.route("/logout", methods=["GET", "POST"])
 def logout():
+    # POST (botón «Salir», con token CSRF) es la vía normal. Un GET solo cierra
+    # la sesión si viene de una página de este mismo sitio: así un <img> o un
+    # enlace en otro sitio no puede cerrar sesiones ajenas.
+    if request.method == "GET" and not (request.referrer or "").startswith(request.host_url):
+        return redirect(url_for("publico.inicio"))
     if clientes.activo() and session.get("token"):
         # svc-auth revoca el JWT (PostgreSQL + denylist de Redis) y borra la sesión.
         clientes.como_usuario("auth", "POST", "/api/v1/auth/logout")

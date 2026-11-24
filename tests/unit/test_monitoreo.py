@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import importlib
 import os
 from pathlib import Path
@@ -230,15 +232,20 @@ def test_panel_oculto_protegido_y_sin_enlaces_en_sitio(monkeypatch):
     r_api_anon = client.get("/ops/status/api/snapshot")
     assert r_api_anon.status_code == 401
 
+    # Sin token CSRF el formulario se rechaza; el token se lee del propio formulario.
+    assert client.post("/ops/status/login", data={"username": "ops_test", "password": "x"}).status_code == 400
+    pagina_login = client.get("/ops/status/login").get_data(as_text=True)
+    tok = re.search(r'name="csrf_token" value="([^"]+)"', pagina_login).group(1)
+
     # Credenciales incorrectas
-    r_bad = client.post("/ops/status/login", data={"username": "ops_test", "password": "incorrecta"})
+    r_bad = client.post("/ops/status/login", data={"username": "ops_test", "password": "incorrecta", "csrf_token": tok})
     assert r_bad.status_code == 200
     assert "incorrectos" in r_bad.get_data(as_text=True).lower()
 
     # Login valido
     r_ok = client.post(
         "/ops/status/login",
-        data={"username": "ops_test", "password": "OpsClaveSegura2026!"},
+        data={"username": "ops_test", "password": "OpsClaveSegura2026!", "csrf_token": tok},
         follow_redirects=True,
     )
     assert r_ok.status_code == 200
@@ -252,7 +259,7 @@ def test_panel_oculto_protegido_y_sin_enlaces_en_sitio(monkeypatch):
     assert r_snap.get_json()["estado_global"] == "OPERATIVO"
 
     # Logout revoca acceso
-    r_out = client.post("/ops/status/logout")
+    r_out = client.post("/ops/status/logout", data={"csrf_token": tok})
     assert r_out.status_code == 302
     assert client.get("/ops/status/api/snapshot").status_code == 401
 

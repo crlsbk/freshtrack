@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, a_int, escalar, one, query, transaccion
+from app.security import revocar_sesiones_usuario
 
 
 # ===========================================================================
@@ -728,6 +729,16 @@ def actualizar_usuario(id_usuario: str, datos: dict, usuario: dict) -> None:
             },
         )
 
+    # Rol, sucursal y correo viajan dentro del JWT y de la sesión web: si cambian,
+    # las sesiones abiertas conservarían el permiso anterior hasta expirar.
+    nueva_loc = a_int(datos.get("id_locacion"), 0) or None
+    if (
+        int(anterior["id_rol"]) != id_rol
+        or (anterior["id_locacion"] or None) != nueva_loc
+        or (anterior["email"] or "").lower() != email
+    ):
+        revocar_sesiones_usuario(id_usuario)
+
     auditoria.registrar(
         "UPDATE_USER",
         tabla="usuario",
@@ -765,14 +776,10 @@ def cambiar_estado_usuario(id_usuario: str, activo: bool, usuario: dict) -> None
             ),
             {"a": activo, "id": id_usuario},
         )
-        if not activo:
-            conn.execute(
-                text(
-                    "UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now() "
-                    "WHERE id_usuario = CAST(:id AS uuid) AND NOT revocado"
-                ),
-                {"id": id_usuario},
-            )
+    if not activo:
+        # PostgreSQL + denylist/sesiones de Redis (antes solo PostgreSQL: la web
+        # consulta Redis primero y la sesión seguía viva hasta expirar).
+        revocar_sesiones_usuario(id_usuario)
 
     auditoria.registrar(
         "ACTIVATE_USER" if activo else "DEACTIVATE_USER",
@@ -802,13 +809,7 @@ def restablecer_password(id_usuario: str, nueva: str, usuario: dict) -> None:
             ),
             {"p": nueva, "id": id_usuario},
         )
-        conn.execute(
-            text(
-                "UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now() "
-                "WHERE id_usuario = CAST(:id AS uuid) AND NOT revocado"
-            ),
-            {"id": id_usuario},
-        )
+    revocar_sesiones_usuario(id_usuario)
     auditoria.registrar(
         "UPDATE_USER",
         tabla="usuario",

@@ -10,6 +10,8 @@ Blueprint de autenticación.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from flask import (
     Blueprint,
     g,
@@ -41,6 +43,19 @@ def _ip() -> str | None:
     return (reenviada.split(",")[0].strip() or request.remote_addr) or None
 
 
+def _destino_local_seguro(destino: str | None) -> bool:
+    """
+    Solo rutas internas del sitio. `startswith("/")` no bastaba: «//evil.com» y
+    «/\\evil.com» empiezan con «/» y el navegador los trata como otro dominio.
+    """
+    if not destino or not destino.startswith("/") or destino.startswith(("//", "/\\")):
+        return False
+    if any(c in destino for c in ("\\", "\r", "\n", "\t")):
+        return False
+    partes = urlsplit(destino)
+    return not partes.scheme and not partes.netloc
+
+
 def _login_por_svc_auth(email: str, password: str):
     """
     El login de la web lo resuelve svc-auth: valida la contraseña, emite el JWT y
@@ -67,6 +82,38 @@ def _login_por_svc_auth(email: str, password: str):
     return usuario, r["token"], r["jti"], None
 
 
+_LIMITE_LOGIN = 10        # intentos por (IP, correo) por ventana
+_LIMITE_LOGIN_IP = 30     # intentos por IP por ventana (frena probar 1 clave en muchas cuentas)
+_VENTANA_LOGIN = 60
+
+
+def _login_permitido(email: str) -> bool:
+    """
+    Rate limit del login (formulario web y /api/auth/token). El bloqueo de 5
+    intentos por cuenta no frena probar una contraseña contra muchas cuentas;
+    esto sí. Si Redis no responde se permite (el bloqueo por cuenta sigue).
+    """
+    from app.services.cache_service import incrementar_contador, verificar_rate_limit
+
+    ip = _ip() or "?"
+    ok_cuenta, _, _ = verificar_rate_limit(
+        f"web_login:ip:{ip}:email:{(email or '-').lower()}", limite=_LIMITE_LOGIN, ventana_segundos=_VENTANA_LOGIN
+    )
+    ok_ip, _, _ = verificar_rate_limit(f"web_login:ip:{ip}", limite=_LIMITE_LOGIN_IP, ventana_segundos=_VENTANA_LOGIN)
+    if not (ok_cuenta and ok_ip):
+        incrementar_contador("web", "login_throttled")
+        auditoria.registrar(
+            "LOGIN_FALLIDO",
+            tabla="usuario",
+            descripcion=f"Intento bloqueado por exceso de intentos (límite de tasa) para {email or '-'}",
+            usuario_email=email or None,
+            ip=ip,
+            user_agent=request.headers.get("User-Agent"),
+        )
+        return False
+    return True
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if "user_id" in session:
@@ -78,6 +125,10 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
+        if not _login_permitido(email):
+            return render_template(
+                "login.html", error="Demasiados intentos. Espera un minuto antes de volver a intentar.", email=email
+            ), 429
         if clientes.activo():
             usuario, token, jti, error = _login_por_svc_auth(email, password)
         else:
@@ -103,7 +154,7 @@ def login():
                 user_agent=request.headers.get("User-Agent"),
             )
             destino = request.args.get("next")
-            if destino and destino.startswith("/"):
+            if _destino_local_seguro(destino):
                 return redirect(destino)
             return redirect(url_for(ruta_inicial(usuario["rol_clave"])))
 
@@ -128,6 +179,8 @@ def api_token():
     datos = request.get_json(silent=True) or request.form
     email = (datos.get("email") or "").strip()
     password = datos.get("password") or ""
+    if not _login_permitido(email):
+        return jsonify({"error": "limite_excedido", "mensaje": "Demasiados intentos; espere un minuto."}), 429
 
     usuario, error = autenticar(
         email, password, ip=_ip(), user_agent=request.headers.get("User-Agent")

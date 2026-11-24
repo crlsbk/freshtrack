@@ -159,15 +159,18 @@ def refrescar():
     "Verificación de token para otros componentes",
     respuesta={"valido": True, "usuario": _USUARIO_EJEMPLO, "sesion_ttl_segundos": 28750},
     raiz_respuesta="token_verification",
-    errores=("400", "401"),
+    errores=("400", "401", "429"),
     exito="200",
 )
+@limite_tasa(limite=120, ventana_segundos=60)
 def verificar():
     """Valida firma, vigencia, sesión en Redis y denylist. Lo usan la web y otros servicios."""
     auth_header = request.headers.get("Authorization", "")
-    token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else request.args.get("token")
+    token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else None
     if not token:
-        return error_response(400, "token_requerido", "Envíe el token en Authorization: Bearer o ?token=")
+        # Ya no se acepta ?token=: la URL completa termina en logs de acceso,
+        # historial y cabeceras Referer.
+        return error_response(400, "token_requerido", "Envíe el token en la cabecera Authorization: Bearer <token>.")
 
     payload = decodificar_token(token)
     if not payload:

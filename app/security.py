@@ -276,7 +276,13 @@ def decodificar_token(token: str) -> dict | None:
     """Valida firma y expiración, y comprueba que la sesión siga vigente (Fail-Closed)."""
     try:
         payload = jwt.decode(
-            token, Config.JWT_SECRET_KEY, algorithms=[Config.JWT_ALGORITHM]
+            token,
+            Config.JWT_SECRET_KEY,
+            algorithms=[Config.JWT_ALGORITHM],
+            issuer="freshtrack",
+            # Sin `require`, PyJWT acepta un token SIN exp como si no caducara.
+            options={"require": ["exp", "iat", "jti", "sub", "iss"]},
+            leeway=30,
         )
     except jwt.PyJWTError:
         return None
@@ -292,6 +298,42 @@ def decodificar_token(token: str) -> dict | None:
     if not verificar_sesion_respaldo_bd(jti):
         return None
     return payload
+
+
+def revocar_sesiones_usuario(id_usuario: str) -> int:
+    """
+    Revoca TODAS las sesiones vigentes de un usuario en PostgreSQL y en Redis.
+
+    Se usa al desactivar la cuenta, restablecer la contraseña o cambiar rol,
+    sucursal o correo (datos que viajan dentro del JWT). Revocar solo en
+    PostgreSQL no basta: `login_required` consulta Redis primero y la sesión
+    seguía viva hasta su expiración. Los jti salen de PostgreSQL (no del índice
+    user:sessions de Redis) para cubrir también sesiones creadas mientras Redis
+    estaba caído. Devuelve cuántas sesiones se revocaron.
+    """
+    from app.services import cache_service
+
+    with transaccion() as conn:
+        filas = conn.execute(
+            transaccion_texto(
+                "UPDATE operacion.sesion_usuario SET revocado = true, revocado_en = now() "
+                "WHERE id_usuario = CAST(:u AS uuid) AND NOT revocado AND expira_en > now() "
+                "RETURNING jti, GREATEST(60, EXTRACT(EPOCH FROM expira_en - now())::int) AS ttl"
+            ),
+            {"u": id_usuario},
+        ).mappings().all()
+    for fila in filas:
+        try:
+            revocar_jwt(fila["jti"], ttl_segundos=int(fila["ttl"]))
+            eliminar_sesion_redis(fila["jti"])
+        except Exception:
+            pass
+    # Sesiones que solo existieran en Redis (p. ej. ya revocadas en PG pero vivas allá).
+    try:
+        cache_service.cerrar_sesiones_usuario(id_usuario)
+    except Exception:
+        pass
+    return len(filas)
 
 
 def revocar_token(jti: str) -> None:
@@ -362,6 +404,29 @@ def usuario_actual() -> dict | None:
 # ---------------------------------------------------------------------------
 # Decoradores de protección de rutas
 # ---------------------------------------------------------------------------
+def sesion_web_vigente() -> bool:
+    """
+    True si la cookie de sesión pertenece a una sesión viva y no revocada.
+
+    Redis decide (denylist + session:{jti}); si Redis no responde, PostgreSQL
+    decide (Fail-Closed). Una cookie sin jti no se acepta: todas las sesiones
+    legítimas se abren con un JWT.
+    """
+    if "user_id" not in session:
+        return False
+    jti = session.get("jti")
+    if not jti:
+        return False
+    if esta_jwt_revocado(jti):
+        return False
+    estado_redis = sesion_activa(jti)
+    if estado_redis is False:
+        return False
+    if estado_redis is None and not verificar_sesion_respaldo_bd(jti):
+        return False
+    return True
+
+
 def login_required(f):
     """Cualquier ruta que no sea pública exige sesión iniciada."""
 
@@ -372,21 +437,11 @@ def login_required(f):
                 return jsonify({"error": "no_autenticado"}), 401
             return redirect(url_for("auth.login", next=request.path))
 
-        # Verificar revocación en Redis (o respaldo Fail-Closed en PostgreSQL si Redis cae)
-        jti = session.get("jti")
-        if jti:
-            revocado_redis = esta_jwt_revocado(jti)
-            estado_redis = sesion_activa(jti)
-            invalida = (
-                revocado_redis
-                or estado_redis is False
-                or (estado_redis is None and not verificar_sesion_respaldo_bd(jti))
-            )
-            if invalida:
-                session.clear()
-                if request.path.startswith("/api/"):
-                    return jsonify({"error": "sesion_revocada"}), 401
-                return redirect(url_for("auth.login", next=request.path))
+        if not sesion_web_vigente():
+            session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "sesion_revocada"}), 401
+            return redirect(url_for("auth.login", next=request.path))
 
         return f(*args, **kwargs)
 

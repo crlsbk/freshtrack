@@ -100,6 +100,22 @@ class JsonContrato(DefaultJSONProvider):
         return DefaultJSONProvider.default(o)
 
 
+_PARAMS_SECRETOS = {"token", "access_token", "refresh_token", "password", "jwt", "key", "secret"}
+
+
+def _ruta_sin_secretos() -> str:
+    """Ruta + query para el log, con los valores de parámetros sensibles ocultos."""
+    if not request.query_string:
+        return request.path
+    from urllib.parse import parse_qsl, urlencode
+
+    pares = [
+        (k, "***" if k.lower() in _PARAMS_SECRETOS else v)
+        for k, v in parse_qsl(request.query_string.decode("utf-8", "replace"), keep_blank_values=True)
+    ]
+    return f"{request.path}?{urlencode(pares)}"
+
+
 def crear_servicio(
     nombre: str,
     titulo: str,
@@ -133,7 +149,7 @@ def crear_servicio(
         if not request.path.endswith("/health"):
             log.info(
                 "%s %s %s %.1fms user=%s cid=%s",
-                request.method, request.full_path.rstrip("?"), resp.status_code, dur_ms, usuario, correlation_id(),
+                request.method, _ruta_sin_secretos(), resp.status_code, dur_ms, usuario, correlation_id(),
             )
             cache_service.incrementar_contador(nombre, f"http_{resp.status_code}")
             if resp.status_code >= 500:

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from decimal import Decimal
 
-from flask import Flask, session
+from flask import Flask, request, session
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -232,9 +232,20 @@ def create_app() -> Flask:
 
     @app.errorhandler(500)
     def error_interno(e):
+        import logging
+        import uuid as _uuid
+
         from flask import render_template
 
-        return render_template("error.html", codigo=500,
-                               mensaje=f"Error interno: {e}"), 500
+        # El detalle (que puede incluir SQL, rutas o valores) va solo al log.
+        referencia = _uuid.uuid4().hex[:10]
+        original = getattr(e, "original_exception", None) or e
+        logging.getLogger("freshtrack.web").error(
+            "Error 500 ref=%s en %s %s", referencia, request.method, request.path, exc_info=original
+        )
+        return render_template(
+            "error.html", codigo=500,
+            mensaje=f"Ocurrió un error inesperado. Si persiste, reporta la referencia {referencia}.",
+        ), 500
 
     return app

@@ -79,15 +79,24 @@ def api_kpis():
 @bp.get("/kpis/ventana")
 def api_kpis_ventana():
     """Calcula dinámicamente en tiempo real contra PostgreSQL las cifras del período solicitado."""
-    from app.security import usuario_actual
-    if not usuario_actual() and not request.headers.get("Authorization"):
-        return jsonify({"error": "no_autenticado"}), 401
+    from app.security import decodificar_token, sesion_web_vigente
 
-    ventana_str = request.args.get("dias", "30")
-    if ventana_str in ("todo", "all", "historico", "none") or not ventana_str.isdigit():
+    # Antes bastaba con enviar CUALQUIER cabecera Authorization (sin validarla)
+    # para leer los KPIs del negocio. Ahora: sesión web válida (la usa el panel
+    # vía fetch con su cookie) o un JWT que pase la verificación completa.
+    if not sesion_web_vigente():
+        cabecera = request.headers.get("Authorization", "")
+        if not cabecera.startswith("Bearer ") or decodificar_token(cabecera[7:].strip()) is None:
+            return jsonify({"error": "no_autenticado"}), 401
+
+    ventana_str = (request.args.get("dias") or "30").strip().lower()
+    if ventana_str in ("todo", "all", "historico", "none"):
         dias = None
-    else:
+    elif ventana_str.isdigit() and 1 <= int(ventana_str) <= 730:
+        # Acotado: cada valor distinto es una llave de caché y una agregación nueva.
         dias = int(ventana_str)
+    else:
+        return jsonify({"error": "parametro_invalido", "mensaje": "dias debe ser 1-730 o 'todo'."}), 400
     return jsonify(motor_kpis.metricas_periodo(dias))
 
 

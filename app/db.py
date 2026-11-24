@@ -12,8 +12,10 @@ Dos reglas que se respetan en todo el proyecto:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
+import uuid
 from contextlib import contextmanager
 from decimal import Decimal
 from typing import Any, Iterable, Sequence
@@ -181,7 +183,18 @@ def sql_error(exc: SQLAlchemyError) -> str:
     for clave, texto in traducciones.items():
         if clave in mensaje:
             return texto
-    return mensaje.split("\n")[0]
+    # Mensajes de negocio lanzados a propósito (RAISE EXCEPTION, SQLSTATE P0001)
+    # y violaciones de restricciones CHECK/UNIQUE/FK se explican solas; el resto
+    # (sintaxis, permisos, conexión…) revelaría tablas y columnas internas, así
+    # que se registra completo en el log y el usuario ve un mensaje genérico.
+    sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None) or ""
+    if sqlstate == "P0001":
+        return mensaje.split("\n")[0]
+    if sqlstate.startswith("23"):
+        return "Los datos no cumplen una regla de integridad (duplicado, referencia o valor no permitido)."
+    referencia = uuid.uuid4().hex[:10]
+    logging.getLogger("freshtrack.db").error("Error SQL ref=%s: %s", referencia, mensaje)
+    return f"No se pudo completar la operación por un error interno (referencia {referencia})."
 
 
 def a_float(valor: Any) -> float:

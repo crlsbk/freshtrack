@@ -80,42 +80,42 @@ services:
       svc_planning: { condition: service_healthy }
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "90", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "run:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "90", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "run:app"]
     mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_auth:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.auth_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.auth_service.app:app"]
     mem_limit: 512m
 
   svc_catalog:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5002", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.catalog_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5002", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.catalog_service.app:app"]
     mem_limit: 512m
 
   svc_inventory:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5003", "--workers", "2", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.inventory_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5003", "--workers", "2", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.inventory_service.app:app"]
     mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_commercial:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5004", "--workers", "2", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.commercial_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5004", "--workers", "2", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.commercial_service.app:app"]
     mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_asn:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.asn_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.asn_service.app:app"]
     mem_limit: 512m
 
   svc_planning:
@@ -126,21 +126,21 @@ services:
       mongo: { condition: service_healthy }
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5006", "--workers", "2", "--threads", "4", "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.planning_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5006", "--workers", "2", "--threads", "4", "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.planning_service.app:app"]
     mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_alerts:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5007", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.alerts_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5007", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.alerts_service.app:app"]
     mem_limit: 512m
 
   svc_audit:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5008", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.audit_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5008", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--access-logformat", "%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)ss", "app.services.audit_service.app:app"]
     mem_limit: 512m
 
   caddy:

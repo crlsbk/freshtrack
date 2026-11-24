@@ -135,6 +135,9 @@ def trazabilidad_lote(id_lote: str):
     )
 
 
+_ACCIONES_RESERVADAS = set(auditoria.ACCIONES) | {"INSERT", "UPDATE", "DELETE", "TRUNCATE"}
+
+
 @app.post("/api/v1/audit/log")
 @documentar(
     "Registro explícito de un evento de cumplimiento",
@@ -151,6 +154,14 @@ def registrar_log_explicit():
     datos = leer_cuerpo("audit_log_request", requerido=True)
     requerir_campos(datos, "accion", "descripcion")
     accion = str(datos["accion"]).upper()[:40]
+    # Las acciones que genera el propio sistema (LOGIN_FALLIDO, APPROVE_*,
+    # INSERT/UPDATE/DELETE de los disparadores…) no se pueden escribir desde un
+    # cliente: un usuario podría fabricar evidencia que parece del sistema.
+    if accion in _ACCIONES_RESERVADAS or accion.startswith(("APPROVE_", "REJECT_", "LOGIN", "LOGOUT")):
+        return error_response(
+            403, "accion_reservada",
+            f"La acción '{accion}' la registra el sistema; use una acción propia (p. ej. DESKTOP_*).",
+        )
     evento_id = auditoria.registrar_desde_request(
         request,
         accion,

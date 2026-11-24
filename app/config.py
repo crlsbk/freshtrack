@@ -7,6 +7,8 @@ No hay ninguna credencial escrita en el código.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 from datetime import timedelta
 
@@ -57,7 +59,12 @@ class Config:
     )
 
     # --- JWT ---------------------------------------------------------------
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or SECRET_KEY
+    # Clave propia para firmar JWT. Si no se define, se DERIVA de SECRET_KEY en
+    # vez de reutilizarla tal cual: así la clave que firma la cookie de sesión y
+    # la que firma los tokens nunca son la misma.
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or hmac.new(
+        SECRET_KEY.encode("utf-8"), b"freshtrack-jwt-v1", hashlib.sha256
+    ).hexdigest()
     JWT_ALGORITHM = "HS256"
     JWT_HORAS_VIGENCIA = int(os.getenv("JWT_HORAS_VIGENCIA", "8"))
 

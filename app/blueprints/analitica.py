@@ -27,6 +27,14 @@ from app.services import clientes
 bp = Blueprint("analitica", __name__)
 
 POR_PAGINA = 50
+
+# Roles que pueden ejecutar cada acción directa de triaje (admin siempre).
+# Espejo de svc-planning (transfers/discounts) y svc-commercial (shrinkage).
+_ROLES_ACCION_TRIAJE = {
+    "TRASLADO": {"admin", "planner", "store_manager"},
+    "DESCUENTO": {"admin", "planner", "store_manager"},
+    "MERMA": {"admin", "store_manager", "warehouse"},
+}
 LIMITE_SERIES = 3000
 
 
@@ -562,8 +570,24 @@ def triaje_accion_lote():
     id_lote = request.form.get("id_lote", "").strip()
     tipo_accion = request.form.get("tipo_accion", "").strip().upper()
     tab_origen = request.form.get("tab_origen") or "triaje"
+    usuario = usuario_actual()
+    # Esta acción se ejecuta en la web sin pasar por un microservicio, así que
+    # aplica aquí las MISMAS reglas que svc-planning (traslados/descuentos) y
+    # svc-commercial (mermas). Antes bastaba con ver la pantalla de triaje, que
+    # también ven auditor (solo lectura), comprador y almacén.
+    permitidos = _ROLES_ACCION_TRIAJE.get(tipo_accion)
+    if permitidos is None or usuario["rol_clave"] not in permitidos:
+        flash("Tu rol no puede ejecutar esa acción sobre el lote.", "error")
+        return redirect(url_for("analitica.triaje", tab=tab_origen))
     try:
         id_loc = int(request.form["id_locacion"])
+        if (
+            usuario["rol_clave"] in ("store_manager", "warehouse")
+            and usuario.get("id_locacion") is not None
+            and int(usuario["id_locacion"]) != id_loc
+        ):
+            flash("Solo puedes actuar sobre lotes de tu sucursal.", "error")
+            return redirect(url_for("analitica.triaje", tab=tab_origen))
         id_dest = int(request.form["id_locacion_destino"]) if request.form.get("id_locacion_destino") else None
         cantidad = float(request.form["cantidad"]) if request.form.get("cantidad") else None
         desc_pct = float(request.form["descuento_pct"]) if request.form.get("descuento_pct") else None
@@ -572,7 +596,7 @@ def triaje_accion_lote():
             id_lote=id_lote,
             id_locacion=id_loc,
             tipo_accion=tipo_accion,
-            usuario=usuario_actual(),
+            usuario=usuario,
             id_locacion_destino=id_dest,
             cantidad=cantidad,
             descuento_pct=desc_pct,

@@ -289,3 +289,35 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --
   sube `JWT_MINUTOS_ACCESO` en el `.env` de la VM.
 - Tras desplegar, las sesiones abiertas antes del cambio siguen hasta su
   expiración; los inicios de sesión nuevos ya usan el esquema de refresh.
+
+## 5. Pruebas de carga con Locust
+
+Se lanzan **desde la laptop** contra el dominio público (no le quitan CPU a la VM). Solo usan
+operaciones que existen en FreshTrack; las ventas son **reales** (todas las tiendas) para que el
+desperdicio evitado tenga datos.
+
+```bash
+.venv/bin/pip install -r requirements-loadtest.txt
+export LOCUST_ADMIN_PASSWORD='…'   # cuenta admin: solo para el descubrimiento previo
+export LOCUST_PASSWORD_POOL='…'    # contraseña de las cuentas op_*@freshtrack.mx del generador masivo
+# Rendimiento: línea base → 60 → 120 → 200 VU → recuperación (~6 min)
+.venv/bin/python scripts/locust_ejecutar.py --host https://<dominio> --escenario rendimiento
+# Ventas sostenidas para el dato de desperdicio evitado (30 VU × 20 min)
+.venv/bin/python scripts/locust_ejecutar.py --host https://<dominio> --escenario ventas
+# Curva propia: --fases "BASE:60:20,PICO:120:150,RECUPERACION:90:20"
+```
+
+Cada corrida queda en `docs/pruebas/locust/<run_id>/` (contexto descubierto, configuración, reporte
+HTML y CSV de Locust, serie por segundo, métricas por fase y endpoint, errores, desperdicio antes y
+después, `resumen.json` y `REPORTE.md` con las 9 métricas). Para guardarla en PostgreSQL
+(esquema `pruebas`, `sql/11_pruebas_carga.sql`):
+
+```bash
+scp -r docs/pruebas/locust/<run_id> <vm>:~/iac-proyecto/docs/pruebas/locust/
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
+  python scripts/locust_importar.py docs/pruebas/locust/<run_id>
+```
+
+Notas: la carga sale de una sola IP, así que los límites por IP (catálogo público, login web) se
+alcanzan antes que con tráfico distribuido; sus 429 se reportan aparte. «Conductores actualizando
+ubicación» no existe en FreshTrack y no se simula.

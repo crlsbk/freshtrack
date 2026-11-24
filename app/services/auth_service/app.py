@@ -131,7 +131,9 @@ def logout():
     errores=("400", "401", "429"),
     exito="200",
 )
-@limite_tasa(limite=30, ventana_segundos=60, clave_func=lambda: _clave_rate_refresh())
+# 300/min por IP: una oficina (o una prueba de carga) detrás de una sola IP renueva
+# muchas sesiones a la vez; adivinar un refresh de 256 bits no es viable de todos modos.
+@limite_tasa(limite=300, ventana_segundos=60, clave_func=lambda: _clave_rate_refresh())
 def refrescar():
     """
     Flujo normal: cuerpo con `refresh_token` (sirve aunque el access ya expiró).

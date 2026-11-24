@@ -141,5 +141,6 @@
     </table>
   </div>
 {% endfor %}
+{{ ui.paginacion(paginacion, 'operacion.inventario', filtros_pag) }}
 {{ ui.modal_trazabilidad() }}
 {% endblock %}

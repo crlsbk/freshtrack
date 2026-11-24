@@ -41,6 +41,9 @@ from app.services import clientes
 
 bp = Blueprint("operacion", __name__)
 
+# Tamaño de página de los listados operativos (lotes, inventario, ventas, mermas).
+POR_PAGINA = 50
+
 
 def _json_safe(obj):
     if isinstance(obj, Decimal):
@@ -102,14 +105,24 @@ def lotes():
 
     dom_inv.bloquear_lotes_vencidos(usuario=usuario)
 
+    filtros_lotes = {
+        "texto": request.args.get("q") or None,
+        "clasificacion": request.args.get("riesgo") or None,
+        "id_locacion": int(request.args["locacion"]) if request.args.get("locacion") else None,
+    }
+    total = dom_inv.contar_lotes(**filtros_lotes)
+    paginas = max(1, (total + POR_PAGINA - 1) // POR_PAGINA)
+    pagina = min(max(1, a_int(request.args.get("pagina"), 1)), paginas)
+
     return render_template(
         "operacion/lotes.html",
         active="batches",
-        lotes=dom_inv.listar_lotes(
-            texto=request.args.get("q"),
-            clasificacion=request.args.get("riesgo") or None,
-            id_locacion=int(request.args["locacion"]) if request.args.get("locacion") else None,
-        ),
+        lotes=dom_inv.listar_lotes(**filtros_lotes, limite=POR_PAGINA, offset=(pagina - 1) * POR_PAGINA),
+        paginacion={"pagina": pagina, "paginas": paginas, "total": total, "por_pagina": POR_PAGINA},
+        filtros_pag={k: v for k, v in (
+            ("q", request.args.get("q")), ("riesgo", request.args.get("riesgo")),
+            ("locacion", request.args.get("locacion")),
+        ) if v},
         estados_lote=dom_inv.ESTADOS_LOTE_VALIDOS,
         productos=dom_inv.productos_activos(),
         proveedores=dom_inv.proveedores_activos(),
@@ -197,10 +210,15 @@ def inventario():
     dom_inv.bloquear_lotes_vencidos(usuario=usuario_actual())
     id_locacion = int(request.args["locacion"]) if request.args.get("locacion") else None
     texto = request.args.get("q") or None
+    res = dom_inv.inventario_agrupado_paginado(
+        id_locacion=id_locacion, texto=texto, pagina=a_int(request.args.get("pagina"), 1), por_pagina=25
+    )
     return render_template(
         "operacion/inventario.html",
         active="inventory",
-        grupos=dom_inv.inventario_agrupado(id_locacion=id_locacion, texto=texto),
+        grupos=res["grupos"],
+        paginacion=res["paginacion"],
+        filtros_pag={k: v for k, v in (("q", texto), ("locacion", id_locacion)) if v},
         resumen=dom_inv.resumen_inventario(),
         locaciones=dom_inv.locaciones_activas(),
         id_locacion=id_locacion,

@@ -319,7 +319,7 @@
 {# ── Listado de lotes ── #}
 <div class="table-wrap">
   <div class="table-header">
-    <div class="table-header-title">Lotes activos y orden de salida FEFO ({{ lotes | length }})</div>
+    <div class="table-header-title">Lotes activos y orden de salida FEFO ({{ paginacion.total }})</div>
   </div>
   <table>
     <thead>
@@ -400,6 +400,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ ui.paginacion(paginacion, 'operacion.lotes', filtros_pag) }}
 </div>
 {{ ui.modal_trazabilidad() }}
 {% endblock %}

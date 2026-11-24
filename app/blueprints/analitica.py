@@ -161,10 +161,17 @@ def _filtro_ordenes(estado: str | None) -> str:
 @requiere_vista("replenishment")
 def reabastecimiento():
     estado = _filtro_ordenes(request.args.get("estado"))
+    estado_sql = estado if estado != "TODAS" else None
+    por_pagina = 25  # cada orden es una tarjeta con formularios y desglose newsvendor
+    total = motor_reab.contar_ordenes(estado_sql)
+    paginas = max(1, (total + por_pagina - 1) // por_pagina)
+    pagina = min(max(1, a_int(request.args.get("pagina"), 1)), paginas)
     return render_template(
         "analitica/reabastecimiento.html",
         active="replenishment",
-        ordenes=motor_reab.listar_ordenes(estado=estado if estado != "TODAS" else None),
+        ordenes=motor_reab.listar_ordenes(estado=estado_sql, limite=por_pagina, offset=(pagina - 1) * por_pagina),
+        paginacion={"pagina": pagina, "paginas": paginas, "total": total, "por_pagina": por_pagina},
+        filtros_pag={"estado": estado},
         resumen=motor_reab.resumen_ordenes(),
         sobreinventario=motor_reab.sobreinventario(),
         estado_filtro=estado,

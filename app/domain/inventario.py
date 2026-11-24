@@ -16,9 +16,9 @@ import os
 from sqlalchemy import text
 
 from app import auditoria
-from app.db import a_float, a_int, one, query, transaccion
+from app.db import a_float, a_int, escalar, one, query, transaccion
 from app.services import cache_service
-from app.domain.cache_web import invalida
+from app.domain.cache_web import con_cache_web, invalida
 
 # ---------------------------------------------------------------------------
 # Consultas de catálogo auxiliar
@@ -73,16 +73,25 @@ def inventario_por_lote(
     solo_con_existencia: bool = True,
     texto: str | None = None,
     limite: int = 500,
+    pares: list[tuple[int, int]] | None = None,
 ) -> list[dict]:
     """
     Inventario real por lote: Producto → Tienda → Lote → Caducidad,
     con días restantes, vida útil residual y clasificación de riesgo.
+    `pares` restringe a esos (id_sku, id_locacion) (paginación por grupos).
     """
     condiciones = []
     params: dict = {"limite": limite}
+    if pares is not None:
+        condiciones.append(
+            "(id_sku, id_locacion) IN (SELECT * FROM unnest(CAST(:p_skus AS integer[]), CAST(:p_locs AS integer[])))"
+        )
+        params["p_skus"] = [int(a) for a, _ in pares]
+        params["p_locs"] = [int(b) for _, b in pares]
     if solo_con_existencia:
         condiciones.append("cantidad_disponible > 0")
         condiciones.append("dias_restantes >= 0")
+        condiciones.append("fecha_caducidad >= CURRENT_DATE")  # sargable
         condiciones.append("estado_lote NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')")
     if id_locacion:
         condiciones.append("id_locacion = :id_locacion")
@@ -132,10 +141,77 @@ def inventario_agrupado(
           Total     550 kg
 
     El total se calcula, no se almacena.
+
+    Sin `pagina` conserva el comportamiento original (hasta 2000 lotes). Con
+    `pagina` usa `inventario_agrupado_paginado`.
     """
     filas = inventario_por_lote(
         id_locacion=id_locacion, solo_con_existencia=True, texto=texto, limite=2000
     )
+    return _agrupar_inventario(filas)
+
+
+def _grupos_inventario_sql(id_locacion: int | None, texto: str | None) -> tuple[str, dict]:
+    """Pares producto × locación con existencia vigente (tablas base, sin la vista de riesgo)."""
+    cond = [
+        "e.cantidad_disponible > 0",
+        "l.fecha_caducidad >= CURRENT_DATE",
+        "l.estado NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')",
+    ]
+    params: dict = {}
+    if id_locacion:
+        cond.append("e.id_locacion = :id_locacion")
+        params["id_locacion"] = id_locacion
+    if texto:
+        cond.append("(p.nombre ILIKE :texto OR l.codigo_lote_prov ILIKE :texto)")
+        params["texto"] = f"%{texto}%"
+    sql = f"""
+        SELECT l.id_sku, e.id_locacion, p.nombre AS producto, loc.nombre AS locacion
+        FROM operacion.existencia e
+        JOIN operacion.lote l       ON l.id_lote = e.id_lote
+        JOIN operacion.producto p   ON p.id_sku = l.id_sku
+        JOIN operacion.locacion loc ON loc.id_locacion = e.id_locacion
+        WHERE {' AND '.join(cond)}
+        GROUP BY l.id_sku, e.id_locacion, p.nombre, loc.nombre
+    """
+    return sql, params
+
+
+def inventario_agrupado_paginado(
+    id_locacion: int | None = None,
+    texto: str | None = None,
+    pagina: int = 1,
+    por_pagina: int = 25,
+) -> dict:
+    """
+    Igual que `inventario_agrupado`, pero pagina los GRUPOS producto × tienda
+    en SQL y solo trae los lotes de la página (antes: 2000 lotes por petición,
+    truncando en silencio a partir de ahí).
+    """
+    sql, params = _grupos_inventario_sql(id_locacion, texto)
+    clave = f"web:inv:grupos_total:{id_locacion or ''}:{(texto or '').lower()[:60]}"
+    total = int(con_cache_web(clave, 60, lambda: escalar(f"SELECT COUNT(*) FROM ({sql}) g", **params) or 0))
+    paginas = max(1, (total + por_pagina - 1) // por_pagina)
+    pagina = min(max(1, int(pagina)), paginas)
+    grupos = query(
+        f"{sql} ORDER BY p.nombre, loc.nombre LIMIT :limite OFFSET :offset",
+        **params,
+        limite=por_pagina,
+        offset=(pagina - 1) * por_pagina,
+    )
+    pares = [(g["id_sku"], g["id_locacion"]) for g in grupos]
+    filas = (
+        inventario_por_lote(solo_con_existencia=True, texto=texto, limite=5000, pares=pares)
+        if pares
+        else []
+    )
+    return {
+        "grupos": _agrupar_inventario(filas),
+        "paginacion": {"pagina": pagina, "paginas": paginas, "total": total, "por_pagina": por_pagina},
+    }
+
+
+def _agrupar_inventario(filas: list[dict]) -> list[dict]:
 
     grupos: dict[tuple, dict] = {}
     for f in filas:
@@ -197,6 +273,7 @@ def cola_fefo(id_locacion: int | None = None, limite: int = 200) -> list[dict]:
         FROM operacion.v_inventario_lote
         WHERE cantidad_disponible > 0
           AND dias_restantes >= 0
+          AND fecha_caducidad >= CURRENT_DATE  -- sargable
           AND estado_lote = 'DISPONIBLE'
           {condicion}
         ORDER BY fecha_caducidad ASC, codigo_lote_prov
@@ -243,17 +320,14 @@ def stock_por_locacion(id_sku: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Lotes
 # ---------------------------------------------------------------------------
-def listar_lotes(
-    texto: str | None = None,
-    clasificacion: str | None = None,
-    id_locacion: int | None = None,
-    solo_vigentes: bool = True,
-    limite: int = 400,
-) -> list[dict]:
+def _where_lotes(
+    texto: str | None, clasificacion: str | None, id_locacion: int | None, solo_vigentes: bool
+) -> tuple[str, dict]:
     condiciones = []
-    params: dict = {"limite": limite}
+    params: dict = {}
     if solo_vigentes:
         condiciones.append("v.dias_restantes >= 0")
+        condiciones.append("v.fecha_caducidad >= CURRENT_DATE")  # sargable (idx_lote_caducidad)
         condiciones.append("v.estado NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')")
         condiciones.append(
             """EXISTS (
@@ -282,6 +356,35 @@ def listar_lotes(
         params["id_locacion"] = id_locacion
 
     where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
+    return where, params
+
+
+def contar_lotes(
+    texto: str | None = None,
+    clasificacion: str | None = None,
+    id_locacion: int | None = None,
+    solo_vigentes: bool = True,
+) -> int:
+    """Total de lotes del listado (cacheado 60 s por combinación de filtros)."""
+    where, params = _where_lotes(texto, clasificacion, id_locacion, solo_vigentes)
+    clave = f"web:inv:lotes_total:{clasificacion or ''}:{id_locacion or ''}:{int(solo_vigentes)}:{(texto or '').lower()[:60]}"
+    return int(
+        con_cache_web(
+            clave, 60, lambda: escalar(f"SELECT COUNT(*) FROM operacion.v_lote_riesgo v {where}", **params) or 0
+        )
+    )
+
+
+def listar_lotes(
+    texto: str | None = None,
+    clasificacion: str | None = None,
+    id_locacion: int | None = None,
+    solo_vigentes: bool = True,
+    limite: int = 400,
+    offset: int = 0,
+) -> list[dict]:
+    where, params = _where_lotes(texto, clasificacion, id_locacion, solo_vigentes)
+    params.update(limite=limite, offset=max(0, int(offset)))
     lotes = query(
         f"""
         SELECT v.id_lote::text, v.codigo_lote_prov, v.producto, v.id_sku, v.categoria,
@@ -291,13 +394,70 @@ def listar_lotes(
         FROM operacion.v_lote_riesgo v
         {where}
         ORDER BY v.fecha_caducidad ASC, v.codigo_lote_prov ASC
-        LIMIT :limite
+        LIMIT :limite OFFSET :offset
         """,
         **params,
     )
 
     if not lotes:
         return lotes
+
+    # Ubicaciones activas y prioridad de salida FEFO (por producto y tienda),
+    # calculadas SOLO para los lotes de esta página. Antes se numeraba con
+    # ROW_NUMBER() toda la existencia de todos los SKUs de la página.
+    # orden_fefo = 1 + lotes DISPONIBLES vigentes con existencia del mismo
+    # SKU en la misma locación que salen antes (fecha_caducidad, código).
+    fefo_rows = query(
+        """
+        SELECT e.id_lote::text AS id_lote,
+               l.id_sku,
+               e.id_locacion,
+               loc.nombre AS locacion,
+               e.cantidad_disponible,
+               l.estado AS estado_lote,
+               (l.fecha_caducidad - CURRENT_DATE) AS dias_restantes,
+               CASE WHEN l.estado = 'DISPONIBLE' THEN
+                   1 + (
+                       SELECT COUNT(*)
+                       FROM operacion.existencia e2
+                       JOIN operacion.lote l2 ON l2.id_lote = e2.id_lote
+                       WHERE l2.id_sku = l.id_sku
+                         AND e2.id_locacion = e.id_locacion
+                         AND e2.cantidad_disponible > 0
+                         AND l2.estado = 'DISPONIBLE'
+                         AND l2.fecha_caducidad >= CURRENT_DATE
+                         AND (l2.fecha_caducidad, l2.codigo_lote_prov) < (l.fecha_caducidad, l.codigo_lote_prov)
+                   )
+               END AS orden_fefo
+        FROM operacion.existencia e
+        JOIN operacion.lote l       ON l.id_lote = e.id_lote
+        JOIN operacion.locacion loc ON loc.id_locacion = e.id_locacion
+        WHERE e.id_lote = ANY(CAST(:ids AS uuid[]))
+          AND e.cantidad_disponible > 0
+          AND l.fecha_caducidad >= CURRENT_DATE
+          AND l.estado NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')
+        """,
+        ids=[l["id_lote"] for l in lotes],
+    )
+
+    por_lote: dict[str, list[dict]] = {}
+    for row in fefo_rows:
+        por_lote.setdefault(row["id_lote"], []).append(row)
+
+    for lote in lotes:
+        exs = por_lote.get(lote["id_lote"], [])
+        if id_locacion:
+            exs_filtradas = [x for x in exs if x["id_locacion"] == id_locacion]
+        else:
+            exs_filtradas = exs
+        exs_ordenadas = sorted(exs_filtradas, key=lambda x: a_float(x["cantidad_disponible"]), reverse=True)
+        lote["ubicaciones"] = ", ".join(x["locacion"] for x in exs_ordenadas) or "—"
+        lote["id_locacion_principal"] = exs_ordenadas[0]["id_locacion"] if exs_ordenadas else None
+        lote["existencias_activas"] = exs_ordenadas
+        ranks = [int(x["orden_fefo"]) for x in exs_ordenadas if x.get("orden_fefo") is not None]
+        lote["orden_fefo"] = min(ranks) if ranks else None
+
+    return lotes
 
     skus_lotes = sorted({int(l["id_sku"]) for l in lotes if l.get("id_sku") is not None})
     # Enriquecer cada lote con ubicaciones activas y prioridad de salida FEFO por producto y tienda.

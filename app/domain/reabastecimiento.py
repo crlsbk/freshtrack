@@ -34,7 +34,7 @@ from statistics import NormalDist
 from sqlalchemy import text
 
 from app import auditoria
-from app.db import a_float, a_int, config_valor, one, query, transaccion
+from app.db import a_float, a_int, config_valor, escalar, one, query, transaccion
 from app.domain import pronostico
 from app.domain.cache_web import con_cache_web, invalidar
 
@@ -850,16 +850,34 @@ def invalidar_cache_reabastecimiento() -> None:
     invalidar("web:reab:*")
 
 
-def listar_ordenes(estado: str | None = None, limite: int = 100) -> list[dict]:
+def listar_ordenes(estado: str | None = None, limite: int = 100, offset: int = 0) -> list[dict]:
     """Órdenes de reabastecimiento (cacheadas 30 s; se invalidan al generar/decidir)."""
     return con_cache_web(
-        f"web:reab:ordenes:{estado or 'todas'}:{int(limite)}", 30, lambda: _listar_ordenes_db(estado, limite)
+        f"web:reab:ordenes:{estado or 'todas'}:{int(limite)}:{int(offset)}",
+        30,
+        lambda: _listar_ordenes_db(estado, limite, offset),
     )
 
 
-def _listar_ordenes_db(estado: str | None = None, limite: int = 100) -> list[dict]:
+def contar_ordenes(estado: str | None = None) -> int:
+    filtro = "WHERE estado = :estado" if estado else ""
+    return int(
+        con_cache_web(
+            f"web:reab:ordenes_total:{estado or 'todas'}",
+            30,
+            lambda: escalar(
+                f"SELECT COUNT(*) FROM analitica.orden_reabastecimiento {filtro}",
+                **({"estado": estado} if estado else {}),
+            )
+            or 0,
+        )
+    )
+
+
+def _listar_ordenes_db(estado: str | None = None, limite: int = 100, offset: int = 0) -> list[dict]:
     filtro = "WHERE o.estado = :estado" if estado else ""
     params = {"estado": estado, "limite": limite} if estado else {"limite": limite}
+    params["offset"] = max(0, int(offset))
     return query(
         f"""
         SELECT o.id_orden::text, o.estado, o.prioridad, o.fecha_creacion, o.fecha_decision,
@@ -884,8 +902,9 @@ def _listar_ordenes_db(estado: str | None = None, limite: int = 100) -> list[dic
         {filtro}
         ORDER BY
             CASE o.prioridad WHEN 'ALTA' THEN 1 WHEN 'MEDIA' THEN 2 ELSE 3 END,
-            o.fecha_creacion DESC
-        LIMIT :limite
+            o.fecha_creacion DESC,
+            o.id_orden
+        LIMIT :limite OFFSET :offset
         """,
         **params,
     )

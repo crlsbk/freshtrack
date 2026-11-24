@@ -307,9 +307,17 @@ def auditoria_bitacora():
         params["hasta"] = filtros["hasta"]
 
     where = " AND ".join(condiciones)
-    total = query(
-        f"SELECT COUNT(*) AS n FROM auditoria.bitacora_eventos b WHERE {where}", **params
-    )[0]["n"]
+    if where == "1 = 1":
+        est = query(
+            "SELECT GREATEST(0, reltuples::bigint) AS n FROM pg_class WHERE oid = 'auditoria.bitacora_eventos'::regclass"
+        )
+        total = int(est[0]["n"]) if est and int(est[0]["n"]) > 0 else query(
+            "SELECT COUNT(*) AS n FROM auditoria.bitacora_eventos"
+        )[0]["n"]
+    else:
+        total = query(
+            f"SELECT COUNT(*) AS n FROM auditoria.bitacora_eventos b WHERE {where}", **params
+        )[0]["n"]
 
     pagina = _entero("pagina", 1)
     por_pagina = 40
@@ -330,9 +338,13 @@ def auditoria_bitacora():
         **params,
     )
 
-    acciones = query(
-        "SELECT accion, COUNT(*) AS n FROM auditoria.bitacora_eventos "
-        "GROUP BY accion ORDER BY n DESC"
+    acciones = motor_kpis._con_cache_web(
+        "web:auditoria:acciones",
+        60,
+        lambda: query(
+            "SELECT accion, COUNT(*) AS n FROM auditoria.bitacora_eventos "
+            "GROUP BY accion ORDER BY n DESC"
+        ),
     )
 
     return render_template(

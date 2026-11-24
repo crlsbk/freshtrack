@@ -21,13 +21,16 @@ actualizada y el movimiento de kardex, dentro de una sola transacción.
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
+from decimal import Decimal
+import os
+import uuid
 
 from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, one, query, transaccion
+from app.services import cache_service
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +333,13 @@ def registrar_venta(
         usuario_email=usuario["email"],
     )
 
+    try:
+        cache_service.invalidar_patron("web:ventas:*")
+        cache_service.invalidar_patron("web:kpis:*")
+        cache_service.invalidar_patron("web:inv:*")
+    except Exception:
+        pass
+
     return {
         "id_venta": id_venta,
         "folio": folio,
@@ -388,21 +398,47 @@ def ventas_recientes(
 
 
 def resumen_ventas(id_locacion: int | None = None) -> dict:
-    filtro = "WHERE vd.id_locacion = :id_locacion" if id_locacion else ""
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    clave_cache = f"web:ventas:resumen:{id_locacion or 'all'}"
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json(clave_cache)
+        if cached is not None:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+
+    filtro_v = "WHERE id_locacion = :id_locacion" if id_locacion else ""
+    filtro_vd = "WHERE vd.id_locacion = :id_locacion" if id_locacion else ""
     params = {"id_locacion": id_locacion} if id_locacion else {}
-    fila = one(
+
+    cab = one(
         f"""
-        SELECT COALESCE(SUM(vd.cantidad), 0)  AS unidades,
-               COALESCE(SUM(vd.subtotal), 0)  AS ingreso,
-               COUNT(DISTINCT vd.id_venta)    AS tickets,
-               COUNT(*)                       AS lineas
-        FROM operacion.venta_detalle vd
-        {filtro}
+        SELECT COUNT(*) AS tickets,
+               COALESCE(SUM(total), 0) AS ingreso
+        FROM operacion.venta
+        {filtro_v}
         """,
         **params,
     ) or {}
-    tickets = int(fila.get("tickets") or 0)
+    det = one(
+        f"""
+        SELECT COALESCE(SUM(vd.cantidad), 0) AS unidades,
+               COUNT(*) AS lineas
+        FROM operacion.venta_detalle vd
+        {filtro_vd}
+        """,
+        **params,
+    ) or {}
+    fila = {
+        "unidades": float(det.get("unidades") or 0) if isinstance(det.get("unidades"), Decimal) else (det.get("unidades") or 0),
+        "ingreso": float(cab.get("ingreso") or 0) if isinstance(cab.get("ingreso"), Decimal) else (cab.get("ingreso") or 0),
+        "tickets": int(cab.get("tickets") or 0),
+        "lineas": int(det.get("lineas") or 0),
+    }
+    tickets = int(fila["tickets"])
     fila["ticket_promedio"] = round(a_float(fila.get("ingreso")) / tickets, 2) if tickets else 0.0
+    if activa and cache_service.get_redis_client() is not None:
+        cache_service.set_json(clave_cache, fila, ttl_segundos=30)
     return fila
 
 

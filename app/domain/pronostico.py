@@ -27,8 +27,10 @@ analitica.forecast_result (producto, tienda, fecha, demanda pronosticada).
 from __future__ import annotations
 
 import math
+import os
 import time
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from sqlalchemy import text
 
@@ -1324,6 +1326,15 @@ def evaluar_salud_modelos(
     Evalúa la salud de cada modelo por tienda y detecta deriva de datos (data drift)
     y anomalías tanto a nivel tienda como por producto dentro de cada tienda.
     """
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    clave_cache = f"web:forecast:salud:{id_locacion or 'all'}:{int(dias_historia)}:{int(ventana_reciente)}"
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json(clave_cache)
+        if isinstance(cached, dict) and "tiendas" in cached:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+
     tiendas_modelo = modelos_activos_por_tienda(id_locacion=id_locacion)
     fecha_fin = escalar("SELECT MAX(fecha_transaccion)::date FROM operacion.venta_detalle") or date.today()
     fecha_inicio = fecha_fin - timedelta(days=dias_historia)
@@ -1490,11 +1501,17 @@ def evaluar_salud_modelos(
         "sin_datos": sum(1 for t in resultados_tiendas if t["estado"] == "SIN_DATOS"),
         "total_anomalias_sku": len(anomalias_sku),
     }
-    return {
+    salida_salud = {
         "resumen": resumen,
         "tiendas": resultados_tiendas,
         "anomalias_sku": anomalias_sku[:40],
     }
+    if activa and cache_service.get_redis_client() is not None:
+        try:
+            cache_service.set_json(clave_cache, salida_salud, ttl_segundos=90)
+        except Exception:
+            pass
+    return salida_salud
 
 
 def asegurar_pronostico_vigente(
@@ -1561,7 +1578,16 @@ def asegurar_pronostico_vigente(
 
 
 def precision_global() -> dict:
-    """Precisión del último pronóstico, ya contrastada contra la demanda real."""
+    """Precisión del último pronóstico, ya contrastada contra la demanda real (con Cache-Aside)."""
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    clave_cache = "web:forecast:precision_global"
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json(clave_cache)
+        if cached is not None:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+
     fila = one(
         """
         SELECT r.id_run::text, r.id_locacion, loc.nombre AS locacion,
@@ -1592,6 +1618,13 @@ def precision_global() -> dict:
         fila["wmape_observado"] = (
             round(a_float(fila["error_total"]) / real * 100, 2) if real else None
         )
+    if activa and cache_service.get_redis_client() is not None:
+        norm = {
+            k: (float(v) if isinstance(v, Decimal) else (v.isoformat() if isinstance(v, (date, datetime)) else v))
+            for k, v in fila.items()
+        }
+        cache_service.set_json(clave_cache, norm, ttl_segundos=60)
+        return norm
     return fila
 
 

@@ -10,11 +10,14 @@ de la consulta, a partir de operacion.regla_riesgo.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
+import os
 
 from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, a_int, one, query, transaccion
+from app.services import cache_service
 
 # ---------------------------------------------------------------------------
 # Consultas de catálogo auxiliar
@@ -250,8 +253,13 @@ def listar_lotes(
     params: dict = {"limite": limite}
     if solo_vigentes:
         condiciones.append("v.dias_restantes >= 0")
-        condiciones.append("v.existencia_total > 0")
         condiciones.append("v.estado NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')")
+        condiciones.append(
+            """EXISTS (
+                SELECT 1 FROM operacion.existencia e_vig
+                WHERE e_vig.id_lote = v.id_lote AND e_vig.cantidad_disponible > 0
+            )"""
+        )
     if clasificacion:
         condiciones.append("v.clasificacion = :clasificacion")
         params["clasificacion"] = clasificacion
@@ -290,6 +298,7 @@ def listar_lotes(
     if not lotes:
         return lotes
 
+    skus_lotes = sorted({int(l["id_sku"]) for l in lotes if l.get("id_sku") is not None})
     # Enriquecer cada lote con ubicaciones activas y prioridad de salida FEFO por producto y tienda.
     fefo_rows = query(
         """
@@ -313,10 +322,12 @@ def listar_lotes(
             WHERE cantidad_disponible > 0
               AND dias_restantes >= 0
               AND estado_lote NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')
+              AND id_sku = ANY(:skus)
         )
         SELECT * FROM cola
-        """
-    )
+        """,
+        skus=skus_lotes,
+    ) if skus_lotes else []
 
     por_lote: dict[str, list[dict]] = {}
     for row in fefo_rows:
@@ -463,6 +474,11 @@ def registrar_recepcion(
         id_usuario=usuario["id_usuario"],
         usuario_email=usuario["email"],
     )
+    try:
+        cache_service.invalidar_patron("web:inv:*")
+        cache_service.invalidar_patron("web:kpis:*")
+    except Exception:
+        pass
     return {
         "id_lote": id_lote,
         "codigo_lote_prov": codigo_lote_prov,
@@ -550,6 +566,12 @@ def cambiar_estado_lote(
         usuario_email=usuario["email"],
     )
 
+    try:
+        cache_service.invalidar_patron("web:inv:*")
+        cache_service.invalidar_patron("web:kpis:*")
+    except Exception:
+        pass
+
     return {
         "id_lote": id_lote,
         "codigo_lote_prov": actual["codigo_lote_prov"],
@@ -560,8 +582,18 @@ def cambiar_estado_lote(
     }
 
 
-def bloquear_lotes_vencidos(usuario: dict | None = None) -> dict:
-    """Marca como VENCIDO todo lote con fecha_caducidad < CURRENT_DATE que aún esté DISPONIBLE."""
+def bloquear_lotes_vencidos(usuario: dict | None = None, forzar: bool = False) -> dict:
+    """
+    Marca como VENCIDO todo lote con fecha_caducidad < CURRENT_DATE que aún esté DISPONIBLE.
+    Usa throttle de 5 min en Redis (salvo `forzar=True`) y `FOR UPDATE SKIP LOCKED`
+    para evitar deadlocks bajo alta concurrencia web.
+    """
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    clave_throttle = "web:inv:expire_scan_reciente"
+    if not forzar and activa and cache_service.get_redis_client() is not None:
+        if cache_service.get_json(clave_throttle) is not None:
+            return {"bloqueados": 0, "lotes": []}
+
     uid = usuario["id_usuario"] if usuario else None
     email = usuario["email"] if usuario else "sistema@freshtrack.mx"
 
@@ -569,11 +601,19 @@ def bloquear_lotes_vencidos(usuario: dict | None = None) -> dict:
         filas = conn.execute(
             text(
                 """
-                UPDATE operacion.lote
+                WITH candidatos AS (
+                    SELECT id_lote
+                    FROM operacion.lote
+                    WHERE fecha_caducidad < CURRENT_DATE
+                      AND estado = 'DISPONIBLE'
+                    LIMIT 5000
+                    FOR UPDATE SKIP LOCKED
+                )
+                UPDATE operacion.lote l
                    SET estado = 'VENCIDO'
-                 WHERE fecha_caducidad < CURRENT_DATE
-                   AND estado = 'DISPONIBLE'
-                RETURNING id_lote::text, codigo_lote_prov, fecha_caducidad
+                  FROM candidatos c
+                 WHERE l.id_lote = c.id_lote
+                RETURNING l.id_lote::text AS id_lote, l.codigo_lote_prov, l.fecha_caducidad
                 """
             )
         ).mappings().all()
@@ -588,6 +628,15 @@ def bloquear_lotes_vencidos(usuario: dict | None = None) -> dict:
             id_usuario=uid,
             usuario_email=email,
         )
+
+    if activa and cache_service.get_redis_client() is not None:
+        try:
+            cache_service.set_json(clave_throttle, {"ts": True}, ttl_segundos=300)
+            if lotes_bloqueados:
+                cache_service.invalidar_patron("web:inv:*")
+                cache_service.invalidar_patron("web:kpis:*")
+        except Exception:
+            pass
 
     return {
         "bloqueados": len(lotes_bloqueados),
@@ -717,6 +766,14 @@ def trazabilidad(id_lote: str) -> dict:
 # Resúmenes
 # ---------------------------------------------------------------------------
 def resumen_inventario() -> dict:
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json("web:inv:resumen")
+        if cached is not None:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+
     fila = one(
         """
         SELECT COALESCE(SUM(cantidad_disponible), 0)                    AS unidades,
@@ -736,4 +793,8 @@ def resumen_inventario() -> dict:
           AND estado_lote NOT IN ('AGOTADO', 'VENCIDO', 'MERMA', 'RETIRADO')
         """
     ) or {}
+    if activa and cache_service.get_redis_client() is not None:
+        norm = {k: (float(v) if isinstance(v, Decimal) else v) for k, v in fila.items()}
+        cache_service.set_json("web:inv:resumen", norm, ttl_segundos=45)
+        return norm
     return fila

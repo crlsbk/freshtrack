@@ -608,8 +608,8 @@ def cambiar_estado_locacion(id_locacion: int, activo: bool, usuario: dict) -> No
 # ===========================================================================
 # USUARIOS
 # ===========================================================================
-def listar_usuarios(texto: str | None = None) -> list[dict]:
-    params: dict = {}
+def listar_usuarios(texto: str | None = None, limite: int = 150) -> list[dict]:
+    params: dict = {"limite": max(1, int(limite))}
     where = ""
     if texto:
         where = "WHERE (u.nombre_completo ILIKE :texto OR u.email ILIKE :texto)"
@@ -626,6 +626,7 @@ def listar_usuarios(texto: str | None = None) -> list[dict]:
         LEFT JOIN operacion.locacion loc ON loc.id_locacion = u.id_locacion
         {where}
         ORDER BY u.estado_activo DESC, u.nombre_completo
+        LIMIT :limite
         """,
         **params,
     )

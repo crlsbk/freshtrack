@@ -13,10 +13,14 @@ forma de ver «Merma registrada correctamente» sin registro en PostgreSQL.
 
 from __future__ import annotations
 
+from decimal import Decimal
+import os
+
 from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, one, query, transaccion
+from app.services import cache_service
 
 # Las 7 causas mínimas exigidas, con su etiqueta para la interfaz
 CAUSAS: list[dict] = [
@@ -191,6 +195,13 @@ def registrar_merma(
         usuario_email=usuario["email"],
     )
 
+    try:
+        cache_service.invalidar_patron("web:mermas:*")
+        cache_service.invalidar_patron("web:kpis:*")
+        cache_service.invalidar_patron("web:inv:*")
+    except Exception:
+        pass
+
     return {
         "id_merma": fila["id_merma"],
         "cantidad": cantidad,
@@ -254,7 +265,36 @@ def mermas_recientes(
     )
 
 
+def _norm_decimal(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, dict):
+        return {k: _norm_decimal(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_norm_decimal(v) for v in obj]
+    return obj
+
+
 def resumen_mermas(dias: int = 90) -> dict:
+    """Merma total, valorizada, por tienda, por SKU, por causa y por caducidad (con Cache-Aside)."""
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    clave_cache = f"web:mermas:resumen:{int(dias)}"
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json(clave_cache)
+        if cached is not None:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+
+    res = _resumen_mermas_db(dias)
+    if activa and cache_service.get_redis_client() is not None:
+        norm = _norm_decimal(res)
+        cache_service.set_json(clave_cache, norm, ttl_segundos=60)
+        return norm
+    return res
+
+
+def _resumen_mermas_db(dias: int = 90) -> dict:
     """Merma total, valorizada, por tienda, por SKU, por causa y por caducidad."""
     base = f"m.fecha_registro >= CURRENT_DATE - {int(dias)}"
 
@@ -340,37 +380,25 @@ def resumen_mermas(dias: int = 90) -> dict:
 
 def lotes_para_merma(id_locacion: int | None = None, id_sku: int | None = None) -> list[dict]:
     """Lotes con existencia para el formulario de merma."""
-    condiciones = ["e.cantidad_disponible > 0"]
+    condiciones = ["cantidad_disponible > 0"]
     params: dict = {}
     if id_locacion:
-        condiciones.append("e.id_locacion = :id_locacion")
+        condiciones.append("id_locacion = :id_locacion")
         params["id_locacion"] = id_locacion
     if id_sku:
-        condiciones.append("l.id_sku = :id_sku")
+        condiciones.append("id_sku = :id_sku")
         params["id_sku"] = id_sku
     return query(
         f"""
-        SELECT e.id_lote::text AS id_lote, l.codigo_lote_prov,
-               p.nombre AS producto, p.id_sku, p.unidad_medida,
-               loc.nombre AS locacion, e.id_locacion,
-               e.cantidad_disponible, l.fecha_caducidad,
-               (l.fecha_caducidad - CURRENT_DATE) AS dias_restantes,
-               operacion.fn_clasificar_riesgo(
-                   p.id_sku, p.categoria,
-                   (l.fecha_caducidad - CURRENT_DATE)::numeric,
-                   operacion.fn_vida_util_pct(
-                       (l.fecha_caducidad - CURRENT_DATE)::numeric,
-                       CASE WHEN l.fecha_produccion IS NOT NULL
-                            THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
-                            ELSE p.vida_util_estandar::numeric END
-                   )
-               ) AS clasificacion
-        FROM operacion.existencia e
-        JOIN operacion.lote     l   ON l.id_lote = e.id_lote
-        JOIN operacion.producto p   ON p.id_sku = l.id_sku
-        JOIN operacion.locacion loc ON loc.id_locacion = e.id_locacion
+        SELECT id_lote::text AS id_lote, codigo_lote_prov,
+               producto, id_sku, unidad_medida,
+               locacion, id_locacion,
+               cantidad_disponible, fecha_caducidad,
+               dias_restantes, clasificacion
+        FROM operacion.v_inventario_lote
         WHERE {' AND '.join(condiciones)}
-        ORDER BY l.fecha_caducidad ASC
+        ORDER BY fecha_caducidad ASC
+        LIMIT 300
         """,
         **params,
     )

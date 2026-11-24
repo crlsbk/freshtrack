@@ -168,55 +168,67 @@ def _panel_principal_db() -> dict:
 
 
 def top_desperdicio_sku(limite: int = 8, dias: int = 180) -> list[dict]:
-    return query(
-        """
-        SELECT p.nombre AS producto, p.id_sku, p.categoria,
-               SUM(m.cantidad)    AS unidades,
-               SUM(m.valor_merma) AS valor
-        FROM operacion.merma m
-        JOIN operacion.lote     l ON l.id_lote = m.id_lote
-        JOIN operacion.producto p ON p.id_sku = l.id_sku
-        WHERE m.fecha_registro >= CURRENT_DATE - :dias
-        GROUP BY p.nombre, p.id_sku, p.categoria
-        ORDER BY valor DESC
-        LIMIT :limite
-        """,
-        dias=dias,
-        limite=limite,
+    return _con_cache_web(
+        f"web:kpis:top_sku:{int(limite)}:{int(dias)}",
+        60,
+        lambda: query(
+            """
+            SELECT p.nombre AS producto, p.id_sku, p.categoria,
+                   SUM(m.cantidad)    AS unidades,
+                   SUM(m.valor_merma) AS valor
+            FROM operacion.merma m
+            JOIN operacion.lote     l ON l.id_lote = m.id_lote
+            JOIN operacion.producto p ON p.id_sku = l.id_sku
+            WHERE m.fecha_registro >= CURRENT_DATE - :dias
+            GROUP BY p.nombre, p.id_sku, p.categoria
+            ORDER BY valor DESC
+            LIMIT :limite
+            """,
+            dias=dias,
+            limite=limite,
+        ),
     )
 
 
 def top_desperdicio_tienda(limite: int = 8, dias: int = 180) -> list[dict]:
-    return query(
-        """
-        SELECT loc.nombre AS locacion, m.id_locacion,
-               SUM(m.cantidad)    AS unidades,
-               SUM(m.valor_merma) AS valor
-        FROM operacion.merma m
-        JOIN operacion.locacion loc ON loc.id_locacion = m.id_locacion
-        WHERE m.fecha_registro >= CURRENT_DATE - :dias
-        GROUP BY loc.nombre, m.id_locacion
-        ORDER BY valor DESC
-        LIMIT :limite
-        """,
-        dias=dias,
-        limite=limite,
+    return _con_cache_web(
+        f"web:kpis:top_tienda:{int(limite)}:{int(dias)}",
+        60,
+        lambda: query(
+            """
+            SELECT loc.nombre AS locacion, m.id_locacion,
+                   SUM(m.cantidad)    AS unidades,
+                   SUM(m.valor_merma) AS valor
+            FROM operacion.merma m
+            JOIN operacion.locacion loc ON loc.id_locacion = m.id_locacion
+            WHERE m.fecha_registro >= CURRENT_DATE - :dias
+            GROUP BY loc.nombre, m.id_locacion
+            ORDER BY valor DESC
+            LIMIT :limite
+            """,
+            dias=dias,
+            limite=limite,
+        ),
     )
 
 
 def lotes_criticos(limite: int = 12) -> list[dict]:
-    return query(
-        """
-        SELECT producto, locacion, codigo_lote_prov, cantidad_disponible,
-               unidad_medida, fecha_caducidad, dias_restantes, vida_util_pct,
-               clasificacion, valor_inventario, id_lote::text
-        FROM operacion.v_inventario_lote
-        WHERE cantidad_disponible > 0
-          AND clasificacion IN ('CRITICO', 'VENCIDO')
-        ORDER BY dias_restantes ASC
-        LIMIT :limite
-        """,
-        limite=limite,
+    return _con_cache_web(
+        f"web:kpis:criticos:{int(limite)}",
+        45,
+        lambda: query(
+            """
+            SELECT producto, locacion, codigo_lote_prov, cantidad_disponible,
+                   unidad_medida, fecha_caducidad, dias_restantes, vida_util_pct,
+                   clasificacion, valor_inventario, id_lote::text
+            FROM operacion.v_inventario_lote
+            WHERE cantidad_disponible > 0
+              AND clasificacion IN ('CRITICO', 'VENCIDO')
+            ORDER BY dias_restantes ASC
+            LIMIT :limite
+            """,
+            limite=limite,
+        ),
     )
 
 
@@ -263,35 +275,43 @@ def _serie_mensual_db(meses: int = 6) -> list[dict]:
 
 
 def merma_por_categoria(dias: int = 180) -> list[dict]:
-    return query(
-        """
-        SELECT p.categoria AS name,
-               SUM(m.cantidad)    AS unidades,
-               SUM(m.valor_merma) AS valor
-        FROM operacion.merma m
-        JOIN operacion.lote     l ON l.id_lote = m.id_lote
-        JOIN operacion.producto p ON p.id_sku = l.id_sku
-        WHERE m.fecha_registro >= CURRENT_DATE - :dias
-        GROUP BY p.categoria
-        ORDER BY valor DESC
-        """,
-        dias=dias,
+    return _con_cache_web(
+        f"web:kpis:merma_cat:{int(dias)}",
+        60,
+        lambda: query(
+            """
+            SELECT p.categoria AS name,
+                   SUM(m.cantidad)    AS unidades,
+                   SUM(m.valor_merma) AS valor
+            FROM operacion.merma m
+            JOIN operacion.lote     l ON l.id_lote = m.id_lote
+            JOIN operacion.producto p ON p.id_sku = l.id_sku
+            WHERE m.fecha_registro >= CURRENT_DATE - :dias
+            GROUP BY p.categoria
+            ORDER BY valor DESC
+            """,
+            dias=dias,
+        ),
     )
 
 
 def inventario_por_locacion() -> list[dict]:
-    return query(
-        """
-        SELECT loc.nombre AS locacion, loc.tipo_locacion, v.id_locacion,
-               SUM(v.cantidad_disponible) AS unidades,
-               SUM(v.valor_inventario)    AS valor,
-               COUNT(*) FILTER (WHERE v.clasificacion IN ('CRITICO','VENCIDO')) AS lotes_en_riesgo
-        FROM operacion.v_inventario_lote v
-        JOIN operacion.locacion loc ON loc.id_locacion = v.id_locacion
-        WHERE v.cantidad_disponible > 0
-        GROUP BY loc.nombre, loc.tipo_locacion, v.id_locacion
-        ORDER BY valor DESC
-        """
+    return _con_cache_web(
+        "web:kpis:inv_loc",
+        45,
+        lambda: query(
+            """
+            SELECT loc.nombre AS locacion, loc.tipo_locacion, v.id_locacion,
+                   SUM(v.cantidad_disponible) AS unidades,
+                   SUM(v.valor_inventario)    AS valor,
+                   COUNT(*) FILTER (WHERE v.clasificacion IN ('CRITICO','VENCIDO')) AS lotes_en_riesgo
+            FROM operacion.v_inventario_lote v
+            JOIN operacion.locacion loc ON loc.id_locacion = v.id_locacion
+            WHERE v.cantidad_disponible > 0
+            GROUP BY loc.nombre, loc.tipo_locacion, v.id_locacion
+            ORDER BY valor DESC
+            """
+        ),
     )
 
 
@@ -459,7 +479,12 @@ def _metricas_por_locacion_db(dias: int = 30) -> list[dict]:
 
 
 def tasa_merma(dias: int | None = 180) -> dict:
-    """Merma como porcentaje de lo recibido: el indicador honesto."""
+    """Merma como porcentaje de lo recibido: el indicador honesto (con Cache-Aside en Redis)."""
+    sufijo = int(dias) if dias is not None else "all"
+    return _con_cache_web(f"web:kpis:tasa:{sufijo}", 60, lambda: _tasa_merma_db(dias))
+
+
+def _tasa_merma_db(dias: int | None = 180) -> dict:
     if dias is not None:
         fila = one(
             """

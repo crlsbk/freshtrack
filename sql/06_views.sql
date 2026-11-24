@@ -46,19 +46,30 @@ SELECT
             ELSE p.vida_util_estandar::numeric
         END
     ) AS vida_util_pct,
-    operacion.fn_clasificar_riesgo(
-        p.id_sku,
-        p.categoria,
-        (l.fecha_caducidad - CURRENT_DATE)::numeric,
-        operacion.fn_vida_util_pct(
-            (l.fecha_caducidad - CURRENT_DATE)::numeric,
-            CASE
-                WHEN l.fecha_produccion IS NOT NULL
-                    THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
-                ELSE p.vida_util_estandar::numeric
-            END
-        )
-    ) AS clasificacion,
+    CASE
+        WHEN (l.fecha_caducidad - CURRENT_DATE) < 0 THEN 'VENCIDO'
+        WHEN (l.fecha_caducidad - CURRENT_DATE) <= COALESCE(r_sku.dias_critico, r_cat.dias_critico, r_def.dias_critico, 2)
+             OR operacion.fn_vida_util_pct(
+                    (l.fecha_caducidad - CURRENT_DATE)::numeric,
+                    CASE
+                        WHEN l.fecha_produccion IS NOT NULL
+                            THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
+                        ELSE p.vida_util_estandar::numeric
+                    END
+                ) <= COALESCE(r_sku.pct_critico, r_cat.pct_critico, r_def.pct_critico, 10)
+            THEN 'CRITICO'
+        WHEN (l.fecha_caducidad - CURRENT_DATE) <= COALESCE(r_sku.dias_vigilancia, r_cat.dias_vigilancia, r_def.dias_vigilancia, 5)
+             OR operacion.fn_vida_util_pct(
+                    (l.fecha_caducidad - CURRENT_DATE)::numeric,
+                    CASE
+                        WHEN l.fecha_produccion IS NOT NULL
+                            THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
+                        ELSE p.vida_util_estandar::numeric
+                    END
+                ) <= COALESCE(r_sku.pct_vigilancia, r_cat.pct_vigilancia, r_def.pct_vigilancia, 30)
+            THEN 'VIGILANCIA'
+        ELSE 'NORMAL'
+    END::varchar AS clasificacion,
     (e.cantidad_disponible * l.costo_unitario) AS valor_inventario,
     pr.id_proveedor,
     pr.razon_social         AS proveedor,
@@ -67,7 +78,12 @@ FROM operacion.existencia e
 JOIN operacion.lote      l   ON l.id_lote      = e.id_lote
 JOIN operacion.producto  p   ON p.id_sku       = l.id_sku
 JOIN operacion.locacion  loc ON loc.id_locacion = e.id_locacion
-JOIN operacion.proveedor pr  ON pr.id_proveedor = l.id_proveedor;
+JOIN operacion.proveedor pr  ON pr.id_proveedor = l.id_proveedor
+LEFT JOIN operacion.regla_riesgo r_sku ON r_sku.id_sku = p.id_sku
+LEFT JOIN operacion.regla_riesgo r_cat ON r_cat.id_sku IS NULL
+                                      AND r_cat.categoria IS NOT NULL
+                                      AND lower(r_cat.categoria) = lower(p.categoria)
+LEFT JOIN operacion.regla_riesgo r_def ON r_def.es_default = true;
 
 COMMENT ON VIEW operacion.v_inventario_lote IS
     'Inventario por lote con vida útil residual y clasificación de riesgo calculadas en el momento de la consulta.';
@@ -97,16 +113,26 @@ SELECT
              THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
              ELSE p.vida_util_estandar::numeric END
     ) AS vida_util_pct,
-    operacion.fn_clasificar_riesgo(
-        p.id_sku, p.categoria,
-        (l.fecha_caducidad - CURRENT_DATE)::numeric,
-        operacion.fn_vida_util_pct(
-            (l.fecha_caducidad - CURRENT_DATE)::numeric,
-            CASE WHEN l.fecha_produccion IS NOT NULL
-                 THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
-                 ELSE p.vida_util_estandar::numeric END
-        )
-    ) AS clasificacion,
+    CASE
+        WHEN (l.fecha_caducidad - CURRENT_DATE) < 0 THEN 'VENCIDO'
+        WHEN (l.fecha_caducidad - CURRENT_DATE) <= COALESCE(r_sku.dias_critico, r_cat.dias_critico, r_def.dias_critico, 2)
+             OR operacion.fn_vida_util_pct(
+                    (l.fecha_caducidad - CURRENT_DATE)::numeric,
+                    CASE WHEN l.fecha_produccion IS NOT NULL
+                         THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
+                         ELSE p.vida_util_estandar::numeric END
+                ) <= COALESCE(r_sku.pct_critico, r_cat.pct_critico, r_def.pct_critico, 10)
+            THEN 'CRITICO'
+        WHEN (l.fecha_caducidad - CURRENT_DATE) <= COALESCE(r_sku.dias_vigilancia, r_cat.dias_vigilancia, r_def.dias_vigilancia, 5)
+             OR operacion.fn_vida_util_pct(
+                    (l.fecha_caducidad - CURRENT_DATE)::numeric,
+                    CASE WHEN l.fecha_produccion IS NOT NULL
+                         THEN (l.fecha_caducidad - l.fecha_produccion)::numeric
+                         ELSE p.vida_util_estandar::numeric END
+                ) <= COALESCE(r_sku.pct_vigilancia, r_cat.pct_vigilancia, r_def.pct_vigilancia, 30)
+            THEN 'VIGILANCIA'
+        ELSE 'NORMAL'
+    END::varchar AS clasificacion,
     COALESCE((
         SELECT SUM(e.cantidad_disponible)
         FROM operacion.existencia e
@@ -114,7 +140,12 @@ SELECT
     ), 0) AS existencia_total
 FROM operacion.lote l
 JOIN operacion.producto  p  ON p.id_sku = l.id_sku
-JOIN operacion.proveedor pr ON pr.id_proveedor = l.id_proveedor;
+JOIN operacion.proveedor pr ON pr.id_proveedor = l.id_proveedor
+LEFT JOIN operacion.regla_riesgo r_sku ON r_sku.id_sku = p.id_sku
+LEFT JOIN operacion.regla_riesgo r_cat ON r_cat.id_sku IS NULL
+                                      AND r_cat.categoria IS NOT NULL
+                                      AND lower(r_cat.categoria) = lower(p.categoria)
+LEFT JOIN operacion.regla_riesgo r_def ON r_def.es_default = true;
 
 -- -----------------------------------------------------------------------------
 -- Serie de demanda diaria: Venta → Tienda → Producto → Cantidad → Fecha

@@ -18,11 +18,13 @@ Cada alerta lleva una `huella` que impide duplicarla mientras siga abierta.
 from __future__ import annotations
 
 import json
+import os
 
 from sqlalchemy import text
 
 from app import auditoria
 from app.db import a_float, a_int, config_valor, query, transaccion
+from app.services import cache_service
 
 TIPOS = {
     "LOTE_POR_VENCER": {"etiqueta": "Lote por vencer", "icono": "clock",
@@ -520,6 +522,12 @@ def generar_alertas(usuario: dict | None = None) -> dict:
             usuario_email=usuario["email"],
         )
 
+    try:
+        cache_service.invalidar_patron("web:alertas:*")
+        cache_service.invalidar_patron("web:kpis:*")
+    except Exception:
+        pass
+
     return {
         "generadas": sum(conteos.values()),
         "cerradas": cerradas,
@@ -564,6 +572,15 @@ def listar_alertas(
 
 
 def resumen_alertas() -> dict:
+    activa = os.getenv("CACHE_WEB_ACTIVA", "true").strip().lower() not in ("0", "false", "no")
+    clave_cache = "web:alertas:resumen"
+    if activa and cache_service.get_redis_client() is not None:
+        cached = cache_service.get_json(clave_cache)
+        if cached is not None:
+            cache_service.incrementar_contador("web", "cache_hit")
+            return cached
+        cache_service.incrementar_contador("web", "cache_miss")
+
     fila = query(
         """
         SELECT tipo, severidad, COUNT(*) AS n
@@ -577,11 +594,14 @@ def resumen_alertas() -> dict:
     for f in fila:
         por_tipo[f["tipo"]] = por_tipo.get(f["tipo"], 0) + int(f["n"])
         por_severidad[f["severidad"]] = por_severidad.get(f["severidad"], 0) + int(f["n"])
-    return {
+    res = {
         "por_tipo": por_tipo,
         "por_severidad": por_severidad,
         "total": sum(por_tipo.values()),
     }
+    if activa and cache_service.get_redis_client() is not None:
+        cache_service.set_json(clave_cache, res, ttl_segundos=30)
+    return res
 
 
 def cerrar_alerta(id_alerta: str, usuario: dict, estado: str = "ATENDIDA") -> None:
@@ -598,3 +618,8 @@ def cerrar_alerta(id_alerta: str, usuario: dict, estado: str = "ATENDIDA") -> No
             ),
             {"estado": estado, "id": id_alerta},
         )
+    try:
+        cache_service.invalidar_patron("web:alertas:*")
+        cache_service.invalidar_patron("web:kpis:*")
+    except Exception:
+        pass

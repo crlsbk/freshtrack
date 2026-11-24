@@ -348,7 +348,7 @@ def escanear_caducidades():
     """Bloquea automáticamente lotes vencidos de la cola FEFO y reporta lotes en riesgo."""
     datos = leer_cuerpo()
     dias_critico = entero(datos, "dias_critico", minimo=0, defecto=2) or 2
-    res_bloq = dom_inv.bloquear_lotes_vencidos(usuario=usuario_desde_token())
+    res_bloq = dom_inv.bloquear_lotes_vencidos(usuario=usuario_desde_token(), forzar=True)
     criticos = query(
         """
         SELECT id_lote::text, codigo_lote_prov, producto, id_locacion, locacion,

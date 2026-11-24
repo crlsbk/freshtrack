@@ -467,8 +467,23 @@ def simular_serie_fefo_sku(
                 }
             )
 
+    fecha_fin = fecha_inicio + timedelta(days=dias)
+    mermados = {m[0] for m in mermas}
+    lotes_final: list[tuple] = []
+    for lt in lotes:
+        id_lt = lt[0]
+        f_cad = lt[6]
+        saldo = existencias.get((id_lt, id_locacion), 0.0)
+        if saldo <= 0.0:
+            estado_f = "MERMA" if id_lt in mermados else "AGOTADO"
+        elif f_cad < fecha_fin:
+            estado_f = "VENCIDO"
+        else:
+            estado_f = "DISPONIBLE"
+        lotes_final.append((*lt[:10], estado_f, *lt[11:]))
+
     return {
-        "lotes": lotes,
+        "lotes": lotes_final,
         "existencias": existencias,
         "ventas_lineas": ventas_lineas,
         "mermas": mermas,
@@ -1056,6 +1071,24 @@ def main() -> int:
             seq_folio: dict[str, int] = {}
             fraccionar_intradia = args.modo == "rubrica"
 
+            indices_secundarios = [
+                ("operacion", "idx_vd_serie", "operacion.venta_detalle (id_sku, id_locacion, fecha_transaccion)"),
+                ("operacion", "idx_vd_fecha", "operacion.venta_detalle (fecha_transaccion DESC)"),
+                ("operacion", "idx_vd_lote", "operacion.venta_detalle (id_lote)"),
+                ("operacion", "idx_vd_loc_fecha", "operacion.venta_detalle (id_locacion, fecha_transaccion DESC)"),
+                ("operacion", "idx_mov_lote", "operacion.movimiento_inventario (id_lote, fecha DESC)"),
+                ("operacion", "idx_mov_fecha", "operacion.movimiento_inventario (fecha DESC)"),
+                ("operacion", "idx_mov_tipo", "operacion.movimiento_inventario (tipo, fecha DESC)"),
+                ("operacion", "idx_mov_loc_fecha", "operacion.movimiento_inventario (id_locacion, fecha DESC)"),
+            ]
+            indices_soltados = False
+            if args.modo == "rubrica" and args.reset:
+                print("[MASIVO] Soltando índices secundarios de alto volumen para acelerar COPY...")
+                for schema_idx, nombre_idx, _ in indices_secundarios:
+                    cur.execute(f"DROP INDEX IF EXISTS {schema_idx}.{nombre_idx}")
+                conn.commit()
+                indices_soltados = True
+
             t_stream0 = time.perf_counter()
             for idx_t, tienda in enumerate(tiendas, 1):
                 id_loc = tienda["id_locacion"]
@@ -1209,6 +1242,13 @@ def main() -> int:
                 cur.execute("SET session_replication_role = origin")
             except psycopg.Error:
                 pass
+
+            if indices_soltados:
+                print("[MASIVO] Reconstruyendo índices secundarios con maintenance_work_mem=256MB...")
+                cur.execute("SET LOCAL maintenance_work_mem = '256MB'")
+                for schema_idx, nombre_idx, definicion_idx in indices_secundarios:
+                    cur.execute(f"CREATE INDEX IF NOT EXISTS {nombre_idx} ON {definicion_idx}")
+                conn.commit()
 
             cur.execute(
                 """

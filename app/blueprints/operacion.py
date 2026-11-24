@@ -173,7 +173,7 @@ def lotes_escanear_caducidad():
         else:
             flash(f"No se ejecutó el escaneo: {clientes.mensaje_error('inventory', status, r)}", "error")
         return redirect(url_for("operacion.lotes"))
-    res = dom_inv.bloquear_lotes_vencidos(usuario=usuario_actual())
+    res = dom_inv.bloquear_lotes_vencidos(usuario=usuario_actual(), forzar=True)
     flash(f"Se bloquearon {res['bloqueados']} lote(s) vencido(s) de la cola FEFO.", "ok")
     return redirect(url_for("operacion.lotes"))
 

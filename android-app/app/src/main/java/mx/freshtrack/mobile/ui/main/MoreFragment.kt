@@ -60,7 +60,7 @@ class MoreFragment : Fragment() {
         item(b.mDiscounts, R.drawable.ic_discount, "Descuentos por vencimiento", "Autorizar rebajas sugeridas") { start(Intent(requireContext(), DiscountsActivity::class.java)) }
         item(b.mEvidence, R.drawable.ic_image, "Evidencias", "Fotos en Cloud Storage (URL firmada)") { start(Intent(requireContext(), EvidenceActivity::class.java)) }
         item(b.mStatus, R.drawable.ic_server, "Estado de servicios", "Salud de los 8 microservicios") { start(Intent(requireContext(), ServiceStatusActivity::class.java)) }
-        item(b.mRefresh, R.drawable.ic_refresh, "Renovar sesión", "Rota el token (refresh) y revoca el anterior") { refresh() }
+        item(b.mRefresh, R.drawable.ic_refresh, "Renovar sesión", "Rota access y refresh token") { refresh() }
         item(b.mSettings, R.drawable.ic_tune, "Ajustes", "Servidor, notificaciones") { start(Intent(requireContext(), SettingsActivity::class.java)) }
         item(b.mLogout, R.drawable.ic_logout, "Cerrar sesión", "Revoca el token en el servidor") { logout() }
         b.textVersion.text = "FreshTrack Mobile v${BuildConfig.VERSION_NAME} · Equipo 05"
@@ -77,8 +77,9 @@ class MoreFragment : Fragment() {
 
     private fun renderSession() {
         val s = app.session
-        b.textSession.text = "Sesión válida hasta ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(s.expiresAtMillis))} · " +
-            "se renueva sola 30 min antes · token cifrado en Keystore"
+        val hora = DateFormat.getTimeInstance(DateFormat.SHORT)
+        b.textSession.text = "Sesión hasta ${hora.format(Date(s.sessionExpiresAtMillis))} · acceso renovado cada 15 min " +
+            "con refresh token rotatorio · cifrado en Keystore"
     }
 
     private fun refresh() {
@@ -92,7 +93,9 @@ class MoreFragment : Fragment() {
                 .setMessage(
                     if (ok) "Token anterior (revocado): ${rot?.first?.take(12) ?: "—"}…\n" +
                         "Token nuevo: ${rot?.second?.take(12)}…\n\n" +
-                        "Vigente hasta ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(app.session.expiresAtMillis))}."
+                        "Acceso nuevo vigente hasta ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(app.session.expiresAtMillis))}; " +
+                        "la sesión termina a las ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(app.session.sessionExpiresAtMillis))}. " +
+                        "El refresh token anterior ya no sirve."
                     else "Revisa tu conexión. Tu sesión actual sigue siendo válida."
                 )
                 .setPositiveButton("Cerrar", null).show()

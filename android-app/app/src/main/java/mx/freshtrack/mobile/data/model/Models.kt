@@ -24,6 +24,10 @@ data class LoginResponse(
     val jti: String,
     @SerializedName("token_type") val tokenType: String?,
     @SerializedName("expira_en_segundos") val expiraEnSegundos: Long?,
+    /** Refresh token opaco (256 bits); cada uso lo rota. Ausente en servidores antiguos. */
+    @SerializedName("refresh_token") val refreshToken: String? = null,
+    /** Fin ABSOLUTO de la sesión: rotar no lo extiende. */
+    @SerializedName("refresh_expira_en_segundos") val refreshExpiraEnSegundos: Long? = null,
     val usuario: Usuario,
 )
 

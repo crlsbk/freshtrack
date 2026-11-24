@@ -62,7 +62,7 @@ class ApiClient(private val session: SessionManager) {
             .writeTimeout(60, TimeUnit.SECONDS) // subida de fotos
             .callTimeout(90, TimeUnit.SECONDS)
             .addInterceptor(AuthInterceptor(session, refresher))
-            .addInterceptor(UnauthorizedInterceptor(session, gson))
+            .addInterceptor(UnauthorizedInterceptor(session, gson, refresher))
             .addInterceptor(logging)
             .build()
         return Retrofit.Builder()
@@ -94,17 +94,44 @@ class AuthInterceptor(private val session: SessionManager, private val refresher
     }
 }
 
-class UnauthorizedInterceptor(private val session: SessionManager, private val gson: Gson) : Interceptor {
+/**
+ * Ante un 401 de una petición autenticada: primero intenta renovar UNA vez con el refresh
+ * token y repetir la petición (el access token dura 15 min y pudo vencer en tránsito);
+ * si la renovación falla, la sesión se cierra y la UI vuelve al login con el motivo.
+ */
+class UnauthorizedInterceptor(
+    private val session: SessionManager,
+    private val gson: Gson,
+    private val refresher: TokenRefresher,
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val response = chain.proceed(request)
-        val isLogin = request.url.encodedPath.endsWith("/auth/login")
-        if (response.code == 401 && !isLogin && request.header("Authorization") != null) {
-            val code = runCatching {
-                gson.fromJson(response.peekBody(4096).string(), ApiErrorBody::class.java)?.error
-            }.getOrNull()
-            session.onUnauthorized(code)
+        val path = request.url.encodedPath
+        val authPath = path.endsWith("/auth/login") || path.endsWith("/auth/refresh") || path.endsWith("/auth/logout")
+        val sentAuth = request.header("Authorization")
+        if (response.code != 401 || authPath || sentAuth == null) return response
+
+        val code = runCatching {
+            gson.fromJson(response.peekBody(4096).string(), ApiErrorBody::class.java)?.error
+        }.getOrNull()
+
+        val failedToken = sentAuth.removePrefix("Bearer ").trim()
+        if (refresher.refreshAfterUnauthorized(failedToken)) {
+            val nuevo = session.token
+            if (nuevo != null && nuevo != failedToken) {
+                response.close()
+                val retry = chain.proceed(request.newBuilder().header("Authorization", "Bearer $nuevo").build())
+                if (retry.code != 401) return retry
+                val code2 = runCatching {
+                    gson.fromJson(retry.peekBody(4096).string(), ApiErrorBody::class.java)?.error
+                }.getOrNull()
+                session.onUnauthorized(code2)
+                return retry
+            }
         }
+        // Si la renovación ya cerró la sesión (refresh revocado), onUnauthorized no hace nada más.
+        session.onUnauthorized(code)
         return response
     }
 }

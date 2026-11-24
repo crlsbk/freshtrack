@@ -11,6 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 /** Lo mínimo que necesita el renovador; SessionManager lo implementa (y las pruebas usan un falso). */
 interface TokenStore {
     val token: String?
+    val refreshToken: String?
     val expiresAtMillis: Long
     val baseUrl: String
     fun save(login: LoginResponse)
@@ -18,20 +19,22 @@ interface TokenStore {
 }
 
 /**
- * Renovación del JWT con rotación (svc-auth POST /api/v1/auth/refresh):
- * con el token VIGENTE se obtiene uno nuevo y el servidor revoca el anterior (denylist en Redis).
+ * Renovación de la sesión con refresh token rotatorio (svc-auth POST /api/v1/auth/refresh):
  *
- *  - Se renueva cuando faltan menos de [windowMillis] (30 min) para que expire.
- *  - Es sincronizado: si varias peticiones llegan a la vez, solo una rota el token y las demás
- *    usan el nuevo (si dos rotaran, la segunda usaría un jti ya revocado → 401).
- *  - Si el servidor responde 401 (token ya revocado), se cierra la sesión.
- *  - Si no hay red, no hace nada: el token actual sigue siendo válido hasta su expiración.
+ *  - El access token dura 15 min; el refresh token, la sesión completa (8 h, tope absoluto).
+ *  - Se renueva cuando al access le quedan menos de [windowMillis] (60 s) o ya venció.
+ *  - Cada uso ROTA el par: el refresh anterior deja de servir, así que se guarda el nuevo
+ *    antes de cualquier otra petición. Si se reutilizara uno viejo, el servidor revoca la sesión.
+ *  - Sincronizado: con varias peticiones a la vez, solo una rota y las demás usan el par nuevo.
+ *  - 401 del servidor = sesión revocada o vencida → se cierra la sesión local.
+ *  - Sin red no hace nada: se reintenta en la siguiente petición.
+ *  - Servidor sin refresh_token (versión anterior): renueva con el access token vigente.
  */
 class TokenRefresher(
     private val store: TokenStore,
     private val http: OkHttpClient,
     private val gson: Gson = Gson(),
-    private val windowMillis: Long = 30 * 60 * 1000L,
+    private val windowMillis: Long = 60 * 1000L,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     @Volatile var lastRotation: Pair<String?, String>? = null
@@ -40,21 +43,42 @@ class TokenRefresher(
     fun needsRefresh(): Boolean {
         if (store.token == null) return false
         val remaining = store.expiresAtMillis - now()
-        return remaining in 1 until windowMillis
+        if (remaining >= windowMillis) return false
+        // Vencido: solo se puede renovar con refresh token.
+        return remaining > 0 || store.refreshToken != null
     }
 
     /** Renueva solo si hace falta (o si [force]). Devuelve true si hubo rotación. */
     fun refreshIfNeeded(force: Boolean = false): Boolean = synchronized(this) {
         if (!force && !needsRefresh()) return false
+        rotate()
+    }
+
+    /**
+     * Tras un 401 de una petición hecha con [failedToken]: si otro hilo ya rotó el token,
+     * basta con reintentar; si no, se rota ahora. Devuelve true si hay un token nuevo que usar.
+     */
+    fun refreshAfterUnauthorized(failedToken: String?): Boolean = synchronized(this) {
         val current = store.token ?: return false
-        val req = Request.Builder()
+        if (failedToken != null && current != failedToken) return true
+        if (store.refreshToken == null) return false
+        rotate()
+    }
+
+    private fun rotate(): Boolean {
+        val current = store.token ?: return false
+        val refresh = store.refreshToken
+        val builder = Request.Builder()
             .url(store.baseUrl + "api/v1/auth/refresh")
-            .header("Authorization", "Bearer $current")
             .header("Accept", "application/json")
-            .post("{}".toRequestBody("application/json".toMediaType()))
-            .build()
+        if (refresh != null) {
+            builder.post(gson.toJson(mapOf("refresh_token" to refresh)).toRequestBody("application/json".toMediaType()))
+        } else {
+            builder.header("Authorization", "Bearer $current")
+                .post("{}".toRequestBody("application/json".toMediaType()))
+        }
         return try {
-            http.newCall(req).execute().use { resp ->
+            http.newCall(builder.build()).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 when {
                     resp.isSuccessful -> {

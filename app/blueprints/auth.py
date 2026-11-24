@@ -4,6 +4,8 @@ Blueprint de autenticación.
     GET  /login          formulario
     POST /login          valida contra PostgreSQL y abre sesión web + JWT
     GET  /logout         revoca el token y cierra la sesión
+    GET/POST /recuperar            solicita el enlace de recuperación por correo
+    GET/POST /restablecer/<token>  elige una nueva contraseña con el enlace
     POST /api/auth/token devuelve un JWT (para clientes de la API)
     GET  /api/auth/yo    datos del usuario del token
 """
@@ -14,6 +16,7 @@ from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
+    flash,
     g,
     jsonify,
     redirect,
@@ -24,6 +27,7 @@ from flask import (
 )
 
 from app import auditoria
+from app.domain import recuperacion
 from app.db import one
 from app.navegacion import ruta_inicial
 from app.services import clientes
@@ -172,6 +176,54 @@ def logout():
         clientes.como_usuario("auth", "POST", "/api/v1/auth/logout")
     cerrar_sesion_web()
     return redirect(url_for("publico.inicio"))
+
+
+# ---------------------------------------------------------------------------
+# Recuperación de contraseña (app/domain/recuperacion.py)
+# ---------------------------------------------------------------------------
+@bp.route("/recuperar", methods=["GET", "POST"])
+def recuperar():
+    """Pide el correo y SIEMPRE responde lo mismo (no revela si la cuenta existe)."""
+    if request.method == "GET":
+        return render_template("recuperar.html", enviado=False, error=None, email="")
+    email = request.form.get("email", "").strip()
+    try:
+        recuperacion.solicitar(
+            email,
+            lambda t: url_for("auth.restablecer", token=t, _external=True),
+            ip=_ip(),
+        )
+    except recuperacion.RecuperacionNoDisponible as exc:
+        return render_template("recuperar.html", enviado=False, error=str(exc), email=email), 503
+    except recuperacion.LimiteExcedido:
+        return render_template(
+            "recuperar.html", enviado=False, email=email,
+            error="Demasiadas solicitudes. Espera unos minutos antes de volver a intentar.",
+        ), 429
+    except Exception:  # noqa: BLE001 — p. ej. PostgreSQL caído: misma respuesta neutra
+        pass
+    return render_template("recuperar.html", enviado=True, error=None, email="", mensaje=recuperacion.MENSAJE_NEUTRO)
+
+
+@bp.route("/restablecer/<token>", methods=["GET", "POST"])
+def restablecer(token: str):
+    """Formulario de nueva contraseña; el token es de un solo uso y vence en 30 min."""
+    try:
+        if request.method == "GET":
+            if not recuperacion.token_vigente(token):
+                return render_template("restablecer.html", invalido=True, error=recuperacion.MENSAJE_TOKEN_INVALIDO), 400
+            return render_template("restablecer.html", invalido=False, error=None, token=token)
+        recuperacion.restablecer(
+            token, request.form.get("password", ""), request.form.get("confirmacion", ""), ip=_ip()
+        )
+    except recuperacion.RecuperacionNoDisponible as exc:
+        return render_template("restablecer.html", invalido=True, error=str(exc)), 503
+    except recuperacion.TokenInvalido as exc:
+        return render_template("restablecer.html", invalido=True, error=str(exc)), 400
+    except ValueError as exc:
+        return render_template("restablecer.html", invalido=False, error=str(exc), token=token), 400
+    flash("Tu contraseña se actualizó. Inicia sesión con la nueva contraseña.", "ok")
+    return redirect(url_for("auth.login"))
 
 
 # ---------------------------------------------------------------------------

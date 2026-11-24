@@ -48,6 +48,8 @@ ACCIONES = {
     "ACTIVATE_USER": "Usuario activado",
     "DEACTIVATE_USER": "Usuario desactivado",
     "RUN_ALERTS": "Motor de alertas ejecutado",
+    "REQUEST_PASSWORD_RESET": "Solicitud de recuperación de contraseña",
+    "RESET_PASSWORD": "Contraseña restablecida por enlace de recuperación",
 }
 
 

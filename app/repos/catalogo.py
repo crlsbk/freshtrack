@@ -683,8 +683,7 @@ def crear_usuario(datos: dict, usuario: dict) -> dict:
         raise ValueError("El nombre completo es obligatorio.")
     if not email:
         raise ValueError("El correo es obligatorio.")
-    if len(password) < 8:
-        raise ValueError("La contraseña debe tener al menos 8 caracteres.")
+    validar_politica_password(password)
     if not id_rol:
         raise ValueError("Debes asignar un rol.")
     id_proveedor = _proveedor_para_rol(id_rol, datos)
@@ -828,9 +827,22 @@ def cambiar_estado_usuario(id_usuario: str, activo: bool, usuario: dict) -> None
     )
 
 
-def restablecer_password(id_usuario: str, nueva: str, usuario: dict) -> None:
-    if len(nueva or "") < 8:
-        raise ValueError("La contraseña debe tener al menos 8 caracteres.")
+LONGITUD_MINIMA_PASSWORD = 8
+
+
+def validar_politica_password(password: str | None) -> None:
+    """
+    Política de contraseñas de FreshTrack (alta de usuario, restablecimiento por
+    el administrador y recuperación por correo): al menos 8 caracteres.
+    """
+    if len(password or "") < LONGITUD_MINIMA_PASSWORD:
+        raise ValueError(f"La contraseña debe tener al menos {LONGITUD_MINIMA_PASSWORD} caracteres.")
+
+
+def restablecer_password(
+    id_usuario: str, nueva: str, usuario: dict, descripcion: str = "Restablecimiento de contraseña"
+) -> None:
+    validar_politica_password(nueva)
     with transaccion(
         id_usuario=usuario["id_usuario"], usuario_email=usuario["email"]
     ) as conn:
@@ -847,7 +859,7 @@ def restablecer_password(id_usuario: str, nueva: str, usuario: dict) -> None:
         "UPDATE_USER",
         tabla="usuario",
         id_registro=id_usuario,
-        descripcion="Restablecimiento de contraseña",
+        descripcion=descripcion,
         id_usuario=usuario["id_usuario"],
         usuario_email=usuario["email"],
     )

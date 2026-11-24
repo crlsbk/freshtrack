@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FreshTrack — Recuperar contraseña</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+</head>
+<body>
+<div class="login-page">
+  <div class="login-panel">
+    <div class="login-logo">
+      <div class="login-logo-mark">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+      </div>
+      <div>
+        <div class="login-brand-name">FreshTrack</div>
+        <div class="login-brand-sub">GESTIÓN DE PERECEDEROS</div>
+      </div>
+    </div>
+
+    <h1 class="login-title">Recuperar contraseña</h1>
+    <p class="login-subtitle">Escribe el correo de tu cuenta y te enviaremos un enlace para elegir una nueva contraseña.</p>
+
+    {% if error %}
+      <div class="login-error" style="margin-bottom:14px;">{{ error }}</div>
+    {% endif %}
+
+    {% if enviado %}
+      <div class="login-ok" style="margin-bottom:14px;">{{ mensaje }}</div>
+    {% else %}
+      <form class="login-form" method="post" action="{{ url_for('auth.recuperar') }}">
+        <div>
+          <label class="form-label" for="rec-email">Correo electrónico</label>
+          <input class="input" id="rec-email" name="email" type="email" value="{{ email or '' }}"
+                 placeholder="usuario@freshtrack.mx" autocomplete="username" required autofocus/>
+        </div>
+        <button class="login-submit" type="submit">Enviar enlace</button>
+      </form>
+    {% endif %}
+
+    <div class="login-footer">
+      <a href="{{ url_for('auth.login') }}">← Volver a iniciar sesión</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

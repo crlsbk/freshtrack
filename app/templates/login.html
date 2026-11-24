@@ -29,7 +29,7 @@
 
     {% with mensajes = get_flashed_messages(with_categories=true) %}
       {% for categoria, texto in mensajes %}
-        <div class="login-error" style="margin-bottom:14px;">{{ texto }}</div>
+        <div class="{{ 'login-ok' if categoria == 'ok' else 'login-error' }}" style="margin-bottom:14px;">{{ texto }}</div>
       {% endfor %}
     {% endwith %}
 
@@ -51,6 +51,10 @@
       </div>
       <button class="login-submit" type="submit">Entrar al sistema</button>
     </form>
+
+    <div class="login-footer" style="margin-top:12px;">
+      <a href="{{ url_for('auth.recuperar') }}">¿Olvidaste tu contraseña?</a>
+    </div>
 
     <button class="login-hint-btn" id="hints-toggle-btn" onclick="toggleHints()">
       Ver usuarios de demostración

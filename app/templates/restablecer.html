@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="referrer" content="no-referrer"/>
+  <title>FreshTrack — Nueva contraseña</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+</head>
+<body>
+<div class="login-page">
+  <div class="login-panel">
+    <div class="login-logo">
+      <div class="login-logo-mark">
+        <svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+      </div>
+      <div>
+        <div class="login-brand-name">FreshTrack</div>
+        <div class="login-brand-sub">GESTIÓN DE PERECEDEROS</div>
+      </div>
+    </div>
+
+    <h1 class="login-title">Nueva contraseña</h1>
+
+    {% if error %}
+      <div class="login-error" style="margin-bottom:14px;">{{ error }}</div>
+    {% endif %}
+
+    {% if invalido %}
+      <div class="login-footer">
+        <a href="{{ url_for('auth.recuperar') }}">Solicitar un enlace nuevo</a>
+      </div>
+    {% else %}
+      <p class="login-subtitle">Al guardarla se cerrarán todas tus sesiones abiertas.</p>
+      <form class="login-form" method="post" action="{{ url_for('auth.restablecer', token=token) }}">
+        <div>
+          <label class="form-label" for="rst-password">Nueva contraseña (mínimo 8 caracteres)</label>
+          <input class="input" id="rst-password" name="password" type="password" minlength="8"
+                 autocomplete="new-password" required autofocus/>
+        </div>
+        <div>
+          <label class="form-label" for="rst-confirmacion">Confirmar contraseña</label>
+          <input class="input" id="rst-confirmacion" name="confirmacion" type="password" minlength="8"
+                 autocomplete="new-password" required/>
+        </div>
+        <button class="login-submit" type="submit">Guardar contraseña</button>
+      </form>
+    {% endif %}
+
+    <div class="login-footer">
+      <a href="{{ url_for('auth.login') }}">← Volver a iniciar sesión</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

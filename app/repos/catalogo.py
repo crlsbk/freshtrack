@@ -96,13 +96,18 @@ def listar_productos(
                p.perecedero, p.activo, p.fecha_alta,
                p.id_proveedor, pr.razon_social AS proveedor, pr.lead_time_dias,
                pr.moq,
-               (SELECT COUNT(*) FROM operacion.lote l WHERE l.id_sku = p.id_sku) AS n_lotes,
-               (SELECT COALESCE(SUM(e.cantidad_disponible), 0)
-                  FROM operacion.existencia e
-                  JOIN operacion.lote l2 ON l2.id_lote = e.id_lote
-                 WHERE l2.id_sku = p.id_sku) AS existencia_total
+               COALESCE(nl.n_lotes, 0) AS n_lotes,
+               COALESCE(ex.existencia_total, 0) AS existencia_total
         FROM operacion.producto p
         LEFT JOIN operacion.proveedor pr ON pr.id_proveedor = p.id_proveedor
+        -- Agregados en una sola pasada por tabla: las subconsultas por fila hacían
+        -- ~378 mil búsquedas por índice (1.2 s en caliente, ~8 s en frío).
+        LEFT JOIN (SELECT id_sku, COUNT(*) AS n_lotes
+                     FROM operacion.lote GROUP BY id_sku) nl ON nl.id_sku = p.id_sku
+        LEFT JOIN (SELECT l.id_sku, SUM(e.cantidad_disponible) AS existencia_total
+                     FROM operacion.existencia e
+                     JOIN operacion.lote l ON l.id_lote = e.id_lote
+                    GROUP BY l.id_sku) ex ON ex.id_sku = p.id_sku
         {where}
         ORDER BY p.activo DESC, p.nombre
         """,

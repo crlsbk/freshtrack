@@ -221,43 +221,7 @@ Las reglas viven en el backend (funciones de PostgreSQL y módulos `app/domain`)
 
 FreshTrack es una arquitectura de microservicios con un solo punto de entrada: Caddy termina HTTPS y enruta por prefijo de ruta a 8 servicios Flask y al sistema web, todos en contenedores dentro de una VM de Compute Engine.
 
-```mermaid
-flowchart TB
-    subgraph Clientes
-        W[Navegador · sistema web]
-        D[App de escritorio · PySide6]
-        A[App Android · Kotlin]
-    end
-    subgraph VM["Compute Engine · maquina-03 (e2-standard-2)"]
-        C[Caddy · HTTPS Let's Encrypt · 80/443]
-        WEB[web · Flask :5000]
-        subgraph Microservicios
-            S1[svc-auth :5001]
-            S2[svc-catalog :5002]
-            S3[svc-inventory :5003]
-            S4[svc-commercial :5004]
-            S5[svc-asn :5005]
-            S6[svc-planning :5006]
-            S7[svc-alerts :5007]
-            S8[svc-audit :5008]
-        end
-        PG[(PostgreSQL 17)]
-        MG[(MongoDB 7)]
-        RD[(Redis 7)]
-    end
-    GCS[(Google Cloud Storage · bucket privado)]
-    W --> C
-    D --> C
-    A --> C
-    C --> WEB
-    C --> Microservicios
-    WEB --> Microservicios
-    Microservicios --> PG
-    Microservicios --> MG
-    Microservicios --> RD
-    Microservicios -->|HMAC · URL firmada 15 min| GCS
-    RD -->|Redis Streams freshtrack:events| S8
-```
+![Arquitectura de FreshTrack](diagramas/01_arquitectura.png)
 
 Cada servicio es dueño de una parte del negocio y comparte la capa común `app/services/common` (seguridad, respuestas JSON/XML, errores, health, Swagger). Patrones aplicados:
 
@@ -274,27 +238,7 @@ Cada servicio es dueño de una parte del negocio y comparte la capa común `app/
 
 Los tres procesos integrales exigidos recorren las mismas cinco capas — usuario y cliente, microservicios, datos y archivos, auditoría y notificación, visualización — y se encadenan: la compra del proceso 3 genera el ASN que recibe el proceso 1, y lo recibido se vende o se da de baja como merma en el proceso 2.
 
-```mermaid
-flowchart LR
-    subgraph P3["Proceso 3 · Planeación y compra"]
-        F[svc-planning: pronóstico AUTO + backtest] --> N[Newsvendor con tope de caducidad]
-        N --> OC[svc-commercial: orden de compra aprobada por comprador]
-        OC --> ASN[svc-asn: proveedor emite ASN y etiquetas QR]
-    end
-    subgraph P1["Proceso 1 · Recepción"]
-        ASN --> Q[App Android escanea QR del ASN]
-        Q --> R[svc-asn / svc-inventory: lotes con caducidad]
-        R --> AU1[svc-audit: bitácora inmutable]
-    end
-    subgraph P2["Proceso 2 · Venta, rebaja o merma"]
-        R --> V[svc-inventory: venta con Saga + FEFO]
-        R --> T[svc-alerts: triaje descuento / traslado / merma]
-        T --> M[Merma con evidencia en Cloud Storage]
-        V --> AU2[svc-audit + Redis Streams]
-        M --> AU2
-    end
-    AU2 --> VIS[Paneles web, reportes de escritorio y alertas en Android]
-```
+![Procesos integrales](diagramas/05_procesos_integrales.png)
 
 La arquitectura de despliegue está en la sección 9; el modelo de datos, en las secciones 11 a 14. Diagramas adicionales de componentes, despliegue y secuencia (login con JWT y Redis, recepción por QR) están en `docs/manuales/MANUAL_TECNICO.md`.
 

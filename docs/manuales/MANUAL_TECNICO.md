@@ -105,131 +105,21 @@ app/
 
 ### 3.1 Componentes
 
-```mermaid
-flowchart LR
-  subgraph Clientes
-    NAV[Navegador<br/>7 roles]
-    DESK[App escritorio<br/>PySide6 · XML]
-    AND[App Android<br/>Kotlin · JSON]
-    POS[POS / simulador<br/>JSON o XML]
-  end
-  CADDY[Caddy 2<br/>HTTPS :443]
-  WEB[Web Flask :5000]
-  subgraph Microservicios
-    AUTH[svc-auth :5001]
-    CAT[svc-catalog :5002]
-    INV[svc-inventory :5003]
-    COM[svc-commercial :5004]
-    ASN[svc-asn :5005]
-    PLA[svc-planning :5006]
-    ALE[svc-alerts :5007]
-    AUD[svc-audit :5008]
-  end
-  PG[(PostgreSQL 17)]
-  MG[(MongoDB 7)]
-  RD[(Redis 7)]
-  S3[(MinIO / GCS)]
-  MAIL[Mailpit SMTP]
-  NAV --> CADDY
-  DESK --> CADDY
-  AND --> CADDY
-  POS --> CADDY
-  CADDY -->|/| WEB
-  CADDY -->|/api/v1/*| AUTH & CAT & INV & COM & ASN & PLA & ALE & AUD
-  WEB -->|HTTP + JWT| AUTH & CAT & INV & COM & ASN & PLA & ALE & AUD
-  AUTH & CAT & INV & COM & ASN & PLA & ALE & AUD --> PG
-  AUTH & CAT & INV & COM & ASN & PLA & ALE & AUD --> RD
-  ASN & PLA & ALE --> MG
-  COM & ASN & PLA --> S3
-  ASN & PLA --> MAIL
-  WEB --> PG & RD
-```
+![Arquitectura de FreshTrack](../diagramas/01_arquitectura.png)
 
 En local no hay Caddy: los clientes llegan directo a `:5000` y `:5001–5008`.
 
 ### 3.2 Despliegue en GCP
 
-```mermaid
-flowchart TB
-  INTERNET((Internet)) -->|80/443| FW[Firewall VPC<br/>tag freshtrack-web]
-  FW --> VM
-  subgraph VM[VM e2-standard-2 · CentOS Stream 10 · Docker Compose]
-    CADDY[freshtrack_caddy<br/>TLS Let's Encrypt · nip.io]
-    APP[freshtrack_app<br/>Gunicorn 2w×4t]
-    SVC[8 × freshtrack_svc_*<br/>Gunicorn 1–2w×4t]
-    DB[(freshtrack_db<br/>PostgreSQL 3 GB)]
-    MO[(freshtrack_mongo<br/>2 GB)]
-    RE[(freshtrack_redis<br/>512 MB)]
-    MA[freshtrack_mail]
-    CADDY --> APP & SVC
-    APP & SVC --> DB & MO & RE
-    SVC --> MA
-  end
-  SVC -->|S3 SigV4 + HMAC| GCS[(Cloud Storage<br/>bucket privado)]
-  CRON[cron 03:00<br/>backup_db.sh] --> DB & MO
-  CRON -.opcional.-> GCSB[(bucket de respaldos)]
-```
+![Despliegue en Google Cloud](../diagramas/02_despliegue_gcp.png)
 
 ### 3.3 Secuencia: login, JWT y sesión en Redis
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant C as Cliente (web/escritorio/móvil)
-  participant A as svc-auth
-  participant PG as PostgreSQL
-  participant R as Redis
-  participant S as Otro servicio
-  C->>A: POST /api/v1/auth/login {email, password} (JSON o XML)
-  A->>R: rate limit (10/min por cliente)
-  A->>PG: crypt(password, password_hash), estado activo, bloqueo
-  PG-->>A: usuario + rol + id_locacion
-  A->>PG: INSERT sesion_usuario (jti, refresh_hash, familia, expira)
-  A->>R: SETEX session:{jti} · SADD user:sessions:{id}
-  A-->>C: token (15 min) + refresh_token (tope 8 h)
-  C->>S: GET ... Authorization: Bearer token
-  S->>R: EXISTS jwt:denylist:{jti}?
-  S->>S: verifica firma HS256 y exp
-  S->>R: EXISTS session:{jti}? (si Redis cae → PostgreSQL decide)
-  S->>S: rol permitido en el endpoint
-  S-->>C: 200 / 401 / 403 (error_response)
-  C->>A: POST /api/v1/auth/refresh {refresh_token}
-  A->>PG: valida hash; rota access + refresh (misma familia)
-  Note over A,PG: Reusar un refresh ya rotado revoca toda la familia (REFRESH_REUTILIZADO)
-  C->>A: POST /api/v1/auth/logout
-  A->>R: SETEX jwt:denylist:{jti} · DEL session:{jti}
-```
+![Secuencia de inicio de sesión](../diagramas/03_secuencia_login.png)
 
 ### 3.4 Secuencia: despacho del proveedor y recepción por QR
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant B as Comprador (web)
-  participant P as svc-planning
-  participant PR as Proveedor (web)
-  participant ASN as svc-asn
-  participant M as Almacén (web o Android)
-  participant I as svc-inventory
-  participant PG as PostgreSQL
-  participant MG as MongoDB
-  participant S3 as Bucket
-  B->>P: POST /planning/purchase-orders (líneas por tienda y lotes)
-  P->>PG: orden_compra + detalle
-  P->>S3: PDF ordenes-compra/AAAA/MM/...
-  B->>P: POST /purchase-orders/{id}/send-email (PDF adjunto)
-  PR->>ASN: POST /asn/from-purchase-order (partidas, lote, caducidad, transporte)
-  ASN->>ASN: etiqueta FT1|código|OC|L<tienda>|S<sku>|HMAC-12
-  ASN->>MG: avisos_asn (con etiquetas)
-  ASN->>S3: hoja QR PDF etiquetas_asn/AAAA/MM/...
-  M->>ASN: GET /asn/labels?codigo=FT1|... (valida firma y tienda destino)
-  ASN-->>M: producto, cantidad esperada, caducidad declarada
-  M->>I: POST /inventory/receive-scan (+ Idempotency-Key) cantidad real, caducidad verificada, temperatura, inspección
-  I->>PG: lote + existencia + movimiento (kardex) + recepcion_etiqueta
-  I->>PG: avance de OC (RECIBIDA_PARCIAL / RECIBIDA)
-  I->>MG: actualiza estado del ASN
-  I-->>M: 201 lote ingresado (ya visible en FEFO)
-```
+![Secuencia OC → ASN → recepción QR](../diagramas/04_secuencia_recepcion_qr.png)
 
 ---
 

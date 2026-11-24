@@ -13,7 +13,7 @@ import re
 from sqlalchemy import text
 
 from app import auditoria
-from app.db import a_float, a_int, one, query, transaccion
+from app.db import a_float, a_int, escalar, one, query, transaccion
 
 
 # ===========================================================================
@@ -608,8 +608,17 @@ def cambiar_estado_locacion(id_locacion: int, activo: bool, usuario: dict) -> No
 # ===========================================================================
 # USUARIOS
 # ===========================================================================
-def listar_usuarios(texto: str | None = None, limite: int = 150) -> list[dict]:
-    params: dict = {"limite": max(1, int(limite))}
+def contar_usuarios(texto: str | None = None) -> int:
+    if texto:
+        return int(escalar(
+            "SELECT COUNT(*) FROM operacion.usuario u WHERE (u.nombre_completo ILIKE :texto OR u.email ILIKE :texto)",
+            texto=f"%{texto}%",
+        ) or 0)
+    return int(escalar("SELECT COUNT(*) FROM operacion.usuario") or 0)
+
+
+def listar_usuarios(texto: str | None = None, limite: int = 150, offset: int = 0) -> list[dict]:
+    params: dict = {"limite": max(1, int(limite)), "offset": max(0, int(offset))}
     where = ""
     if texto:
         where = "WHERE (u.nombre_completo ILIKE :texto OR u.email ILIKE :texto)"
@@ -625,8 +634,8 @@ def listar_usuarios(texto: str | None = None, limite: int = 150) -> list[dict]:
         JOIN operacion.rol r ON r.id_rol = u.id_rol
         LEFT JOIN operacion.locacion loc ON loc.id_locacion = u.id_locacion
         {where}
-        ORDER BY u.estado_activo DESC, u.nombre_completo
-        LIMIT :limite
+        ORDER BY u.estado_activo DESC, u.nombre_completo, u.id_usuario
+        LIMIT :limite OFFSET :offset
         """,
         **params,
     )

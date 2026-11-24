@@ -45,6 +45,12 @@ CREATE INDEX IF NOT EXISTS idx_bitacora_desc_trgm
     ON auditoria.bitacora_eventos USING gin (descripcion gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_bitacora_email_trgm
     ON auditoria.bitacora_eventos USING gin (usuario_email gin_trgm_ops);
+-- El filtro ?q= es  descripcion ILIKE x OR nombre_tabla ILIKE x OR accion ILIKE x:
+-- un BitmapOr solo es posible si las TRES columnas tienen índice trigram.
+CREATE INDEX IF NOT EXISTS idx_bitacora_tabla_trgm
+    ON auditoria.bitacora_eventos USING gin (nombre_tabla gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_bitacora_accion_trgm
+    ON auditoria.bitacora_eventos USING gin (accion gin_trgm_ops);
 
 -- Redundantes: duplican un índice único con la misma columna líder y solo
 -- encarecen las escrituras masivas.

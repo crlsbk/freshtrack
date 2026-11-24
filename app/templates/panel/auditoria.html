@@ -37,15 +37,8 @@
   </div>
   <div class="campo">
     <label class="form-label" for="usuario">Usuario</label>
-    <select class="input" id="usuario" name="usuario">
-      <option value="">Todos</option>
-      {% for u in usuarios %}
-        <option value="{{ u.id_usuario }}"
-                {% if filtros.usuario == u.id_usuario %}selected{% endif %}>
-          {{ u.nombre_completo }}
-        </option>
-      {% endfor %}
-    </select>
+    <input class="input" id="usuario" name="usuario" type="search"
+           value="{{ filtros.usuario }}" placeholder="correo o parte de él" autocomplete="off"/>
   </div>
   <div class="campo">
     <label class="form-label" for="desde">Desde</label>

@@ -14,6 +14,9 @@ Ninguna de estas pantallas lee datos simulados: todas consultan PostgreSQL.
 
 from __future__ import annotations
 
+import hashlib
+import re
+
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,6 +30,8 @@ from app.domain import pronostico as motor_pron
 from app.repos import catalogo as repo
 from app.services import clientes, doc_store
 from app.security import login_required, requiere_rol, requiere_vista, usuario_actual
+
+_RE_UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 bp = Blueprint("panel", __name__)
 
@@ -214,10 +219,17 @@ def usuarios():
             flash(sql_error(e), "error")
         return redirect(url_for("panel.usuarios"))
 
+    texto = request.args.get("q") or None
+    por_pagina = 50  # cada fila lleva su modal de edición con roles y locaciones
+    total = repo.contar_usuarios(texto)
+    paginas = max(1, (total + por_pagina - 1) // por_pagina)
+    pagina = min(max(1, _entero("pagina", 1)), paginas)
     return render_template(
         "panel/usuarios.html",
         active="users",
-        usuarios=repo.listar_usuarios(texto=request.args.get("q")),
+        usuarios=repo.listar_usuarios(texto=texto, limite=por_pagina, offset=(pagina - 1) * por_pagina),
+        paginacion={"pagina": pagina, "paginas": paginas, "total": total, "por_pagina": por_pagina},
+        filtros_pag={"q": texto} if texto else {},
         roles=repo.roles(),
         locaciones=dom_inv.locaciones_activas(),
         filtro=request.args.get("q", ""),
@@ -291,8 +303,15 @@ def auditoria_bitacora():
         condiciones.append("b.accion = :accion")
         params["accion"] = filtros["accion"]
     if filtros["usuario"]:
-        condiciones.append("b.id_usuario_app = CAST(:usuario AS uuid)")
-        params["usuario"] = filtros["usuario"]
+        # Antes era un <select> con los primeros 150 de ~2000 usuarios (filtro
+        # incompleto y DOM pesado). Ahora se escribe el correo (o parte) y se
+        # busca con el índice trigram de usuario_email; un UUID sigue sirviendo.
+        if _RE_UUID.match(filtros["usuario"]):
+            condiciones.append("b.id_usuario_app = CAST(:usuario AS uuid)")
+            params["usuario"] = filtros["usuario"]
+        else:
+            condiciones.append("b.usuario_email ILIKE :usuario")
+            params["usuario"] = f"%{filtros['usuario']}%"
     if filtros["texto"]:
         condiciones.append(
             "(b.descripcion ILIKE :texto OR b.nombre_tabla ILIKE :texto "
@@ -315,12 +334,20 @@ def auditoria_bitacora():
             "SELECT COUNT(*) AS n FROM auditoria.bitacora_eventos"
         )[0]["n"]
     else:
-        total = query(
-            f"SELECT COUNT(*) AS n FROM auditoria.bitacora_eventos b WHERE {where}", **params
-        )[0]["n"]
+        clave_total = "web:auditoria:total:" + hashlib.sha1(
+            repr(sorted(filtros.items())).encode("utf-8")
+        ).hexdigest()
+        total = int(motor_kpis._con_cache_web(
+            clave_total,
+            60,
+            lambda: query(
+                f"SELECT COUNT(*) AS n FROM auditoria.bitacora_eventos b WHERE {where}", **params
+            )[0]["n"],
+        ))
 
-    pagina = _entero("pagina", 1)
     por_pagina = 40
+    paginas = max(1, (total + por_pagina - 1) // por_pagina)
+    pagina = min(max(1, _entero("pagina", 1)), paginas)
     eventos = query(
         f"""
         SELECT b.id_evento::text, b.fecha_evento, b.accion, b.tipo_operacion,
@@ -352,10 +379,9 @@ def auditoria_bitacora():
         active="audit",
         eventos=eventos,
         acciones=acciones,
-        usuarios=repo.listar_usuarios(),
         paginacion={
-            "pagina": max(1, pagina),
-            "paginas": max(1, (total + por_pagina - 1) // por_pagina),
+            "pagina": pagina,
+            "paginas": paginas,
             "total": total,
             "por_pagina": por_pagina,
         },

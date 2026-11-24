@@ -30,6 +30,7 @@ from flask import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import a_float, a_int, query, sql_error
+from app.domain.cache_web import con_cache_web
 from app.domain import compras as dom_compras
 from app.domain import etiquetas_qr
 from app.domain import inventario as dom_inv
@@ -256,7 +257,7 @@ def ventas_tiempo_real():
     texto = (request.args.get("q") or "").strip() or None
     recientes = dom_ventas.ventas_recientes(id_locacion=id_locacion, texto=texto, limite=30)
     resumen = dom_ventas.resumen_ventas(id_locacion=id_locacion)
-    por_tienda = query(
+    por_tienda = con_cache_web("web:ventas:por_tienda_24h", 10, lambda: query(
         """
         SELECT loc.nombre AS locacion,
                COUNT(DISTINCT v.id_venta) AS tickets,
@@ -269,7 +270,7 @@ def ventas_tiempo_real():
         GROUP BY loc.nombre
         ORDER BY ingreso DESC
         """
-    )
+    ))
     return jsonify(
         _json_safe(
             {

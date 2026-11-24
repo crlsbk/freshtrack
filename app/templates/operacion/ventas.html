@@ -260,6 +260,7 @@ async function dispararSimuladorPOS() {
   }
 }
 
-setInterval(() => { if (liveActivo) refrescarVentasEnVivo(); }, 3000);
+// 10 s: cada sondeo consulta PostgreSQL; con decenas de usuarios abiertos, 3 s saturaba la VM.
+setInterval(() => { if (liveActivo) refrescarVentasEnVivo(); }, 10000);
 </script>
 {% endblock %}

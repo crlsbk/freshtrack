@@ -333,12 +333,12 @@ def registrar_venta(
         usuario_email=usuario["email"],
     )
 
-    try:
-        cache_service.invalidar_patron("web:ventas:*")
-        cache_service.invalidar_patron("web:kpis:*")
-        cache_service.invalidar_patron("web:inv:*")
-    except Exception:
-        pass
+    # Antes se borraban web:ventas:*, web:kpis:* y web:inv:* en CADA venta: con
+    # el POS y el monitor en vivo la caché del panel, el mapa y el inventario
+    # casi nunca acertaba y cada visita recalculaba agregados sobre todo el
+    # histórico. Ahora esos resúmenes expiran por su TTL (30-120 s): una venta
+    # se refleja en los totales en menos de un minuto y la lista de ventas
+    # recientes (sin caché) la muestra de inmediato.
 
     return {
         "id_venta": id_venta,

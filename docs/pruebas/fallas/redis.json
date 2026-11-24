@@ -1,0 +1,49 @@
+{
+  "token_previo": 200,
+  "login_nuevo": 200,
+  "token_nuevo": 200,
+  "logout": 200,
+  "token_revocado": "401 token_invalido",
+  "rate_limit": [
+    401,
+    401,
+    401,
+    401,
+    401,
+    401,
+    401,
+    401,
+    401,
+    401,
+    401,
+    401
+  ],
+  "catalogo": 200,
+  "import": 503,
+  "carrito": 503,
+  "checkout": 201,
+  "alerts_scan": 409,
+  "web_sesion_previa": 200,
+  "web_login": 302,
+  "health": {
+    "web": 200,
+    "auth": 503,
+    "catalog": 503,
+    "inventory": 503,
+    "commercial": 503,
+    "asn": 503,
+    "planning": 503,
+    "alerts": 503,
+    "audit": 503
+  },
+  "monitor": "DEGRADADO",
+  "caida_s": 147.7,
+  "recuperacion": {
+    "health_s": 0.6,
+    "negocio_s": 0.6,
+    "docker_healthy_s": 15.7
+  },
+  "token_previo_despues": 200,
+  "token_nuevo_despues": "401 sesion_inexistente",
+  "token_revocado_despues": "401 token_invalido"
+}

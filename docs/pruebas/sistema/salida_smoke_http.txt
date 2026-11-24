@@ -1,0 +1,18 @@
+[OK ] web             /health -> 200 {"checked_at":"2026-11-24T19:20:05.381952+00:00","dependencies":{"bucket":true,"mongo":true,"postgres":true,"redis":true
+[OK ] svc-auth        /health -> 200 {"service":"svc-auth","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1346.0,"sta
+[OK ] svc-catalog     /health -> 200 {"service":"svc-catalog","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1345.5,"
+[OK ] svc-inventory   /health -> 200 {"service":"svc-inventory","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1346.3
+[OK ] svc-commercial  /health -> 200 {"service":"svc-commercial","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1346.
+[OK ] svc-asn         /health -> 200 {"service":"svc-asn","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1346.0,"star
+[OK ] svc-planning    /health -> 200 {"service":"svc-planning","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1346.3,
+[OK ] svc-alerts      /health -> 200 {"service":"svc-alerts","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1346.4,"s
+[OK ] svc-audit       /health -> 200 {"service":"svc-audit","status":"HEALTHY","version":"1.0.0","process":{"status":"UP","pid":1,"uptime_seconds":1345.7,"st
+[OK ] login XML en svc-auth 200
+[OK ] svc-inventory responde XML con el token de svc-auth 200
+[OK ] svc-audit niega acceso al gerente (403) 403
+[OK ] logout en svc-auth 200
+[OK ] token revocado rechazado en svc-inventory (401) 401
+[ERR] flujo web → microservicios HTTP Error 400: BAD REQUEST
+
+1 FALLO(S)
+exit=1

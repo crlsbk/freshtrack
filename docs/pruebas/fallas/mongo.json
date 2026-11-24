@@ -1,0 +1,34 @@
+{
+  "alerts_active": 200,
+  "alerts_kpis": 200,
+  "asn_list": 500,
+  "forecast_latest": 404,
+  "audit_events": 200,
+  "stock": 200,
+  "fefo": 200,
+  "checkout": 201,
+  "login": 200,
+  "forecast_run": 201,
+  "web/alertas": 200,
+  "web/panel": 200,
+  "web/inventario": 200,
+  "web/despachos": 200,
+  "health": {
+    "web": 200,
+    "auth": 503,
+    "catalog": 503,
+    "inventory": 503,
+    "commercial": 503,
+    "asn": 503,
+    "planning": 503,
+    "alerts": 503,
+    "audit": 503
+  },
+  "monitor": "DEGRADADO",
+  "caida_s": 52.4,
+  "recuperacion": {
+    "health_s": 4.3,
+    "negocio_s": 4.3,
+    "docker_healthy_s": 6.6
+  }
+}

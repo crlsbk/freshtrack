@@ -1,0 +1,83 @@
+Simulacro «microservicio» — inicio 2026-11-24 13:23:31 CST
+freshtrack_app	Up 25 minutes (healthy)
+freshtrack_svc_commercial	Up 25 minutes (healthy)
+freshtrack_svc_asn	Up 25 minutes (healthy)
+freshtrack_svc_inventory	Up 25 minutes (healthy)
+freshtrack_svc_planning	Up 25 minutes (healthy)
+freshtrack_svc_audit	Up 25 minutes (healthy)
+freshtrack_svc_alerts	Up 25 minutes (healthy)
+freshtrack_svc_catalog	Up 25 minutes (healthy)
+freshtrack_svc_auth	Up 25 minutes (healthy)
+freshtrack_mail	Up 23 hours (healthy)
+freshtrack_db	Up 23 hours (healthy)
+freshtrack_redis	Up 23 hours (healthy)
+freshtrack_mongo	Up 23 hours (healthy)
+freshtrack_minio	Up 23 hours (healthy)
+
+[2026-11-24 13:23:31 CST] ### Estado inicial
+  - /health de los 9 componentes (antes):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 18 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 28 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 17 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 23 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 27 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 30 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 22 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 28 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 25 ms
+
+[2026-11-24 13:23:31 CST] ### docker stop freshtrack_svc_planning
+freshtrack_svc_planning
+
+[2026-11-24 13:23:34 CST] ### Lo que ve cada cliente con svc-planning detenido
+  - cliente directo (escritorio/Android en modo local) → :5006: GET http://localhost:5006/api/v1/planning/transfers → SIN RESPUESTA en 4 ms (ConnectionError: HTTPConnectionPool(host='localhost', port=5006): Max retries exceeded with url: /api/v1/planning/transfers (Caused by NewConnectionError("HTTPConnection(host='l)
+  - gateway web /svc/planning/... (lo usa el navegador): GET http://localhost:5000/svc/planning/api/v1/planning/transfers → HTTP 502 en 4027 ms hdr={'X-Servicio': 'svc-planning'}
+      {"error": "servicio_no_disponible", "mensaje": "svc-planning no respondió."}
+  - web GET /reabastecimiento: HTTP 200 en 95 ms | título: FreshTrack — Reabastecimiento | fuga de detalles internos: no
+  - web GET /pronostico: HTTP 200 en 370 ms | título: FreshTrack — Pronósticos por Tienda | fuga de detalles internos: no
+  - web POST /reabastecimiento/generar (botón «Generar»): HTTP 302 en 119 ms → /reabastecimiento | título: Redirecting... | fuga de detalles internos: no
+      mensaje flash mostrado al usuario: «No se generaron recomendaciones: El módulo solicitado no está disponible en este momento. Intenta de nuevo en unos segundos.»
+
+[2026-11-24 13:23:39 CST] ### Los demás servicios siguen operando
+  - svc-inventory stock: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 23 ms cid=01a8aea8a178419397fd3fb80d2a082a hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e3ae8", "id_locacion": 3, "locacion": "Tienda San P… (+309 caracteres)
+  - svc-commercial checkout (venta 1 pza SKU 9): POST http://localhost:5004/api/v1/commercial/checkout → HTTP 201 en 36 ms cid=592a6d7e6b5f4e5a922711d1d4efeca6 hdr={'X-RateLimit-Limit': '60', 'X-RateLimit-Remaining': '59', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"saga_id": "e1643af74af7409ebbefb000fab4f397", "id_venta": "7a8c78b3-2d55-44ac-bc86-677773d70de6", "folio": "VT-3-20261124-000031", "total": 38.0, "lineas": [{"id_sku": 9, "producto": "Crema Ácida 450g", "codigo_lote": "LP-PS07", "cantidad": 1.0, "p… (+66 caracteres)
+  - svc-alerts activas: GET http://localhost:5007/api/v1/alerts/active?por_pagina=1 → HTTP 200 en 9 ms cid=b43ba93dab48491db7ffbae9d11b8207 hdr={'X-Service': 'svc-alerts'}
+      {"total": 50, "alertas": [{"_id": "6b05e39a07c1e75aee0f3227", "tipo": "RIESGO_PRE_MERMA", "criticidad": "WARNING", "mensaje": "Lote de 'Tomate Bola kg' vence en 5 día(s). Stock: 189.62 u.", "generada_… (+20742 caracteres)
+
+[2026-11-24 13:23:39 CST] ### Monitoreo
+  - /health de los 9 componentes (con planning detenido):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 13 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 10 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 16 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 19 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 20 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 16 ms
+  planning    SIN RESPUESTA (ConnectionError: HTTPConnectionPool(host='localhost', port=5) 5 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 21 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 19 ms
+  - panel /ops/status: HTTP 200 en 242 ms estado_global=DEGRADADO resumen={'sanos': 7, 'degradados': 0, 'caidos': 1, 'disponibilidad_actual_pct': 87.5} deps_caidas=[]
+      servicios: {'svc-auth': 'HEALTHY(200)', 'svc-catalog': 'HEALTHY(200)', 'svc-inventory': 'HEALTHY(200)', 'svc-commercial': 'HEALTHY(200)', 'svc-asn': 'HEALTHY(200)', 'svc-planning': 'DOWN(0)', 'svc-alerts': 'HEALTHY(200)', 'svc-audit': 'HEALTHY(200)'}
+
+[2026-11-24 13:23:39 CST] ### docker start freshtrack_svc_planning (restauración)
+freshtrack_svc_planning
+  - Recuperación tras iniciar freshtrack_svc_planning: /health 200 en 1.9 s; primera operación de negocio OK a los 2.0 s; todos los contenedores (healthy) a los 6.3 s
+freshtrack_app	Up 26 minutes (healthy)
+freshtrack_svc_commercial	Up 26 minutes (healthy)
+freshtrack_svc_asn	Up 26 minutes (healthy)
+freshtrack_svc_inventory	Up 26 minutes (healthy)
+freshtrack_svc_planning	Up 6 seconds (healthy)
+freshtrack_svc_audit	Up 26 minutes (healthy)
+freshtrack_svc_alerts	Up 26 minutes (healthy)
+freshtrack_svc_catalog	Up 26 minutes (healthy)
+freshtrack_svc_auth	Up 26 minutes (healthy)
+freshtrack_mail	Up 23 hours (healthy)
+freshtrack_db	Up 23 hours (healthy)
+freshtrack_redis	Up 23 hours (healthy)
+freshtrack_mongo	Up 23 hours (healthy)
+freshtrack_minio	Up 23 hours (healthy)
+  - panel tras recuperación: HTTP 200 en 42 ms estado_global=OPERATIVO resumen={'sanos': 8, 'degradados': 0, 'caidos': 0, 'disponibilidad_actual_pct': 100.0} deps_caidas=[]
+      servicios: {'svc-auth': 'HEALTHY(200)', 'svc-catalog': 'HEALTHY(200)', 'svc-inventory': 'HEALTHY(200)', 'svc-commercial': 'HEALTHY(200)', 'svc-asn': 'HEALTHY(200)', 'svc-planning': 'HEALTHY(200)', 'svc-alerts': 'HEALTHY(200)', 'svc-audit': 'HEALTHY(200)'}
+
+Fin 2026-11-24 13:23:47 CST

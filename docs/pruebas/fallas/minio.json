@@ -1,0 +1,30 @@
+{
+  "oc_pdf": 200,
+  "asn_pdf": 200,
+  "web_oc_pdf": 200,
+  "oc_nueva": 201,
+  "oc_nueva_pdf": 200,
+  "oc_nueva_id": "eec4619c-9e94-4589-88d6-80756d052b1e",
+  "evidencia": "503 almacenamiento_no_disponible",
+  "merma_sin_foto": 201,
+  "health": {
+    "web": 200,
+    "auth": 503,
+    "catalog": 503,
+    "inventory": 503,
+    "commercial": 503,
+    "asn": 503,
+    "planning": 503,
+    "alerts": 503,
+    "audit": 503
+  },
+  "monitor": "CRITICO",
+  "docker_unhealthy_tras_s": 75.9,
+  "caida_s": 82.6,
+  "recuperacion": {
+    "health_s": 0.6,
+    "negocio_s": 0.6,
+    "docker_healthy_s": 15.5
+  },
+  "oc_nueva_pdf_despues": 200
+}

@@ -1,0 +1,90 @@
+Simulacro «mongo» — inicio 2026-11-24 13:31:40 CST
+freshtrack_app	Up 33 minutes (healthy)
+freshtrack_svc_commercial	Up 34 minutes (healthy)
+freshtrack_svc_asn	Up 34 minutes (healthy)
+freshtrack_svc_inventory	Up 34 minutes (healthy)
+freshtrack_svc_planning	Up 8 minutes (healthy)
+freshtrack_svc_audit	Up 34 minutes (healthy)
+freshtrack_svc_alerts	Up 34 minutes (healthy)
+freshtrack_svc_catalog	Up 34 minutes (healthy)
+freshtrack_svc_auth	Up 34 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up 24 hours (healthy)
+freshtrack_redis	Up 4 minutes (healthy)
+freshtrack_mongo	Up 24 hours (healthy)
+freshtrack_minio	Up 24 hours (healthy)
+  - /health de los 9 componentes (antes):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 13 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 16 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 14 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 15 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 13 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 16 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 20 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 17 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 14 ms
+
+[2026-11-24 13:31:40 CST] ### docker stop freshtrack_mongo
+freshtrack_mongo
+
+[2026-11-24 13:31:40 CST] ### Endpoints que dependen de MongoDB
+  - alerts /api/v1/alerts/active: GET http://localhost:5007/api/v1/alerts/active → HTTP 200 en 2636 ms cid=ec2698bd45da46f68783789ec05d52ab hdr={'X-Service': 'svc-alerts'}
+      {"total": 0, "alertas": []}
+  - alerts /api/v1/alerts/analytics/kpis: GET http://localhost:5007/api/v1/alerts/analytics/kpis → HTTP 200 en 3002 ms cid=133806e983f84537ad8d4a542504eb81 hdr={'X-Service': 'svc-alerts'}
+      {"total_grupos": 0, "kpis_alertas": []}
+  - asn /api/v1/asn?por_pagina=1: GET http://localhost:5005/api/v1/asn?por_pagina=1 → HTTP 500 en 2662 ms cid=e0038c9005974157bfddf8ef4f1dc5cd hdr={'X-Service': 'svc-asn'}
+      {"error": "error_interno", "mensaje": "Ocurrió un error inesperado. Consulte el log con el correlation_id.", "status": 500, "correlation_id": "e0038c9005974157bfddf8ef4f1dc5cd"}
+  - planning /api/v1/planning/forecast/latest/9/3: GET http://localhost:5006/api/v1/planning/forecast/latest/9/3 → HTTP 404 en 2520 ms cid=5d72ec2f5f9c4a9fb1d893a92e26aa73 hdr={'X-Service': 'svc-planning'}
+      {"error": "no_encontrado", "mensaje": "Sin corrida previa para este SKU y tienda.", "status": 404, "correlation_id": "5d72ec2f5f9c4a9fb1d893a92e26aa73"}
+  - audit /api/v1/audit/events?por_pagina=1: GET http://localhost:5008/api/v1/audit/events?por_pagina=1 → HTTP 200 en 40 ms cid=f8e873effe8241c0822cd39794283931 hdr={'X-Service': 'svc-audit'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 5067, "total_paginas": 5067}, "bitacora": [{"id_evento": "bcf05f88-3787-4a73-8fe6-539baf57749b", "fecha_evento": "2026-11-24T19:31:40.389385+00:00", "accion": "LOGIN", "nombre_tabla": "usuario", "id_registro": "197bd63e-5f79-4674-806b-982d756087… (+134 caracteres)
+
+[2026-11-24 13:31:51 CST] ### Lo que sigue funcionando (PostgreSQL)
+  - inventario: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 30 ms cid=60380a5fd4ed4879975e86619c78b3bf hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e3ae8", "id_locacion": 3, "locacion": "Tienda San P… (+309 caracteres)
+  - cola FEFO: GET http://localhost:5003/api/v1/inventory/fefo-queue/9/3 → HTTP 200 en 17 ms cid=16acae936ccf4d06af2f2b8778a2726a hdr={'X-Service': 'svc-inventory'}
+      {"id_sku": 9, "id_locacion": 3, "total_lotes": 5, "lotes_fefo": [{"id_existencia": "68ad6d83-c6d8-47f5-b918-e8a41232ec56", "id_lote": "6d5edf70-f9f5-4a0e-b8db-6bddc0860440", "codigo_lote_prov": "LP-PS… (+1381 caracteres)
+  - checkout POS: POST http://localhost:5004/api/v1/commercial/checkout → HTTP 201 en 77 ms cid=78fdd165036446068c1312de634fbbd6 hdr={'X-RateLimit-Limit': '60', 'X-RateLimit-Remaining': '59', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"saga_id": "68733869d1fe41de8dbeacae542cb71f", "id_venta": "67699599-6a85-4a1e-8e23-4e1ea8a89ac9", "folio": "VT-3-20261124-000033", "total": 38.0, "lineas": [{"id_sku": 9, "producto": "Crema Ácida 450g", "codigo_lote": "LP-PS07", "cantidad": 1.0, "p… (+66 caracteres)
+  - login: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 36 ms cid=ed191ef68b214008b9f73d83e15ec986 hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '9', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "b21d1c4a661a45cb9b03306e060b8897", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira… (+184 caracteres)
+  - pronóstico (serie se guarda en Mongo): POST http://localhost:5006/api/v1/planning/forecast/run → HTTP 201 en 32085 ms cid=8850a33ed24a485f9f20930200e2d50d hdr={'X-Service': 'svc-planning'}
+      {"id_run": "36ebb245-60db-4e29-8597-162738ef34a1", "id_locacion": 3, "locacion": "Tienda San Pedro", "metodo": "AUTO", "metodo_etiqueta": "Automático por tienda", "estrategia_dominante": "SUAVIZACION_EXPONENCIAL", "distribucion_estrategias": {"SUAVIZACION_EXPONENCIAL": 11, "MEDIA_MOVIL": 1}, "salud_… (+11622 caracteres)
+
+[2026-11-24 13:32:23 CST] ### Web
+  - web GET /alertas: HTTP 200 en 34 ms | título: FreshTrack — Alertas | fuga de detalles internos: no
+  - web GET /panel: HTTP 200 en 253 ms | título: FreshTrack — Panel de Control | fuga de detalles internos: no
+  - web GET /inventario: HTTP 200 en 90 ms | título: FreshTrack — Inventario | fuga de detalles internos: no
+  - web GET /despachos: HTTP 200 en 2773 ms | título: FreshTrack — Despachos y Etiquetas QR | fuga de detalles internos: no
+  - /health de los 9 componentes (con MongoDB detenido):
+  web         HTTP 200 DEGRADED deps={'bucket': True, 'mongo': False, 'postgres': True, 'redis': True} 2613 ms
+  auth        HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2646 ms
+  catalog     HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2646 ms
+  inventory   HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2615 ms
+  commercial  HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2641 ms
+  asn         HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2638 ms
+  planning    HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2601 ms
+  alerts      HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2634 ms
+  audit       HTTP 503 DEGRADED deps={'postgres': True, 'mongo': False, 'redis': True, 'bucket': True} 2602 ms
+  - panel /ops/status: HTTP 200 en 3015 ms estado_global=DEGRADADO resumen={'sanos': 0, 'degradados': 8, 'caidos': 0, 'disponibilidad_actual_pct': 0.0} deps_caidas=['MongoDB']
+      servicios: {'svc-auth': 'DEGRADED(503)', 'svc-catalog': 'DEGRADED(503)', 'svc-inventory': 'DEGRADED(503)', 'svc-commercial': 'DEGRADED(503)', 'svc-asn': 'DEGRADED(503)', 'svc-planning': 'DEGRADED(503)', 'svc-alerts': 'DEGRADED(503)', 'svc-audit': 'DEGRADED(503)'}
+
+[2026-11-24 13:32:32 CST] ### docker start freshtrack_mongo (restauración)
+freshtrack_mongo
+  - Recuperación tras iniciar freshtrack_mongo: /health 200 en 4.3 s; primera operación de negocio OK a los 4.3 s; todos los contenedores (healthy) a los 6.6 s
+freshtrack_app	Up 34 minutes (healthy)
+freshtrack_svc_commercial	Up 35 minutes (healthy)
+freshtrack_svc_asn	Up 35 minutes (healthy)
+freshtrack_svc_inventory	Up 35 minutes (healthy)
+freshtrack_svc_planning	Up 8 minutes (healthy)
+freshtrack_svc_audit	Up 35 minutes (healthy)
+freshtrack_svc_alerts	Up 35 minutes (healthy)
+freshtrack_svc_catalog	Up 35 minutes (healthy)
+freshtrack_svc_auth	Up 35 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up 24 hours (healthy)
+freshtrack_redis	Up 5 minutes (healthy)
+freshtrack_mongo	Up 6 seconds (healthy)
+freshtrack_minio	Up 24 hours (healthy)
+
+Fin 2026-11-24 13:32:40 CST

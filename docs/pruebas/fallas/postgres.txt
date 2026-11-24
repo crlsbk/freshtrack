@@ -1,0 +1,92 @@
+Simulacro «postgres» — inicio 2026-11-24 13:32:53 CST
+freshtrack_app	Up 35 minutes (healthy)
+freshtrack_svc_commercial	Up 35 minutes (healthy)
+freshtrack_svc_asn	Up 35 minutes (healthy)
+freshtrack_svc_inventory	Up 35 minutes (healthy)
+freshtrack_svc_planning	Up 9 minutes (healthy)
+freshtrack_svc_audit	Up 35 minutes (healthy)
+freshtrack_svc_alerts	Up 35 minutes (healthy)
+freshtrack_svc_catalog	Up 35 minutes (healthy)
+freshtrack_svc_auth	Up 35 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up 24 hours (healthy)
+freshtrack_redis	Up 5 minutes (healthy)
+freshtrack_mongo	Up 20 seconds (healthy)
+freshtrack_minio	Up 24 hours (healthy)
+  - /health de los 9 componentes (antes):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 22 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 22 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 33 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 29 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 26 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 31 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 25 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 28 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 19 ms
+
+[2026-11-24 13:32:54 CST] ### docker stop freshtrack_db
+freshtrack_db
+
+[2026-11-24 13:32:54 CST] ### Health de todos los componentes
+  - /health de los 9 componentes (con PostgreSQL detenido):
+  web         HTTP 503 DEGRADED deps={'bucket': True, 'mongo': True, 'postgres': False, 'redis': True} 1743 ms
+  auth        HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 254 ms
+  catalog     HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 250 ms
+  inventory   HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 244 ms
+  commercial  HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 246 ms
+  asn         HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 237 ms
+  planning    HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 238 ms
+  alerts      HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 236 ms
+  audit       HTTP 503 DEGRADED deps={'postgres': False, 'mongo': True, 'redis': True, 'bucket': True} 227 ms
+
+[2026-11-24 13:32:56 CST] ### API con PostgreSQL caído
+  - login: auth: POST http://localhost:5001/api/v1/auth/login → HTTP 500 en 119 ms cid=a7a680adef584aa999ffd05b3ecaae86 hdr={'X-Service': 'svc-auth'}
+      {"error": "error_interno", "mensaje": "Ocurrió un error inesperado. Consulte el log con el correlation_id.", "status": 500, "correlation_id": "a7a680adef584aa999ffd05b3ecaae86"}
+  - stock: inventory: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 401 en 4008 ms cid=f03dfce39c8440dc94349b15791fd2d1 hdr={'X-Service': 'svc-inventory'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "f03dfce39c8440dc94349b15791fd2d1"}
+  - productos: catalog: GET http://localhost:5002/api/v1/catalog/products?por_pagina=1 → HTTP 500 en 4790 ms cid=bd9e7a4c1bf64c9b96fa4364987577e7 hdr={'X-Service': 'svc-catalog'}
+      {"error": "error_interno", "mensaje": "Ocurrió un error inesperado. Consulte el log con el correlation_id.", "status": 500, "correlation_id": "bd9e7a4c1bf64c9b96fa4364987577e7"}
+  - checkout: commercial: POST http://localhost:5004/api/v1/commercial/checkout → HTTP 401 en 4017 ms cid=feb7b0bbec854ce997f238fc0a38af8e hdr={'X-Service': 'svc-commercial'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "feb7b0bbec854ce997f238fc0a38af8e"}
+  - alertas_mongo: alerts: GET http://localhost:5007/api/v1/alerts/active?por_pagina=1 → HTTP 401 en 123 ms cid=8d4ae45df0f04032b2ba002b05389da7 hdr={'X-Service': 'svc-alerts'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "8d4ae45df0f04032b2ba002b05389da7"}
+  - asn_mongo: asn: GET http://localhost:5005/api/v1/asn?por_pagina=1 → HTTP 401 en 94 ms cid=4fda42c8c2a8457394ccd8b891e61ad0 hdr={'X-Service': 'svc-asn'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "4fda42c8c2a8457394ccd8b891e61ad0"}
+  - auditoria: audit: GET http://localhost:5008/api/v1/audit/events?por_pagina=1 → HTTP 401 en 198 ms cid=317dd6ee20c84460aa00e208388908e2 hdr={'X-Service': 'svc-audit'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "317dd6ee20c84460aa00e208388908e2"}
+  - sin_token: inventory: GET http://localhost:5003/api/v1/inventory/stock → HTTP 401 en 8 ms cid=13c38d440188445eb016bfe88d781e45 hdr={'X-Service': 'svc-inventory'}
+      {"error": "token_requerido", "mensaje": "Token de autenticación requerido (Authorization: Bearer <token>).", "status": 401, "correlation_id": "13c38d440188445eb016bfe88d781e45"}
+
+[2026-11-24 13:33:09 CST] ### Web
+  - web GET /login: HTTP 302 en 8 ms → /panel | título: Redirecting... | fuga de detalles internos: no
+  - web GET /inventario: HTTP 500 en 1044 ms | título: FreshTrack — Error 500 | mensajes: ['Ocurrió un error inesperado. Si persiste, reporta la referencia 3f52cfa8b9.'] | fuga de detalles internos: no
+  - web GET /ventas: HTTP 500 en 320 ms | título: FreshTrack — Error 500 | mensajes: ['Ocurrió un error inesperado. Si persiste, reporta la referencia 61d49a3482.'] | fuga de detalles internos: no
+  - web POST /login (planner): HTTP 200 en 218 ms | título: FreshTrack — Iniciar sesión | mensajes: ['Ocurrió un error inesperado. Consulte el log con el correlation_id.'] | fuga de detalles internos: no
+  - panel /ops/status: HTTP 200 en 4035 ms estado_global=DEGRADADO resumen={'sanos': 0, 'degradados': 7, 'caidos': 1, 'disponibilidad_actual_pct': 0.0} deps_caidas=['PostgreSQL']
+      servicios: {'svc-auth': 'DOWN(0)', 'svc-catalog': 'DEGRADED(503)', 'svc-inventory': 'DEGRADED(503)', 'svc-commercial': 'DEGRADED(503)', 'svc-asn': 'DEGRADED(503)', 'svc-planning': 'DEGRADED(503)', 'svc-alerts': 'DEGRADED(503)', 'svc-audit': 'DEGRADED(503)'}
+
+[2026-11-24 13:33:15 CST] ### docker start freshtrack_db (restauración, SIN reiniciar los servicios)
+freshtrack_db
+  - pg_isready acepta conexiones a los 0.8 s
+  - Recuperación tras iniciar freshtrack_db: /health 200 en 0.1 s; primera operación de negocio OK a los 0.1 s; todos los contenedores (healthy) a los 10.9 s
+freshtrack_app	Up 35 minutes (healthy)
+freshtrack_svc_commercial	Up 35 minutes (healthy)
+freshtrack_svc_asn	Up 35 minutes (healthy)
+freshtrack_svc_inventory	Up 35 minutes (healthy)
+freshtrack_svc_planning	Up 9 minutes (healthy)
+freshtrack_svc_audit	Up 35 minutes (healthy)
+freshtrack_svc_alerts	Up 35 minutes (healthy)
+freshtrack_svc_catalog	Up 35 minutes (healthy)
+freshtrack_svc_auth	Up 35 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up 11 seconds (healthy)
+freshtrack_redis	Up 6 minutes (healthy)
+freshtrack_mongo	Up 54 seconds (healthy)
+freshtrack_minio	Up 24 hours (healthy)
+
+[2026-11-24 13:33:27 CST] ### Tras la recuperación: token y sesión web emitidos antes de la caída
+  - token del gerente emitido antes: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 34 ms cid=38e3f76bd95d46f09ab46ffc787e2afd hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e3ae8", "id_locacion": 3, "locacion": "Tienda San P… (+309 caracteres)
+  - sesión web previa → /inventario: HTTP 200 en 160 ms | título: FreshTrack — Inventario | fuga de detalles internos: no
+
+Fin 2026-11-24 13:33:27 CST

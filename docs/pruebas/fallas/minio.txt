@@ -1,0 +1,99 @@
+Simulacro «minio» — inicio 2026-11-24 13:33:33 CST
+freshtrack_app	Up 35 minutes (healthy)
+freshtrack_svc_commercial	Up 35 minutes (healthy)
+freshtrack_svc_asn	Up 35 minutes (healthy)
+freshtrack_svc_inventory	Up 35 minutes (healthy)
+freshtrack_svc_planning	Up 9 minutes (healthy)
+freshtrack_svc_audit	Up 35 minutes (healthy)
+freshtrack_svc_alerts	Up 35 minutes (healthy)
+freshtrack_svc_catalog	Up 35 minutes (healthy)
+freshtrack_svc_auth	Up 35 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up 17 seconds (healthy)
+freshtrack_redis	Up 6 minutes (healthy)
+freshtrack_mongo	Up About a minute (healthy)
+freshtrack_minio	Up 24 hours (healthy)
+  - OC de referencia 85892176-cba2-429c-b314-a7fcfaa075b6; ASN de referencia ASN-20261124-0005
+  - /health de los 9 componentes (antes):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 26 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 28 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 21 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 25 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 34 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 34 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 23 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 27 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 24 ms
+
+[2026-11-24 13:33:33 CST] ### docker stop freshtrack_minio
+freshtrack_minio
+
+[2026-11-24 13:33:33 CST] ### Documentos PDF
+  - PDF de OC existente (svc-planning): GET http://localhost:5006/api/v1/planning/purchase-orders/85892176-cba2-429c-b314-a7fcfaa075b6/pdf → HTTP 200 en 382 ms cid=bfb4cf12808840c6a025e8521727c076 hdr={'X-Service': 'svc-planning'}
+      <4917 bytes binarios application/pdf; inicio=b'%PDF-'>
+  - PDF de etiquetas ASN existente (svc-asn): GET http://localhost:5005/api/v1/asn/ASN-20261124-0005/labels-pdf → HTTP 200 en 339 ms cid=f301034a46084ba38288b0a85dd66e01 hdr={'X-Service': 'svc-asn'}
+      <19236 bytes binarios application/pdf; inicio=b'%PDF-'>
+  - web GET /compras/ordenes/<id>/pdf: HTTP 200 application/pdf 4917 bytes en 25 ms
+  - OC nueva (genera PDF): POST http://localhost:5006/api/v1/planning/purchase-orders → HTTP 201 en 283 ms cid=30c8ea3fd3634c3cb965702f4b1d6461 hdr={'X-Service': 'svc-planning'}
+      {"id_oc": "eec4619c-9e94-4589-88d6-80756d052b1e", "folio": "OC-20261124-0006", "id_proveedor": 1, "proveedor": "Lácteos del Norte S.A. de C.V.", "rfc": "LDN850312AA1", "lead_time_dias": 3, "contacto_email": "ventas@lacteosdelnorte.mx", "telefono": "8181234501", "comprador": "Martha López", "comprador_email": "buyer@freshtrack.mx", "estado": "EMITIDA", "total_lotes": 1, "total_unidades": 50.0, "subtotal": 1300.0, "total": 1300.0, "fecha_entrega_estimada": "2026-11-27", "correo_envio": null, "fecha_envio_correo": null, "estado_envio_correo": "NO_ENVIADO", "observaciones": "Simulacro bucket caído", "fecha_creacion": "2026-11-24T19:33:34.655479+00:00", "id_documento_pdf": "f3eca2da-f5aa-4681-b69… (+1068 caracteres)
+  - PDF de la OC creada durante la caída: GET http://localhost:5006/api/v1/planning/purchase-orders/eec4619c-9e94-4589-88d6-80756d052b1e/pdf → HTTP 200 en 24 ms cid=7863ff8e4f794a7f9bbb42bd716555fe hdr={'X-Service': 'svc-planning'}
+      <4915 bytes binarios application/pdf; inicio=b'%PDF-'>
+
+[2026-11-24 13:33:34 CST] ### Evidencia fotográfica (app móvil)
+  - POST /commercial/evidence (JPEG 50 KB): POST http://localhost:5004/api/v1/commercial/evidence → HTTP 503 en 246 ms cid=80802317bae14926abc506dc250a123c hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '19', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"error": "almacenamiento_no_disponible", "mensaje": "El almacenamiento de archivos no está disponible; la operación puede registrarse sin foto.", "status": 503, "correlation_id": "80802317bae14926abc506dc250a123c"}
+  - merma sin foto (lo que sugiere el mensaje): POST http://localhost:5004/api/v1/commercial/shrinkage → HTTP 201 en 71 ms cid=75a30d9237064468a343e33f237c6972 hdr={'X-Service': 'svc-commercial'}
+      {"id_merma": "eb0ce558-566f-410f-8a23-4cd530aac1ec", "cantidad": 1.0, "causa": "DANO", "causa_etiqueta": "Daño", "valor_merma": 26.0, "producto": "Crema Ácida 450g", "codigo_lote_prov": "LP-EXP", "existencia_restante": 49.0, "unidad_medida": "Pieza"}
+
+[2026-11-24 13:33:35 CST] ### Health y monitoreo
+  - /health de los 9 componentes (con el bucket detenido):
+  web         HTTP 200 DEGRADED deps={'bucket': False, 'mongo': True, 'postgres': True, 'redis': True} 632 ms
+  auth        HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 630 ms
+  catalog     HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 613 ms
+  inventory   HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 629 ms
+  commercial  HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 627 ms
+  asn         HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 558 ms
+  planning    HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 605 ms
+  alerts      HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 618 ms
+  audit       HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': False} 615 ms
+  - panel /ops/status: HTTP 200 en 4034 ms estado_global=CRITICO resumen={'sanos': 0, 'degradados': 3, 'caidos': 5, 'disponibilidad_actual_pct': 0.0} deps_caidas=['Bucket (Object Storage)']
+      servicios: {'svc-auth': 'DOWN(0)', 'svc-catalog': 'DOWN(0)', 'svc-inventory': 'DEGRADED(503)', 'svc-commercial': 'DOWN(0)', 'svc-asn': 'DEGRADED(503)', 'svc-planning': 'DOWN(0)', 'svc-alerts': 'DOWN(0)', 'svc-audit': 'DEGRADED(503)'}
+
+[2026-11-24 13:33:40 CST] ### ¿Qué hace Docker con los healthchecks? (interval 15 s × 5 reintentos)
+  - freshtrack_svc_auth pasó a (unhealthy) a los 75.9 s de espera adicional
+freshtrack_app	Up 37 minutes (healthy)
+freshtrack_svc_commercial	Up 37 minutes (unhealthy)
+freshtrack_svc_asn	Up 37 minutes (unhealthy)
+freshtrack_svc_inventory	Up 37 minutes (unhealthy)
+freshtrack_svc_planning	Up 11 minutes (unhealthy)
+freshtrack_svc_audit	Up 37 minutes (healthy)
+freshtrack_svc_alerts	Up 37 minutes (unhealthy)
+freshtrack_svc_catalog	Up 37 minutes (healthy)
+freshtrack_svc_auth	Up 37 minutes (unhealthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up About a minute (healthy)
+freshtrack_redis	Up 7 minutes (healthy)
+freshtrack_mongo	Up 2 minutes (healthy)
+freshtrack_minio	Exited (0) About a minute ago
+
+[2026-11-24 13:34:56 CST] ### docker start freshtrack_minio (restauración)
+freshtrack_minio
+  - Recuperación tras iniciar freshtrack_minio: /health 200 en 0.6 s; primera operación de negocio OK a los 0.6 s; todos los contenedores (healthy) a los 15.5 s
+freshtrack_app	Up 37 minutes (healthy)
+freshtrack_svc_commercial	Up 37 minutes (healthy)
+freshtrack_svc_asn	Up 37 minutes (healthy)
+freshtrack_svc_inventory	Up 37 minutes (healthy)
+freshtrack_svc_planning	Up 11 minutes (healthy)
+freshtrack_svc_audit	Up 37 minutes (healthy)
+freshtrack_svc_alerts	Up 37 minutes (healthy)
+freshtrack_svc_catalog	Up 37 minutes (healthy)
+freshtrack_svc_auth	Up 37 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up About a minute (healthy)
+freshtrack_redis	Up 7 minutes (healthy)
+freshtrack_mongo	Up 2 minutes (healthy)
+freshtrack_minio	Up 15 seconds (healthy)
+  - PDF de la OC creada durante la caída (ya con bucket): GET http://localhost:5006/api/v1/planning/purchase-orders/eec4619c-9e94-4589-88d6-80756d052b1e/pdf → HTTP 200 en 13 ms cid=005ab1f3592543d0b004636db055614f hdr={'X-Service': 'svc-planning'}
+      <4915 bytes binarios application/pdf; inicio=b'%PDF-'>
+
+Fin 2026-11-24 13:35:12 CST

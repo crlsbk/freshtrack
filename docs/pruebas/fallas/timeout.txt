@@ -1,0 +1,79 @@
+Simulacro «timeout» — inicio 2026-11-24 13:40:17 CST
+freshtrack_app	Up 25 seconds (healthy)
+freshtrack_svc_commercial	Up 25 seconds (healthy)
+freshtrack_svc_asn	Up 25 seconds (healthy)
+freshtrack_svc_inventory	Up 25 seconds (healthy)
+freshtrack_svc_planning	Up 25 seconds (healthy)
+freshtrack_svc_audit	Up 25 seconds (healthy)
+freshtrack_svc_alerts	Up 25 seconds (healthy)
+freshtrack_svc_catalog	Up 25 seconds (healthy)
+freshtrack_svc_auth	Up 25 seconds (healthy)
+freshtrack_mail	Up 25 seconds (healthy)
+freshtrack_db	Up 25 seconds (healthy)
+freshtrack_redis	Up 25 seconds (healthy)
+freshtrack_mongo	Up 25 seconds (healthy)
+freshtrack_minio	Up 25 seconds (healthy)
+  - /health de los 9 componentes (antes):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 57 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 51 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 50 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 44 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 44 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 63 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 42 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 45 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 44 ms
+
+[2026-11-24 13:40:17 CST] ### A) docker pause freshtrack_svc_planning (el proceso existe pero no responde)
+freshtrack_svc_planning
+  - panel /ops/status con planning congelado: HTTP 200 en 4039 ms estado_global=DEGRADADO resumen={'sanos': 7, 'degradados': 0, 'caidos': 1, 'disponibilidad_actual_pct': 87.5} deps_caidas=[]
+      servicios: {'svc-auth': 'HEALTHY(200)', 'svc-catalog': 'HEALTHY(200)', 'svc-inventory': 'HEALTHY(200)', 'svc-commercial': 'HEALTHY(200)', 'svc-asn': 'HEALTHY(200)', 'svc-planning': 'DOWN(0)', 'svc-alerts': 'HEALTHY(200)', 'svc-audit': 'HEALTHY(200)'}
+  - cliente con timeout de 20 s (como Android/escritorio) → :5006: GET http://localhost:5006/api/v1/planning/transfers → SIN RESPUESTA en 20024 ms (TIMEOUT del cliente (20s): ReadTimeout)
+  - gateway web /svc/planning (timeout interno 30 s): GET http://localhost:5000/svc/planning/api/v1/planning/transfers → HTTP 502 en 30045 ms hdr={'X-Servicio': 'svc-planning'}
+      {"error": "servicio_no_disponible", "mensaje": "svc-planning no respondió."}
+  - web /pronostico (llamada a drift con timeout 10 s y respaldo local): HTTP 200 en 10475 ms | título: FreshTrack — Pronósticos por Tienda | fuga de detalles internos: no
+  - otro servicio (inventory) mientras tanto: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 147 ms cid=0b82c9da62cb4bb58e80b0dfdadbc3eb hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+freshtrack_svc_planning
+  - planning vuelve a responder /health a los 0.0 s del unpause (pausa total 30.2 s)
+
+[2026-11-24 13:40:48 CST] ### B) docker pause freshtrack_redis (sockets abiertos sin respuesta; socket_timeout=2 s)
+freshtrack_redis
+  - inventario con token válido (intento 1): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 16064 ms cid=500c59026eb4484d9ae9f993de341a6e hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - inventario con token válido (intento 2): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 16064 ms cid=97081a97b5244438b67d6273a9896ba5 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - inventario con token válido (intento 3): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 16146 ms cid=bf0594aeada34bad8841595b7ab8b8dd hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - health de svc-auth: GET http://localhost:5001/health → HTTP 503 en 2037 ms cid=4358b89ad1034defa30463aacc4b327f hdr={'X-Service': 'svc-auth'}
+      {"service": "svc-auth", "status": "DEGRADED", "version": "1.0.0", "process": {"status": "UP", "pid": 1, "uptime_seconds": 101.3, "started_at": "2026-11-24T19:39:57.078835+00:00"}, "response_time_ms": 2018.87, "checked_at": "2026-11-24T19:41:38.450214… (+91 caracteres)
+freshtrack_redis
+  - todo /health 200 a los 0.1 s del unpause
+
+[2026-11-24 13:41:38 CST] ### C) docker pause freshtrack_db (conexiones del pool abiertas sin respuesta)
+freshtrack_db
+  - C_stock: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 401 en 5033 ms cid=75a1fc16a9e645fda7b6925e5cf52e07 hdr={'X-Service': 'svc-inventory'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "75a1fc16a9e645fda7b6925e5cf52e07"}
+  - C_health_inventory: GET http://localhost:5003/health → SIN RESPUESTA en 45045 ms (TIMEOUT del cliente (45s): ReadTimeout)
+  - C_health_web: GET http://localhost:5000/health → SIN RESPUESTA en 45046 ms (TIMEOUT del cliente (45s): ReadTimeout)
+freshtrack_db
+  - pausa de PostgreSQL: 45.1 s
+  - todo /health 200 a los 0.1 s del unpause
+  - primera operación tras el unpause: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 40 ms cid=6c2b828d1bba46afb002a2cef4fb0097 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87… (+389 caracteres)
+freshtrack_app	Up 2 minutes (healthy)
+freshtrack_svc_commercial	Up 2 minutes (unhealthy)
+freshtrack_svc_asn	Up 2 minutes (healthy)
+freshtrack_svc_inventory	Up 2 minutes (healthy)
+freshtrack_svc_planning	Up 2 minutes (healthy)
+freshtrack_svc_audit	Up 2 minutes (unhealthy)
+freshtrack_svc_alerts	Up 2 minutes (healthy)
+freshtrack_svc_catalog	Up 2 minutes (unhealthy)
+freshtrack_svc_auth	Up 2 minutes (unhealthy)
+freshtrack_mail	Up 2 minutes (healthy)
+freshtrack_db	Up 2 minutes (unhealthy)
+freshtrack_redis	Up 2 minutes (healthy)
+freshtrack_mongo	Up 2 minutes (healthy)
+freshtrack_minio	Up 2 minutes (healthy)
+
+Fin 2026-11-24 13:42:24 CST

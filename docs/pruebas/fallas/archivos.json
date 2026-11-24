@@ -1,0 +1,12 @@
+{
+  "1 KB JPEG": "201",
+  "3.9 MB JPEG": "201",
+  "4.1 MB JPEG": "413 cuerpo_demasiado_grande",
+  "7.9 MB JPEG (justo debajo de 8 MB)": "413 cuerpo_demasiado_grande",
+  "8.1 MB JPEG (justo arriba de 8 MB)": "413 cuerpo_demasiado_grande",
+  "PDF renombrado a .jpg (no es imagen)": "415 tipo_no_soportado",
+  "texto plano": "415 tipo_no_soportado",
+  "archivo vacío": "400 archivo_vacio",
+  "import_xml_grande": "413 cuerpo_demasiado_grande",
+  "gateway_web_5MB": 413
+}

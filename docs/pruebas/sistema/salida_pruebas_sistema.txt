@@ -1,0 +1,309 @@
+Pruebas de sistema FreshTrack — inicio 2026-11-24 13:20:33 CST
+freshtrack_app	Up 22 minutes (healthy)
+freshtrack_svc_commercial	Up 22 minutes (healthy)
+freshtrack_svc_asn	Up 22 minutes (healthy)
+freshtrack_svc_inventory	Up 22 minutes (healthy)
+freshtrack_svc_planning	Up 22 minutes (healthy)
+freshtrack_svc_audit	Up 22 minutes (healthy)
+freshtrack_svc_alerts	Up 22 minutes (healthy)
+freshtrack_svc_catalog	Up 22 minutes (healthy)
+freshtrack_svc_auth	Up 22 minutes (healthy)
+freshtrack_mail	Up 23 hours (healthy)
+freshtrack_db	Up 23 hours (healthy)
+freshtrack_redis	Up 23 hours (healthy)
+freshtrack_mongo	Up 23 hours (healthy)
+freshtrack_minio	Up 23 hours (healthy)
+
+[2026-11-24 13:20:33 CST] ### PS-01 · Salud de la plataforma
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 23 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 19 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 25 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 24 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 16 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 20 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 16 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 15 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 15 ms
+  => PASA: 9/9 componentes HEALTHY
+
+[2026-11-24 13:20:34 CST] ### PS-02 · Login por rol (svc-auth)
+  - admin: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 23 ms cid=edcb2ea9c59945e28af1bd8655e160b0 hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '6', 'X-RateLimit-Reset': '33', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "e9e29205373340a5a1dadd199607572d", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "197bd63e-5f79-4674-806b-982d75608759", "email": "ad… (+81 caracteres)
+  - buyer: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 22 ms cid=0d681ace1fce495c8be61960b214ab7f hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '8', 'X-RateLimit-Reset': '33', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "f15e377475d245a39aa819b4651d5543", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "02af410a-a4ac-4cd2-a660-83f009e3cebc", "email": "bu… (+80 caracteres)
+  - planner: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 25 ms cid=22582230954e4f77aef23c8b99902766 hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '6', 'X-RateLimit-Reset': '33', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "b762bd0df40f431fb9cc5f65ed27b7b5", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "f5ff3293-cf53-437c-b40e-1abec8cbf3ca", "email": "pl… (+83 caracteres)
+  - store_manager: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 21 ms cid=7b116de7c8d240ea842a7e3f43843078 hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '5', 'X-RateLimit-Reset': '31', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "a6a06ec769db478980714534f7bf8b34", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "40e4de83-351f-46c9-b6bd-cbabe206b924", "email": "ge… (+88 caracteres)
+  - warehouse: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 21 ms cid=8878cc6e43c344969485ea1e72e40e23 hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '8', 'X-RateLimit-Reset': '33', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "a6a7695fe4d64ed0b6930a4c72c3d5a0", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "3aeab741-0f35-4939-b635-2a2b79ea1b17", "email": "al… (+86 caracteres)
+  - supplier: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 23 ms cid=33e610f9ef194e77bcc219d4f040480a hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '9', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "915d6bb11d464b30a20895d03297a510", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "0048ebe5-1d6f-4632-bd4b-767b44d343bf", "email": "pr… (+87 caracteres)
+  - auditor: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 23 ms cid=f41f5cc96f7e4c2d9651a4ff51d18197 hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '7', 'X-RateLimit-Reset': '33', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "920b0f74959146c1b658dd9ba917e41c", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "75021000-18bb-4ce7-a939-50b22ec6f217", "email": "au… (+84 caracteres)
+  => PASA: 7/7 roles con login 200 y rol correcto
+
+[2026-11-24 13:20:34 CST] ### PS-03 · Login inválido y RBAC entre servicios
+  - pwd errónea: POST http://localhost:5001/api/v1/auth/login → HTTP 401 en 33 ms cid=1c856fb311974e3995595f7165a7134d hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '7', 'X-RateLimit-Reset': '33', 'X-Service': 'svc-auth'}
+      {"error": "credenciales_invalidas", "mensaje": "Correo o contraseña incorrectos.", "status": 401, "correlation_id": "1c856fb311974e3995595f7165a7134d"}
+  - buyer→audit: GET http://localhost:5008/api/v1/audit/events?por_pagina=1 → HTTP 403 en 15 ms cid=c69fcc5b2cd84302bdf8b814c7eb5b86 hdr={'X-Service': 'svc-audit'}
+      {"error": "acceso_denegado", "mensaje": "El rol 'buyer' no tiene permiso para esta operación.", "status": 403, "correlation_id": "c69fcc5b2cd84302bdf8b814c7eb5b86", "detalles": {"roles_permitidos": ["admin", "auditor"]}}
+  - auditor→audit: GET http://localhost:5008/api/v1/audit/events?por_pagina=1 → HTTP 200 en 21 ms cid=4b36e3d220c9439f96ac2b86078b33d2 hdr={'X-Service': 'svc-audit'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 4880, "total_paginas": 4880}, "bitacora": [{"id_evento": "3e4eb3ef-9ed6-4009-ae4d-5bb519e5f42a", "fecha_evento": "2026-11-24T19:20:34.205755+00:0… (+225 caracteres)
+  - sin token: GET http://localhost:5003/api/v1/inventory/stock → HTTP 401 en 9 ms cid=29a6ea1b87054fdcb59ed464630829db hdr={'X-Service': 'svc-inventory'}
+      {"error": "token_requerido", "mensaje": "Token de autenticación requerido (Authorization: Bearer <token>).", "status": 401, "correlation_id": "29a6ea1b87054fdcb59ed464630829db"}
+  => PASA: login malo=401, buyer→audit=403 acceso_denegado, auditor→audit=200, sin token=401
+
+[2026-11-24 13:20:34 CST] ### PS-04 · Revocación: logout invalida el token en todos los servicios
+  - antes inventory: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 33 ms cid=300428e96fe0420dabedf7fa729467cf hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 115, "total_paginas": 115}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - antes planning: GET http://localhost:5006/api/v1/planning/replenishment/orders?por_pagina=1 → HTTP 200 en 23 ms cid=a1b7b50d457a41a982f948c3cac2f3c8 hdr={'X-Service': 'svc-planning'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 42, "total_paginas": 42}, "ordenes": [{"id_orden": "bb8403b7-dcac-4a49-8efd-6f8b9ebb9e2b", "id_… (+2095 caracteres)
+  - logout: POST http://localhost:5001/api/v1/auth/logout → HTTP 200 en 23 ms cid=adccddfd8aa341aca34b5009fb7ec054 hdr={'X-Service': 'svc-auth'}
+      {"status": "LOGOUT_EXITOSO", "jti": "da7ee1b92fde468c9a47fea1f3353194"}
+  - después inventory: GET http://localhost:5003/api/v1/inventory/stock → HTTP 401 en 10 ms cid=a9eb4ab36a1d4d39976a6478b855d3db hdr={'X-Service': 'svc-inventory'}
+      {"error": "token_revocado", "mensaje": "La sesión fue cerrada; el token ya no es válido.", "status": 401, "correlation_id": "a9eb4ab36a1d4d39976a6478b855d3db"}
+  - después planning: GET http://localhost:5006/api/v1/planning/replenishment/orders → HTTP 401 en 11 ms cid=cba3d22fe82b4e06940492f3feaba179 hdr={'X-Service': 'svc-planning'}
+      {"error": "token_revocado", "mensaje": "La sesión fue cerrada; el token ya no es válido.", "status": 401, "correlation_id": "cba3d22fe82b4e06940492f3feaba179"}
+  - después audit: GET http://localhost:5008/api/v1/audit/events → HTTP 401 en 9 ms cid=a87b285c1d01429e84f4f7bc77f48866 hdr={'X-Service': 'svc-audit'}
+      {"error": "token_revocado", "mensaje": "La sesión fue cerrada; el token ya no es válido.", "status": 401, "correlation_id": "a87b285c1d01429e84f4f7bc77f48866"}
+  => PASA: antes 200/200; logout 200; después 401 token_revocado, 401 token_revocado, 401 token_revocado
+
+[2026-11-24 13:20:34 CST] ### PS-05 · Revocación administrativa y logout web
+  - planner antes: GET http://localhost:5006/api/v1/planning/transfers?por_pagina=1 → HTTP 200 en 38 ms cid=231bbdfd195446159af07184abc6ee50 hdr={'X-Service': 'svc-planning'}
+      {"total": 25, "resumen": {"sugeridas": 23, "aprobadas": 0, "ejecutadas": 2, "rechazadas": 0, "unidades_movidas": 10.0}, … (+27192 caracteres)
+  - admin cierra sesiones: DELETE http://localhost:5001/api/v1/auth/sessions/f5ff3293-cf53-437c-b40e-1abec8cbf3ca → HTTP 200 en 17 ms cid=73d72846acbf4c989376300a42830bfc hdr={'X-Service': 'svc-auth'}
+      {"id_usuario": "f5ff3293-cf53-437c-b40e-1abec8cbf3ca", "sesiones_cerradas": 3, "mensaje": "Sesiones revocadas"}
+  - planner después: GET http://localhost:5006/api/v1/planning/transfers?por_pagina=1 → HTTP 401 en 9 ms cid=9e4717b62aa74cda83fe50263e703e0b hdr={'X-Service': 'svc-planning'}
+      {"error": "token_revocado", "mensaje": "La sesión fue cerrada; el token ya no es válido.", "status": 401, "correlation_id": "9e4717b62aa74cda83fe50263e703e0b"}
+  - login web: POST http://localhost:5000/login → HTTP 302 en 34 ms hdr={'Location': '/panel'}
+      <!doctype html> <html lang=en> <title>Redirecting...</title> <h1>Redirecting...</h1> <p>You should be redirected automatically to the target URL: <a h… (+49 caracteres)
+  - gateway antes: GET http://localhost:5000/svc/inventory/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 23 ms cid=97c65033b06c40188826919eb968930e hdr={'X-Servicio': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 115, "total_paginas": 115}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - logout web: POST http://localhost:5000/logout → HTTP 302 en 44 ms hdr={'Location': '/'}
+      <!doctype html> <html lang=en> <title>Redirecting...</title> <h1>Redirecting...</h1> <p>You should be redirected automat… (+69 caracteres)
+  - gateway después: GET http://localhost:5000/svc/inventory/api/v1/inventory/stock?por_pagina=1 → HTTP 302 en 4 ms hdr={'Location': '/login?next=/svc/inventory/api/v1/inventory/stock'}
+      <!doctype html> <html lang=en> <title>Redirecting...</title> <h1>Redirecting...</h1> <p>You should be redirected automatically to the target URL: <a h… (+135 caracteres)
+  => PASA: API: antes 200, cierre 200, después 401 token_revocado; web: gateway antes 200, logout 302, gateway después 302 → /login?next=/svc/inventory/api/v1/inventory/stock
+
+[2026-11-24 13:20:34 CST] ### PS-06 · Orden de compra con PDF en el bucket
+  - crear OC: POST http://localhost:5006/api/v1/planning/purchase-orders → HTTP 201 en 43 ms cid=fa5e6f8a40be4748970322ca7798d6f4 hdr={'X-Service': 'svc-planning'}
+      {"id_oc": "85892176-cba2-429c-b314-a7fcfaa075b6", "folio": "OC-20261124-0005", "id_proveedor": 1, "proveedor": "Lácteos del Norte S.A. de C.V.", "rfc": "LDN850312AA1", "lead_time_dias": 3, "contacto_email": "ventas@lacteosdelnorte.mx", "telefono": "8181234501", "comprador": "Martha López", "comprador_email": "buyer@freshtrack.mx", "estado": "EMITIDA", "total_lotes": 1, "total_unidades": 50.0, "subtotal": 1300.0, "total": 1300.0, "fecha_entrega_estimada": "2026-11-27", "correo_envio": null, "fech… (+1257 caracteres)
+  - PDF OC: GET http://localhost:5006/api/v1/planning/purchase-orders/85892176-cba2-429c-b314-a7fcfaa075b6/pdf → HTTP 200 en 13 ms cid=f88457c71bdd49b1b9ed36c96c351cae hdr={'X-Service': 'svc-planning'}
+      <4916 bytes binarios application/pdf; inicio=b'%PDF-'>
+  => PASA: OC OC-20261124-0005 201, PDF en bucket ordenes-compra/2026/11/OC-20261124-0005.pdf; descarga 200 application/pdf 4916 bytes
+
+[2026-11-24 13:20:34 CST] ### PS-07 · ASN desde la OC con etiquetas QR firmadas
+  - ASN: POST http://localhost:5005/api/v1/asn/from-purchase-order → HTTP 201 en 64 ms cid=a4f7dc23c69741d08262ee7d68f40766 hdr={'X-Service': 'svc-asn'}
+      {"id_mongo": "6b05e3826f49571e897eaadc", "folio_asn": "ASN-20261124-0005", "folio_oc": "OC-20261124-0005", "id_oc": "85892176-cba2-429c-b314-a7fcfaa075b6", "estado": "EN_TRANSITO", "etiquetas": [{"codigo_etiqueta": "FTL-261124-3C4D77", "qr_payload": "FT1|FTL-261124-3C4D77|OC-20261124-0005|L3|S9|7625ff27f2d0", "id_detalle_oc": "da575fec-c2ca-41b7-912a-fdaf390afd35", "id_sku": 9, "producto": "Crema Ácida 450g", "codigo_gtin": "07501234560096", "unidad_medida": "Pieza", "id_locacion_destino": 3, "l… (+406 caracteres)
+  - consulta etiqueta (payload QR): GET http://localhost:5005/api/v1/asn/labels → HTTP 200 en 11 ms cid=120803db1bd24643959344796b5ac3b0 hdr={'X-Service': 'svc-asn'}
+      {"codigo_etiqueta": "FTL-261124-3C4D77", "qr_payload": "FT1|FTL-261124-3C4D77|OC-20261124-0005|L3|S9|7625ff27f2d0", "firma_valida": true, "folio_asn": "ASN-20261124-0005", "estado_asn": "EN_TRANSITO", "folio_oc": "OC-20261124-0005", "id_oc": "85892176-cba2-429c-b314-a7fcfaa075b6", "id_detalle_oc": "… (+629 caracteres)
+  - PDF etiquetas: GET http://localhost:5005/api/v1/asn/ASN-20261124-0005/labels-pdf → HTTP 200 en 12 ms cid=b10ca66deefa438684444d7aed74b1e8 hdr={'X-Service': 'svc-asn'}
+      <19236 bytes binarios application/pdf; inicio=b'%PDF-'>
+  => PASA: ASN ASN-20261124-0005 201; etiqueta FTL-261124-3C4D77 firma_valida=True; PDF 200 19236 bytes
+
+[2026-11-24 13:20:34 CST] ### PS-08 · Recepción por escaneo QR → lote en cola FEFO (idempotente)
+  - recepción: POST http://localhost:5003/api/v1/inventory/receive-scan → HTTP 201 en 50 ms cid=2aa5e6fcdfa74816b5b0a1b33098e5d4 hdr={'X-Service': 'svc-inventory'}
+      {"codigo_etiqueta": "FTL-261124-3C4D77", "folio_asn": "ASN-20261124-0005", "folio_oc": "OC-20261124-0005", "id_oc": "85892176-cba2-429c-b314-a7fcfaa075b6", "id_lote": "6132c850-2d1e-4cbc-ae84-34f55e431155", "id_sku": 9, "producto": "Crema Ácida 450g", "unidad_medida": "Pieza", "lote_proveedor": "LP-PS07-34E1", "id_locacion": 3, "cantidad_esperada": 50.0, "cantidad_recibida": 50.0, "accion_calidad": "ACEPTAR_DISPONIBLE", "resultado_inspeccion": "CONFORME", "elegible_fefo": true, "estado_orden_com… (+59 caracteres)
+  - reintento misma clave: POST http://localhost:5003/api/v1/inventory/receive-scan → HTTP 200 en 18 ms cid=eaac72d5fbd34510b2eb573a4d087fe1 hdr={'X-Service': 'svc-inventory'}
+      {"codigo_etiqueta": "FTL-261124-3C4D77", "folio_asn": "ASN-20261124-0005", "id_oc": "85892176-cba2-429c-b314-a7fcfaa075b6", "id_lote": "6132c850-2d1e-4cbc-ae84-34f55e431155", "id_sku": 9, "id_locacion": 3, "cantidad_esperada": 50.0, "cantidad_recibida": 50.0, "accion_calidad": "ACEPTAR_DISPONIBLE", … (+156 caracteres)
+  - doble escaneo sin clave: POST http://localhost:5003/api/v1/inventory/receive-scan → HTTP 409 en 23 ms cid=9b61e8e300984c889156e1c9e9b18e5f hdr={'X-Service': 'svc-inventory'}
+      {"error": "etiqueta_ya_recibida", "mensaje": "La etiqueta FTL-261124-3C4D77 ya fue escaneada y recibida previamente (2026-11-24T19:20:34.941425+00:00).", "status": 409, "correlation_id": "9b61e8e300984c889156e1c9e9b18e5f", "detalles": {"recepcion_previa": {"codigo_etiqueta": "FTL-261124-3C4D77", "id… (+243 caracteres)
+  - cola FEFO: GET http://localhost:5003/api/v1/inventory/fefo-queue/9/3 → HTTP 200 en 12 ms cid=7350a6671cb24b02b451f5baf03d56c1 hdr={'X-Service': 'svc-inventory'}
+      {"id_sku": 9, "id_locacion": 3, "total_lotes": 5, "lotes_fefo": [{"id_existencia": "68ad6d83-c6d8-47f5-b918-e8a41232ec56", "id_lote": "6d5edf70-f9f5-4a0e-b8db-6bddc0860440", "codigo_lote_prov": "LP-PS07", "estado": "DISPONIBLE", "cantidad_disponible": 73.0, "cantidad_reservada": 0.0, "fecha_caducidad": "2026-11-28", "dias_restantes": 4, "costo_unitario": 26.0}, {"id_existencia": "45e424f1-1ba1-4a98-8c79-a58b3091f1a1", "id_lote": "6132c850-2d1e-4cbc-ae84-34f55e431155", "codigo_lote_prov": "LP-PS07-34E1", "estado": "DISPONIBLE", "cantidad_disponible": 50.0, "cantidad_reservada": 0.0, "fecha_caducidad": "2026-11-28", "dias_restantes": 4, "costo_unitario": 26.0}, {"id_existencia": "29bf038f-e9d9-4b3a-b83f-15ca87f49508", "id_lote": "393f1d7c-97f2-4436-950a-2fd6ea7d0304", "codigo_lote_prov": "LP-PS07-B079", "estado": "DISPONIBLE", "cantidad_disponible": 48.0, "cantidad_reservada": 0.0, "fecha_… (+681 caracteres)
+  => PASA: recepción 201 lote 6132c850…; misma clave 200 idempotente=True; sin clave 409 etiqueta_ya_recibida; en FEFO=True (5 lotes)
+
+[2026-11-24 13:20:35 CST] ### PS-09 · Venta POS (Saga de checkout) con asignación FEFO
+  - primer lote FEFO antes: LP-PS07 cad 2026-11-28 disp 73.0
+  - checkout: POST http://localhost:5004/api/v1/commercial/checkout → HTTP 201 en 24 ms cid=e533a3419f2e48a8a567e54c88f97607 hdr={'X-RateLimit-Limit': '60', 'X-RateLimit-Remaining': '55', 'X-RateLimit-Reset': '22', 'X-Service': 'svc-commercial'}
+      {"saga_id": "ac21b7e905ae46bea6513e7d1e2c4428", "id_venta": "73e08196-945c-4ae6-844f-a948d74729f7", "folio": "VT-3-20261124-000025", "total": 76.0, "lineas": [{"id_sku": 9, "producto": "Crema Ácida 450g", "codigo_lote": "LP-PS07", "cantidad": 2.0, "precio_unitario": 38.0, "subtotal": 76.0}], "estado": "COMPLETADA"}
+  - mismo lote después: disp 71.0
+  => PASA: checkout 201 COMPLETADA folio VT-3-20261124-000025; lote FEFO LP-PS07 73.0 → 71.0
+
+[2026-11-24 13:20:35 CST] ### PS-10 · Merma con foto de evidencia
+  - evidencia: POST http://localhost:5004/api/v1/commercial/evidence → HTTP 201 en 20 ms cid=fe9feaff82dd405997823942c23cf902 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '19', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"id_evidencia": "4c563ad6-7279-4808-bd78-d190dbc8d53c", "tipo": "MERMA", "referencia_tipo": null, "referencia_id": null, "id_locacion": 3, "content_type": "image/jpeg", "tamano_bytes": 40000, "sha256": "c6dc575b5da8e13f7cef3e714cf638e0e273941999c82da6679e6864c471c488", "storage_provider": "s3", "bucket": "freshtrack-reportes", "object_key": "evidencias/3/2026/11/4c563ad6-7279-4808-bd78-d190dbc8d53c.jpg", "descripcion": "Prueba sistema PS-10", "creado_en": "2026-11-24T19:20:35.090433+00:00", "ur… (+348 caracteres)
+  - merma: POST http://localhost:5004/api/v1/commercial/shrinkage → HTTP 201 en 22 ms cid=36a221b2a8df40848430f78757635e75 hdr={'X-Service': 'svc-commercial'}
+      {"id_merma": "0ea5352f-29ad-4969-8d1b-a8d7633389b2", "cantidad": 1.0, "causa": "DANO", "causa_etiqueta": "Daño", "valor_merma": 26.0, "producto": "Crema Ácida 450g", "codigo_lote_prov": "LP-PS07-34E1", "existencia_restante": 49.0, "unidad_medida": "Pieza", "id_evidencia": "4c563ad6-7279-4808-bd78-d190dbc8d53c"}
+  - URL firmada: GET http://localhost:5004/api/v1/commercial/evidence/4c563ad6-7279-4808-bd78-d190dbc8d53c/url → HTTP 200 en 8 ms cid=eb77e4668791434f9ca7a0089d60a9c5 hdr={'X-Service': 'svc-commercial'}
+      {"id_evidencia": "4c563ad6-7279-4808-bd78-d190dbc8d53c", "tipo": "MERMA", "referencia_tipo": "MERMA", "referencia_id": "0ea5352f-29ad-4969-8d1b-a8d7633389b2", "id_locacion": 3, "content_type": "image/jpeg", "tamano_bytes": 40000, "sha256": "c6dc575b5da8e13f7cef3e714cf638e0e273941999c82da6679e6864c47… (+585 caracteres)
+  - descarga con URL firmada (Host firmado, vía localhost:9000): GET http://localhost:9000/freshtrack-reportes/evidencias/3/2026/11/4c563ad6-7279-4808-bd78-d190dbc8d53c.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=freshtrack_s3%2F20261124%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261124T192035Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=<oculta> → HTTP 200 en 3 ms hdr={'X-Ratelimit-Limit': '842', 'X-Ratelimit-Remaining': '842'}
+      <40000 bytes binarios image/jpeg; inicio=b'\xff\xd8\xff\xe0\x00'>
+  - misma ruta sin firma: GET http://localhost:9000/freshtrack-reportes/evidencias/3/2026/11/4c563ad6-7279-4808-bd78-d190dbc8d53c.jpg → HTTP 403 en 3 ms hdr={'X-Ratelimit-Limit': '842', 'X-Ratelimit-Remaining': '842'}
+      <?xml version="1.0" encoding="UTF-8"?> <Error><Code>AccessDenied</Code><Message>Access Denied.</Message><Key>evidencias/3/2026/11/4c563ad6-7279-4808-bd78-d190dbc8d53c.jpg</Key><BucketName>freshtrack-r… (+251 caracteres)
+  => PASA: evidencia 201 (40000 B); merma 201 ligada=True; URL 200; descarga firmada 200 image/jpeg; sin firma 403
+
+[2026-11-24 13:20:35 CST] ### PS-10b · URL firmada de evidencia usable por un cliente externo (app/escritorio)
+  - URL tal cual: GET http://minio:9000/freshtrack-reportes/evidencias/3/2026/11/4c563ad6-7279-4808-bd78-d190dbc8d53c.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=freshtrack_s3%2F20261124%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261124T192035Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=<oculta> → SIN RESPUESTA en 10392 ms (ConnectionError: HTTPConnectionPool(host='minio', port=9000): Max retries exceeded with url: /freshtrack-reportes/evidencias/3/2026/11/4c563ad6-7279-4808-bd78-d190dbc8d53c.jpg?X)
+  => FALLA: host de la URL = minio:9000; resultado sin respuesta ConnectionError: HTTPConnectionPool(host='minio', port=9000)
+
+[2026-11-24 13:20:45 CST] ### PS-11 · Conteo cíclico con reintento idempotente
+  - conteo: POST http://localhost:5003/api/v1/inventory/counts → HTTP 201 en 31 ms cid=91c10013752d49799bf7c5c38c5c3526 hdr={'X-RateLimit-Limit': '30', 'X-RateLimit-Remaining': '29', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-inventory'}
+      {"id_conteo": "065f46f2-97d9-4804-8839-c447626f6333", "lineas_contadas": 1, "lineas_con_diferencia": 1, "exactitud_pct": 0.0, "ajustes": [{"id_lote": "6132c850-2d1e-4cbc-ae84-34f55e431155", "codigo_lote_prov": "LP-PS07-34E1", "sistema": 49.0, "contado": 48.0, "diferencia": -1.0}]}
+  - reintento: POST http://localhost:5003/api/v1/inventory/counts → HTTP 200 en 22 ms cid=8f89ed990c7b4f8d9380bcfed37f8274 hdr={'X-RateLimit-Limit': '30', 'X-RateLimit-Remaining': '28', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-inventory'}
+      {"id_conteo": "065f46f2-97d9-4804-8839-c447626f6333", "lineas_contadas": 1, "lineas_con_diferencia": 1, "exactitud_pct": 0.0, "ajustes": [{"contado": 48.0, "id_lote": "6132c850-2d1e-4cbc-ae84-34f55e431155", "sistema": 49.0, "diferencia": -1.0, "codigo_lote_prov": "LP-PS07-34E1"}], "repetido": true}
+  - disponible: 49.0 → contado 48.0 → final 48.0
+  => PASA: conteo 201, reintento 200 mismo id=True; existencia 49.0 → 48.0 (un solo ajuste)
+
+[2026-11-24 13:20:45 CST] ### PS-12 · Transferencia solicitada → aprobada → ejecutada → desperdicio evitado
+  - lote elegido: Pechuga de Pollo kg CRN-20261121-001 cad 2026-11-26 disp 30.86
+  - solicitud: POST http://localhost:5006/api/v1/planning/transfers → HTTP 201 en 43 ms cid=ea692732144c47d999223b8fab32b5a8 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '19', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-planning'}
+      {"id_transferencia": "1aae3f9d-f66f-45a9-b7de-55e35a9c7577", "estado": "SUGERIDA", "cantidad": 5.0, "producto": "Pechuga de Pollo kg", "origen": "Tienda San Pedro", "destino": "Tienda Cumbres", "dias_para_vencer": 2, "validaciones": {"lote_disponible": {"pasa": true, "detalle": "El lote está DISPONIBLE"}, "origen_suficiente": {"pasa": true, "detalle": "Tienda San Pedro tiene 30.86 unidades libres"}, "llega_antes_de_vencer": {"pasa": true, "detalle": "El lote vence en 2 días y el traslado toma 1 … (+10 caracteres)
+  - aprobar: POST http://localhost:5006/api/v1/planning/transfers/1aae3f9d-f66f-45a9-b7de-55e35a9c7577/approve → HTTP 200 en 23 ms cid=18846a0405e648c1abf8d83cd4f65d81 hdr={'X-Service': 'svc-planning'}
+      {"id_transferencia": "1aae3f9d-f66f-45a9-b7de-55e35a9c7577", "estado": "APROBADA", "cantidad": 5.0}
+  - ejecutar: POST http://localhost:5006/api/v1/planning/transfers/1aae3f9d-f66f-45a9-b7de-55e35a9c7577/execute → HTTP 200 en 43 ms cid=394cabba0a2e457faefe1caefcf5feec hdr={'X-Service': 'svc-planning'}
+      {"id_transferencia": "1aae3f9d-f66f-45a9-b7de-55e35a9c7577", "cantidad": 5.0, "origen": "Tienda San Pedro", "destino": "Tienda Cumbres", "existencia_origen": 25.86, "existencia_destino": 8.0}
+  - cola FEFO tienda 4: CRN-20261121-001(8.0, 2026-11-26), CRN-20261121-002(25.91, 2026-11-26), CRN-20261122-001(43.94, 2026-11-27)
+  - unidades por delante en FEFO destino: 0.0; se venden 2.0
+  - venta en destino: POST http://localhost:5004/api/v1/commercial/checkout → HTTP 201 en 21 ms cid=e00d334d2dd44ca08f4ea27b61aed991 hdr={'X-RateLimit-Limit': '60', 'X-RateLimit-Remaining': '59', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"saga_id": "b4a2b8c61b7c48f78080aabe16917982", "id_venta": "9e66aefa-aa31-4217-b3d2-9c5af15d8017", "folio": "VT-4-20261124-000026", "total": 179.8, "lineas": [{"id_sku": 5, "producto": "Pechuga de Pollo kg", "codigo_lote": "CRN-20261121-001", "cantidad": 2.0, "precio_unitario": 89.9, "subtotal": 179.8}], "estado": "COMPLETADA"}
+  - tiempo hasta reflejarse (caché 60 s anidada): 10.1 s
+  - producto_recuperado: 35.0 u / $1561.9 → 45.0 u / $2149.5
+  => PASA: estados ['SUGERIDA', 'APROBADA', 'EJECUTADA'] (201/200/200); inventario origen→destino 25.86/8.0; venta destino 201; recuperado 35.0 → 45.0 u (se reflejó en 10.1 s)
+
+[2026-11-24 13:20:56 CST] ### PS-13 · Descuento preventivo: sugerir → aprobar
+  - generar: POST http://localhost:5006/api/v1/planning/discounts/generate → HTTP 201 en 104 ms cid=bc17ea1b5ed242f1b090d0f91c04658a hdr={'X-Service': 'svc-planning'}
+      {"generados": [{"id_descuento": "6ecb42d0-f292-40c8-a389-91f5648876ed", "producto": "Crema Ácida 450g", "locacion": "Tienda San Pedro", "descuento_pct": 15.0, "cantidad": 48.0}], "total": 1}
+  - listar sugeridos: GET http://localhost:5006/api/v1/planning/discounts → HTTP 200 en 25 ms cid=b5c399b38c2640cf891b10b6137f6ce6 hdr={'X-Service': 'svc-planning'}
+      {"total": 27, "resumen": {"sugeridos": 27, "aprobados": 6, "rechazados": 0, "ingreso_potencial": 31857.64, "unidades": 1215.18}, "descuentos": [{"id_descuento": "6ecb42d0-f292-40c8-a389-91f5648876ed", "estado": "SUGERIDO", "descuento_pct": 15.0, "precio_normal": 38.0, "precio_nuevo": 32.3, "cantidad": 48.0, "dias_restantes": 4, "ingreso_potencial": 1550.4, "fecha_creacion": "2026-11-24T19:20:56.091733+00:00", "fecha_decision": null, "producto": "Crema Ácida 450g", "id_sku": 9, "unidad_medida": "… (+14578 caracteres)
+  - aprobar: POST http://localhost:5006/api/v1/planning/discounts/6ecb42d0-f292-40c8-a389-91f5648876ed/approve → HTTP 200 en 42 ms cid=04e218da20ef4cdfaa5ed3a6071ff820 hdr={'X-Service': 'svc-planning'}
+      {"id_descuento": "6ecb42d0-f292-40c8-a389-91f5648876ed", "estado": "APROBADO"}
+  => PASA: generar 201; 27 sugeridos; aprobar 200 estado APROBADO
+
+[2026-11-24 13:20:56 CST] ### PS-14 · Pronóstico + recomendación de reabastecimiento
+  - pronóstico: POST http://localhost:5006/api/v1/planning/forecast/run → HTTP 201 en 158 ms cid=b3e6b2df09f54145a593eda45dbafec7 hdr={'X-Service': 'svc-planning'}
+      {"id_run": "80b386f0-6d36-4ffc-8c58-913a8c3292a7", "id_locacion": 3, "locacion": "Tienda San Pedro", "metodo": "AUTO", "metodo_etiqueta": "Automático por tienda", "estrategia_dominante": "SUAVIZACION_EXPONENCIAL", "distribucion_estrategias": {"SUAVIZACION_EXPONENCIAL": 11, "MEDIA_MOVIL_PONDERADA": 1}, "salud_modelo": {"estado": "VIGILANCIA", "confiabilidad": "Media", "requiere_reemplazo": false, "psi": 0.1096, "z_nivel": -0.52, "cambio_nivel_pct": -9.2, "ratio_volatilidad": 2.29, "delta_ceros_pp… (+11444 caracteres)
+  - serie: GET http://localhost:5006/api/v1/planning/forecast/latest/9/3 → HTTP 200 en 16 ms cid=6bfd905c3c5847ef88a08337ef94ed91 hdr={'X-Service': 'svc-planning'}
+      {"_id": "6b05e398f0e21a49e4839abf", "id_sku": 9, "id_locacion": 3, "fecha_calculo": "2026-11-24T19:20:56.329000", "horizonte_proyeccion": {"fecha_inicio": "2026-11-25T00:00:00", "fecha_fin": "2026-12-01T00:00:00", "dias": 7}, "modelo": "MEDIA_MOVIL_PONDERADA", "version_modelo": "1.0", "linaje": {"id_run": "80b386f0-6d36-4ffc-8c58-913a8c3292a7", "id_locacion": 3, "generado_por": "planner@freshtrack… (+1175 caracteres)
+  - reabastecimiento: POST http://localhost:5006/api/v1/planning/replenishment/generate → HTTP 201 en 2043 ms cid=710b36aa43644121bd4097d1e7bd8583 hdr={'X-Service': 'svc-planning'}
+      {"generadas": [], "actualizadas": 0, "total": 0, "revisadas": 60}
+  - órdenes: GET http://localhost:5006/api/v1/planning/replenishment/orders?estado=PENDIENTE&por_pagina=3 → HTTP 200 en 12 ms cid=ce5f525fb79c41c7b6430e248dc5b3de hdr={'X-Service': 'svc-planning'}
+      {"paginacion": {"pagina": 1, "por_pagina": 3, "total": 41, "total_paginas": 14}, "ordenes": [{"id_orden": "bb8403b7-dcac-4a49-8efd-6f8b9ebb9e2b", "id_sku": 5, "producto": "Pechuga de Pollo kg", "id_locacion": 5, "locacion": "Tienda Valle Oriente", "id_proveedor": 4, "cantidad_sugerida": 40.0, "cantidad_aprobada": null, "prioridad": "ALTA", "estado": "PENDIENTE", "explicacion": "Producto: Pechuga d… (+4373 caracteres)
+  => PASA: pronóstico 201 (158 ms); serie 200; reabastecimiento 201 total=0; órdenes 200
+
+[2026-11-24 13:20:58 CST] ### PS-15 · Escaneo de alertas pre-merma
+  - scan: POST http://localhost:5007/api/v1/alerts/scan → HTTP 200 en 18 ms cid=4723ccd6b7b943eea4f0e7f535066c94 hdr={'X-Service': 'svc-alerts'}
+      {"status": "COMPLETADO", "ventana_dias": 5, "total_escaneados": 10, "alertas_emitidas": 10, "detalle": [{"id_mongo": "6b05e39a07c1e75aee0f321e", "id_lote": "1fa8e517-a010-410e-8eee-7a74ede3ad9d", "criticidad": "CRITICAL"}, {"id_mongo": "6b05e39a07c1e75aee0f321f", "id_lote": "2235914a-6b31-4f39-8bd0-28470cc98739", "criticidad": "WARNING"}, {"id_mongo": "6b05e39a07c1e75aee0f3220", "id_lote": "98a38ed2-8bdc-4783-b7ea-57d03033aa74", "criticidad": "WARNING"}, {"id_mongo": "6b05e39a07c1e75aee0f3221", … (+785 caracteres)
+  - activas: GET http://localhost:5007/api/v1/alerts/active → HTTP 200 en 9 ms cid=9bd663378a9e47fe90ddc5ec60ff297f hdr={'X-Service': 'svc-alerts'}
+      {"total": 50, "alertas": [{"_id": "6b05e39a07c1e75aee0f3227", "tipo": "RIESGO_PRE_MERMA", "criticidad": "WARNING", "mensaje": "Lote de 'Tomate Bola kg' vence en 5 día(s). Stock: 189.62 u.", "generada_en": "2026-11-24T19:20:58.430000", "atendida": false, "version_esquema": 1, "contexto": {"dias_restantes": 5, "producto": "Tomate Bola kg", "id_lote": "23cec36a-262f-4aa6-9268-c05e5b274e6a", "cantidad… (+20542 caracteres)
+  => PASA: scan 200; activas 200
+
+[2026-11-24 13:20:58 CST] ### PS-16 · Importación de ventas (XML, JSON y CSV de escritorio) idempotente
+  - XML 1.ª vez: POST http://localhost:5004/api/v1/commercial/sales/import → HTTP 200 en 33 ms cid=36ef2800af5048789f5e4e12485cdbd9 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '19', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"importados": 2, "duplicados": 0, "errores": 0, "resultados": [{"folio_externo": "PS16-749686-1", "estado": "IMPORTADO", "id_venta": "d073732d-bc1a-4326-b46d-15fbda157423", "folio": "VT-3-20261124-000027"}, {"folio_externo": "PS16-749686-2", "estado": "IMPORTADO", "id_venta": "87bfceeb-0b65-402c-a2c4-231a06225c4a", "folio": "VT-3-20261124-000028"}]}
+  - XML repetido: POST http://localhost:5004/api/v1/commercial/sales/import → HTTP 200 en 10 ms cid=988618d414f24d52b2550ac2cce01698 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '18', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"importados": 0, "duplicados": 2, "errores": 0, "resultados": [{"folio_externo": "PS16-749686-1", "estado": "DUPLICADO"}, {"folio_externo": "PS16-749686-2", "estado": "DUPLICADO"}]}
+  - JSON: POST http://localhost:5004/api/v1/commercial/sales/import → HTTP 200 en 21 ms cid=01fd05744135453ab49bb81008d68c59 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '17', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"importados": 1, "duplicados": 0, "errores": 0, "resultados": [{"folio_externo": "PS16-749686-J", "estado": "IMPORTADO", "id_venta": "32e81fae-efbf-4c60-9486-345d419537ee", "folio": "VT-3-20261124-000029"}]}
+  - vista previa CSV: fila 2 OK ; fila 3 ERROR id_sku debe ser un entero positivo; cantidad debe ser un número mayor que 0
+  - CSV→XML: POST http://localhost:5004/api/v1/commercial/sales/import → HTTP 200 en 26 ms cid=34b8a576ee634bffa6d7f55fe5fb2092 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '16', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"importados": 1, "duplicados": 0, "errores": 0, "resultados": [{"folio_externo": "PS16-749686-C", "estado": "IMPORTADO", "id_venta": "74ba9467-daac-4530-92be-efdcf45277ce", "folio": "VT-3-20261124-000030"}]}
+  => PASA: XML 200 importados=2; repetido duplicados=2 importados=0; JSON importados=1; CSV: 1 fila válida importada, 1 fila rechazada en la vista previa (200)
+
+[2026-11-24 13:20:58 CST] ### PS-17 · Negociación de contenido XML y rechazo por XSD
+  - stock XML: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 20 ms cid=022777a286474721a92eb1b6b03499bb hdr={'X-Service': 'svc-inventory'}
+      <?xml version="1.0" encoding="UTF-8"?> <inventario_stock><paginacion><pagina>1</pagina><por_pagina>1</por_pagina><total>116</total><total_paginas>116</total_paginas></paginacion><existencias><item><id_existencia>87e4d25b-f05d-430e-8685-19a0ca6e3ae8</id_existencia><id_locacion>3</id_locacion><locacio… (+479 caracteres)
+  - XML inválido: POST http://localhost:5004/api/v1/commercial/sales/import → HTTP 400 en 8 ms cid=fc9d1d8f0c4a43679191152c7bfb1932 hdr={'X-Service': 'svc-commercial'}
+      {"error": "xml_no_cumple_contrato", "mensaje": "El XML no cumple el contrato sales_import_request.xsd", "status": 400, "correlation_id": "fc9d1d8f0c4a43679191152c7bfb1932", "detalles": [{"ruta": "/sales_import_request/id_locacion", "motivo": "invalid literal for int() with base 10: 'tres'"}, {"ruta": "/sales_import_request/tickets", "motivo": "The content of element 'tickets' is not complete. Tag 'ticket' expected."}]}
+  - XML inválido (respuesta XML): POST http://localhost:5004/api/v1/commercial/checkout → HTTP 400 en 8 ms cid=846593592c26466184dbe38b32e0e4a6 hdr={'X-Service': 'svc-commercial'}
+      <?xml version="1.0" encoding="UTF-8"?> <error_response><error>xml_no_cumple_contrato</error><mensaje>El XML no cumple el contrato checkout_request.xsd</mensaje><status>400</status><correlation_id>846593592c26466184dbe38b32e0e4a6</correlation_id><detalles><item><ruta>/checkout_request/canal</ruta><motivo>value must be one of ['TIENDA', 'ONLINE', 'MAYOREO']</motivo></item><item><ruta>/checkout_request/lineas</ruta><motivo>The content of element 'lineas' is not complete. Tag 'item' expected.</motivo></item></detalles></error_response>
+  => PASA: stock 200 application/xml; charset=utf-8; XSD inválido 400 xml_no_cumple_contrato; checkout XML 400 application/xml; charset=utf-8
+
+[2026-11-24 13:20:58 CST] ### PS-18 · Swagger/OpenAPI de los 8 servicios
+  - auth: docs 200, openapi 200 (3.0.3, 12 rutas)
+  - catalog: docs 200, openapi 200 (3.0.3, 8 rutas)
+  - inventory: docs 200, openapi 200 (3.0.3, 11 rutas)
+  - commercial: docs 200, openapi 200 (3.0.3, 10 rutas)
+  - asn: docs 200, openapi 200 (3.0.3, 13 rutas)
+  - planning: docs 200, openapi 200 (3.0.3, 32 rutas)
+  - alerts: docs 200, openapi 200 (3.0.3, 9 rutas)
+  - audit: docs 200, openapi 200 (3.0.3, 7 rutas)
+  => PASA: 8/8 servicios con Swagger UI y OpenAPI
+
+[2026-11-24 13:20:58 CST] ### PS-19 · Panel de monitoreo oculto /ops/status
+  - panel sin sesión: GET http://localhost:5000/ops/status → HTTP 302 en 4 ms hdr={'Location': '/ops/status/login'}
+      <!doctype html> <html lang=en> <title>Redirecting...</title> <h1>Redirecting...</h1> <p>You should be redirected automatically to the target URL: <a h… (+71 caracteres)
+  - snapshot sin auth: GET http://localhost:5000/ops/status/api/snapshot?solo_lectura=1 → HTTP 401 en 3 ms
+      {"error": "no_autenticado", "mensaje": "Autenticación de monitoreo requerida."}
+  - snapshot con auth: HTTP 200 estado_global=OPERATIVO resumen={'caidos': 0, 'degradados': 0, 'disponibilidad_actual_pct': 100.0, 'sanos': 8, 'tiempo_respuesta_promedio_ms': 7.63, 'total_errores': 242, 'total_servicios': 8, 'verificaciones_registradas': 1}
+  => PASA: sin sesión 302; sin auth 401; con auth 200 OPERATIVO sanos=8/8 disponibilidad 100.0%
+
+[2026-11-24 13:20:59 CST] ### PS-20 · Pantallas de la web por rol (navegador real por HTTP)
+  - admin: login 302 → /panel → 200
+  - buyer: login 302 → /proveedores → 200
+  - planner: login 302 → /pronostico → 200
+  - store_manager: login 302 → /panel → 200
+  - warehouse: login 302 → /lotes → 200
+  - supplier: login 302 → /reabastecimiento → 200
+  - auditor: login 302 → /auditoria → 200
+  => PASA: 7/7 roles entran y ven su pantalla inicial
+
+[2026-11-24 13:21:00 CST] ### PS-21 · Todas las pantallas del menú por rol (equivalente a smoke_rutas.py con CSRF)
+  - admin         /alertas                     200 48 ms
+  - admin         /auditoria                   200 24 ms
+  - admin         /lotes                       200 58 ms
+  - admin         /panel                       200 20 ms
+  - admin         /despachos                   200 75 ms
+  - admin         /pronostico                  200 25 ms
+  - admin         /inventario                  200 83 ms
+  - admin         /mapa                        200 103 ms
+  - admin         /productos                   200 49 ms
+  - admin         /reabastecimiento            200 50 ms
+  - admin         /ventas                      200 69 ms
+  - admin         /desperdicio-evitado         200 44 ms
+  - admin         /configuracion               200 18 ms
+  - admin         /tiendas                     200 25 ms
+  - admin         /proveedores                 200 41 ms
+  - admin         /triaje                      200 262 ms
+  - admin         /usuarios                    200 41 ms
+  - buyer         /alertas                     200 19 ms
+  - buyer         /lotes                       200 55 ms
+  - buyer         /panel                       200 19 ms
+  - buyer         /despachos                   200 20 ms
+  - buyer         /pronostico                  200 48 ms
+  - buyer         /inventario                  200 62 ms
+  - buyer         /mapa                        200 14 ms
+  - buyer         /reabastecimiento            200 48 ms
+  - buyer         /proveedores                 200 47 ms
+  - buyer         /triaje                      200 132 ms
+  - planner       /alertas                     200 18 ms
+  - planner       /lotes                       200 57 ms
+  - planner       /panel                       200 18 ms
+  - planner       /pronostico                  200 33 ms
+  - planner       /inventario                  200 59 ms
+  - planner       /mapa                        200 13 ms
+  - planner       /productos                   200 34 ms
+  - planner       /reabastecimiento            200 49 ms
+  - planner       /ventas                      200 27 ms
+  - planner       /desperdicio-evitado         200 27 ms
+  - planner       /triaje                      200 137 ms
+  - store_manager /alertas                     200 17 ms
+  - store_manager /lotes                       200 56 ms
+  - store_manager /panel                       200 16 ms
+  - store_manager /inventario                  200 51 ms
+  - store_manager /mapa                        200 13 ms
+  - store_manager /reabastecimiento            200 40 ms
+  - store_manager /ventas                      200 24 ms
+  - store_manager /desperdicio-evitado         200 30 ms
+  - store_manager /triaje                      200 146 ms
+  - warehouse     /alertas                     200 17 ms
+  - warehouse     /lotes                       200 58 ms
+  - warehouse     /panel                       200 22 ms
+  - warehouse     /despachos                   200 23 ms
+  - warehouse     /inventario                  200 59 ms
+  - warehouse     /mapa                        200 13 ms
+  - warehouse     /triaje                      200 144 ms
+  - supplier      /lotes                       200 53 ms
+  - supplier      /panel                       200 23 ms
+  - supplier      /despachos                   200 25 ms
+  - supplier      /productos                   200 36 ms
+  - supplier      /reabastecimiento            200 49 ms
+  - auditor       /auditoria                   200 27 ms
+  - auditor       /panel                       200 23 ms
+  - auditor       /mapa                        200 14 ms
+  - auditor       /ventas                      200 34 ms
+  - auditor       /desperdicio-evitado         200 19 ms
+  - auditor       /triaje                      200 99 ms
+  => PASA: 65/65 pantallas con 200
+
+Resumen: 21/22 casos PASA — fin 2026-11-24 13:21:04 CST

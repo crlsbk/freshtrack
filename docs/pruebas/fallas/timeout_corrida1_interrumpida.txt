@@ -1,0 +1,49 @@
+Simulacro «timeout» — inicio 2026-11-24 13:35:24 CST
+freshtrack_app	Up 37 minutes (healthy)
+freshtrack_svc_commercial	Up 37 minutes (healthy)
+freshtrack_svc_asn	Up 37 minutes (healthy)
+freshtrack_svc_inventory	Up 37 minutes (healthy)
+freshtrack_svc_planning	Up 11 minutes (healthy)
+freshtrack_svc_audit	Up 37 minutes (healthy)
+freshtrack_svc_alerts	Up 37 minutes (healthy)
+freshtrack_svc_catalog	Up 37 minutes (healthy)
+freshtrack_svc_auth	Up 37 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up 2 minutes (healthy)
+freshtrack_redis	Up 8 minutes (healthy)
+freshtrack_mongo	Up 2 minutes (healthy)
+freshtrack_minio	Up 28 seconds (healthy)
+  - /health de los 9 componentes (antes):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 19 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 33 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 24 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 30 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 26 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 32 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 28 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 31 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 27 ms
+
+[2026-11-24 13:35:24 CST] ### A) docker pause freshtrack_svc_planning (el proceso existe pero no responde)
+freshtrack_svc_planning
+  - panel /ops/status con planning congelado: HTTP 200 en 4041 ms estado_global=DEGRADADO resumen={'sanos': 7, 'degradados': 0, 'caidos': 1, 'disponibilidad_actual_pct': 87.5} deps_caidas=[]
+      servicios: {'svc-auth': 'HEALTHY(200)', 'svc-catalog': 'HEALTHY(200)', 'svc-inventory': 'HEALTHY(200)', 'svc-commercial': 'HEALTHY(200)', 'svc-asn': 'HEALTHY(200)', 'svc-planning': 'DOWN(0)', 'svc-alerts': 'HEALTHY(200)', 'svc-audit': 'HEALTHY(200)'}
+  - cliente con timeout de 20 s (como Android/escritorio) → :5006: GET http://localhost:5006/api/v1/planning/transfers → SIN RESPUESTA en 20026 ms (TIMEOUT del cliente (20s): ReadTimeout)
+  - gateway web /svc/planning (timeout interno 30 s): GET http://localhost:5000/svc/planning/api/v1/planning/transfers → HTTP 502 en 30051 ms hdr={'X-Servicio': 'svc-planning'}
+      {"error": "servicio_no_disponible", "mensaje": "svc-planning no respondió."}
+  - web /pronostico (llamada a drift con timeout 10 s y respaldo local): HTTP 200 en 10186 ms | título: FreshTrack — Pronósticos por Tienda | fuga de detalles internos: no
+  - otro servicio (inventory) mientras tanto: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 21 ms cid=70b73037031547349fff8119614fa358 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+freshtrack_svc_planning
+  - planning vuelve a responder /health a los 0.0 s del unpause (pausa total 30.2 s)
+
+[2026-11-24 13:35:54 CST] ### B) docker pause freshtrack_redis (sockets abiertos sin respuesta; socket_timeout=2 s)
+freshtrack_redis
+  - inventario con token válido (intento 1): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 16068 ms cid=ef2538bf447a402aa5dcc7ab5b146d34 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - inventario con token válido (intento 2): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 16056 ms cid=a59515e029684100b787967d06a7d8e8 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - inventario con token válido (intento 3): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 16061 ms cid=505ab354c0d4453585cfe391e4cc3e1c hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e… (+359 caracteres)
+  - health de svc-auth: GET http://localhost:5001/health → SIN RESPUESTA en 9200 ms (ConnectionError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))
+failed to connect to the docker API at unix:///home/nicolasn/.docker/desktop/docker.sock; check if the path is correct and if the daemon is running: dial unix /home/nicolasn/.docker/desktop/docker.sock: connect: no such file or directory

@@ -1,0 +1,13 @@
+
+[OK  ] landing pública / → 200
+
+Pantallas probadas: 1
+FALLOS (7):
+  - admin: el login no redirigió (400)
+  - buyer: el login no redirigió (400)
+  - planner: el login no redirigió (400)
+  - store_manager: el login no redirigió (400)
+  - warehouse: el login no redirigió (400)
+  - supplier: el login no redirigió (400)
+  - auditor: el login no redirigió (400)
+exit=1

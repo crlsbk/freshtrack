@@ -1,0 +1,8 @@
+88 casos → docs/pruebas/sistema/EVIDENCIAS_REQUEST_RESPONSE.md
+  ⚠ POST http://127.0.0.1:5002/api/v1/catalog/products esperado 201 obtenido 403: <?xml version="1.0" encoding="UTF-8"?>
+<error_response><error>acceso_denegado</error><mensaje>El rol 'buyer' no tiene permiso para esta operación.</me
+  ⚠ PATCH http://127.0.0.1:5002/api/v1/catalog/products/1 esperado 200 obtenido 403: {"error":"acceso_denegado","mensaje":"El rol 'buyer' no tiene permiso para esta operación.","status":403,"correlation_id":"92c6b16610fe4217","detalles
+  ⚠ PUT http://127.0.0.1:5002/api/v1/catalog/products/1 esperado 200 obtenido 403: {"error":"acceso_denegado","mensaje":"El rol 'buyer' no tiene permiso para esta operación.","status":403,"correlation_id":"8e64316803dd4c49","detalles
+  ⚠ PATCH http://127.0.0.1:5002/api/v1/catalog/products/1 esperado 409 obtenido 403: {"error":"acceso_denegado","mensaje":"El rol 'buyer' no tiene permiso para esta operación.","status":403,"correlation_id":"da2ebc448e844842","detalles
+  ⚠ POST http://127.0.0.1:5002/api/v1/catalog/products esperado 400 obtenido 403: {"error":"acceso_denegado","mensaje":"El rol 'buyer' no tiene permiso para esta operación.","status":403,"correlation_id":"209d17ddb64743c3","detalles
+exit=1

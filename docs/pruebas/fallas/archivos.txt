@@ -1,0 +1,43 @@
+Simulacro «archivos» — inicio 2026-11-24 13:23:22 CST
+freshtrack_app	Up 25 minutes (healthy)
+freshtrack_svc_commercial	Up 25 minutes (healthy)
+freshtrack_svc_asn	Up 25 minutes (healthy)
+freshtrack_svc_inventory	Up 25 minutes (healthy)
+freshtrack_svc_planning	Up 25 minutes (healthy)
+freshtrack_svc_audit	Up 25 minutes (healthy)
+freshtrack_svc_alerts	Up 25 minutes (healthy)
+freshtrack_svc_catalog	Up 25 minutes (healthy)
+freshtrack_svc_auth	Up 25 minutes (healthy)
+freshtrack_mail	Up 23 hours (healthy)
+freshtrack_db	Up 23 hours (healthy)
+freshtrack_redis	Up 23 hours (healthy)
+freshtrack_mongo	Up 23 hours (healthy)
+freshtrack_minio	Up 23 hours (healthy)
+  - evidencia 1 KB JPEG: POST http://localhost:5004/api/v1/commercial/evidence → HTTP 201 en 22 ms cid=2ec799b8c6f146e190b9d3a030e1cc70 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '19', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"id_evidencia": "47d52d36-48c2-44c4-a71d-7bac44a7fafa", "tipo": "OTRO", "referencia_tipo": null, "referencia_id": null, "id_locacion": 3, "content_type": "image/jpeg", "tamano_bytes": 1024, "sha256": "6eaa8fef371aa2f622f5dff5b22e53bb144da6aa2ac097cfe94656b758ab87f1", "storage_provider": "s3", "buck… (+528 caracteres)
+  - evidencia 3.9 MB JPEG: POST http://localhost:5004/api/v1/commercial/evidence → HTTP 201 en 104 ms cid=6461e38592b746c9af1aeaf55e211b60 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '18', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"id_evidencia": "e069c2aa-eff5-4e17-9b90-abfb79cf72d0", "tipo": "OTRO", "referencia_tipo": null, "referencia_id": null, "id_locacion": 3, "content_type": "image/jpeg", "tamano_bytes": 4089446, "sha256": "2a6eba51358ee6faa8dee5159347cbe0e83d6658ded8a286ca093ab0077a7404", "storage_provider": "s3", "b… (+531 caracteres)
+  - evidencia 4.1 MB JPEG: POST http://localhost:5004/api/v1/commercial/evidence → HTTP 413 en 27 ms cid=25ce1c4d25dc421f9f17e665d8ed3706 hdr={'X-Service': 'svc-commercial'}
+      {"error": "cuerpo_demasiado_grande", "mensaje": "The data value transmitted exceeds the capacity limit.", "status": 413, "correlation_id": "25ce1c4d25dc421f9f17e665d8ed3706"}
+  - evidencia 7.9 MB JPEG (justo debajo de 8 MB): POST http://localhost:5004/api/v1/commercial/evidence → HTTP 413 en 78 ms cid=36fbcd66c32941da95b981d1635197bc hdr={'X-Service': 'svc-commercial'}
+      {"error": "cuerpo_demasiado_grande", "mensaje": "The data value transmitted exceeds the capacity limit.", "status": 413, "correlation_id": "36fbcd66c32941da95b981d1635197bc"}
+  - evidencia 8.1 MB JPEG (justo arriba de 8 MB): POST http://localhost:5004/api/v1/commercial/evidence → HTTP 413 en 67 ms cid=6cb665a5756c42d0948aa1a82be66a9d hdr={'X-Service': 'svc-commercial'}
+      {"error": "cuerpo_demasiado_grande", "mensaje": "The data value transmitted exceeds the capacity limit.", "status": 413, "correlation_id": "6cb665a5756c42d0948aa1a82be66a9d"}
+  - evidencia PDF renombrado a .jpg (no es imagen): POST http://localhost:5004/api/v1/commercial/evidence → HTTP 415 en 18 ms cid=5b085ed2886d4c0ab64a416401436011 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '14', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"error": "tipo_no_soportado", "mensaje": "El archivo no es una imagen JPEG, PNG o WebP.", "status": 415, "correlation_id": "5b085ed2886d4c0ab64a416401436011"}
+  - evidencia texto plano: POST http://localhost:5004/api/v1/commercial/evidence → HTTP 415 en 9 ms cid=31b13301b5d44e39bc3e1536361292b9 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '13', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"error": "tipo_no_soportado", "mensaje": "El archivo no es una imagen JPEG, PNG o WebP.", "status": 415, "correlation_id": "31b13301b5d44e39bc3e1536361292b9"}
+  - evidencia archivo vacío: POST http://localhost:5004/api/v1/commercial/evidence → HTTP 400 en 10 ms cid=d9a790fde87f4f5f8022ba9f8ba91d4f hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '12', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"error": "archivo_vacio", "mensaje": "El archivo está vacío.", "status": 400, "correlation_id": "d9a790fde87f4f5f8022ba9f8ba91d4f"}
+
+[2026-11-24 13:23:23 CST] ### Otros límites de tamaño
+  - XML de importación de 5.5 MB
+  - importación XML > 4 MB: POST http://localhost:5004/api/v1/commercial/sales/import → HTTP 413 en 33 ms cid=f8b3f1db1f5043189dcc050ad5bbf756 hdr={'X-Service': 'svc-commercial'}
+      {"error": "cuerpo_demasiado_grande", "mensaje": "The data value transmitted exceeds the capacity limit.", "status": 413, "correlation_id": "f8b3f1db1f5043189dcc050ad5bbf756"}
+  - gateway web con imagen de 5 MB: HTTP 413 29 ms <!doctype html>
+<html lang=en>
+<title>413 Request Entity Too Large</title>
+<h1>Request Entity Too Large</h1>
+<p>The data
+
+Fin 2026-11-24 13:23:23 CST

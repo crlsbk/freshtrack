@@ -1,0 +1,43 @@
+{
+  "health": {
+    "web": 503,
+    "auth": 503,
+    "catalog": 503,
+    "inventory": 503,
+    "commercial": 503,
+    "asn": 503,
+    "planning": 503,
+    "alerts": 503,
+    "audit": 503
+  },
+  "login": "500 error_interno",
+  "login_cid": true,
+  "stock": "401 token_invalido",
+  "stock_cid": true,
+  "productos": "500 error_interno",
+  "productos_cid": true,
+  "checkout": "401 token_invalido",
+  "checkout_cid": true,
+  "alertas_mongo": "401 token_invalido",
+  "alertas_mongo_cid": true,
+  "asn_mongo": "401 token_invalido",
+  "asn_mongo_cid": true,
+  "auditoria": "401 token_invalido",
+  "auditoria_cid": true,
+  "sin_token": "401 token_requerido",
+  "sin_token_cid": true,
+  "web/login": 302,
+  "web/inventario": 500,
+  "web/ventas": 500,
+  "web_login": 200,
+  "monitor": "DEGRADADO",
+  "caida_s": 21.2,
+  "pg_ready_s": 0.8,
+  "recuperacion": {
+    "health_s": 0.1,
+    "negocio_s": 0.1,
+    "docker_healthy_s": 10.9
+  },
+  "token_previo_despues": 200,
+  "web_despues": 200
+}

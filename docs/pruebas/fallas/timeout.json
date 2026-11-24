@@ -1,0 +1,18 @@
+{
+  "A_cliente_20s": "0 20024 ms",
+  "A_gateway": "502 30045 ms",
+  "A_web_pronostico": "200 10475 ms",
+  "A_monitor": "DEGRADADO",
+  "A_inventory": "200 147 ms",
+  "A_recuperacion_s": 0.0,
+  "B_inventory_1": "200 16064 ms",
+  "B_inventory_2": "200 16064 ms",
+  "B_inventory_3": "200 16146 ms",
+  "B_health": "503 2037 ms",
+  "B_recuperacion_s": 0.1,
+  "C_stock": "401 5033 ms",
+  "C_health_inventory": "0 45045 ms",
+  "C_health_web": "0 45046 ms",
+  "C_recuperacion_s": 0.1,
+  "C_despues": "200 40 ms"
+}

@@ -1,0 +1,222 @@
+[
+  {
+    "id": "PS-01",
+    "flujo": "Salud de la plataforma",
+    "precondiciones": "docker compose arriba",
+    "pasos": "GET /health en web y 8 servicios",
+    "esperado": "9 × HTTP 200 HEALTHY con postgres/mongo/redis/bucket en true",
+    "obtenido": "9/9 componentes HEALTHY",
+    "estado": "PASA",
+    "segundos": 0.03
+  },
+  {
+    "id": "PS-02",
+    "flujo": "Login por rol (svc-auth)",
+    "precondiciones": "Cuentas demo del seed",
+    "pasos": "POST /api/v1/auth/login para los 7 roles",
+    "esperado": "200 con JWT y rol correcto en cada cuenta",
+    "obtenido": "7/7 roles con login 200 y rol correcto",
+    "estado": "PASA",
+    "segundos": 0.17
+  },
+  {
+    "id": "PS-03",
+    "flujo": "Login inválido y RBAC entre servicios",
+    "precondiciones": "Tokens de PS-02",
+    "pasos": "Login con contraseña errónea; buyer → GET /audit/events; auditor → GET /audit/events; sin token → inventory",
+    "esperado": "401 credenciales; 403 acceso_denegado (buyer); 200 (auditor); 401 token_requerido",
+    "obtenido": "login malo=401, buyer→audit=403 acceso_denegado, auditor→audit=200, sin token=401",
+    "estado": "PASA",
+    "segundos": 0.08
+  },
+  {
+    "id": "PS-04",
+    "flujo": "Revocación: logout invalida el token en todos los servicios",
+    "precondiciones": "Sesión nueva del planner",
+    "pasos": "Login → usar token en inventory/planning → POST /auth/logout → reusar token en inventory, planning y audit",
+    "esperado": "Antes 200; después 401 token_revocado en los 3 servicios",
+    "obtenido": "antes 200/200; logout 200; después 401 token_revocado, 401 token_revocado, 401 token_revocado",
+    "estado": "PASA",
+    "segundos": 0.14
+  },
+  {
+    "id": "PS-05",
+    "flujo": "Revocación administrativa y logout web",
+    "precondiciones": "admin y planner con sesión",
+    "pasos": "admin DELETE /auth/sessions/{planner}; token del planner en planning. Web: login gerente → gateway /svc/inventory → logout → reintento",
+    "esperado": "401 tras cierre forzado; en la web el gateway deja de responder datos tras logout (redirige a /login)",
+    "obtenido": "API: antes 200, cierre 200, después 401 token_revocado; web: gateway antes 200, logout 302, gateway después 302 → /login?next=/svc/inventory/api/v1/inventory/stock",
+    "estado": "PASA",
+    "segundos": 0.32
+  },
+  {
+    "id": "PS-06",
+    "flujo": "Orden de compra con PDF en el bucket",
+    "precondiciones": "buyer; proveedor 1 con SKU 9",
+    "pasos": "POST /planning/purchase-orders (1 lote SKU 9 → tienda 3); GET .../pdf",
+    "esperado": "201 con folio OC y documento_pdf en S3; PDF descargable (application/pdf)",
+    "obtenido": "OC OC-20261124-0005 201, PDF en bucket ordenes-compra/2026/11/OC-20261124-0005.pdf; descarga 200 application/pdf 4916 bytes",
+    "estado": "PASA",
+    "segundos": 0.11
+  },
+  {
+    "id": "PS-07",
+    "flujo": "ASN desde la OC con etiquetas QR firmadas",
+    "precondiciones": "OC de PS-06",
+    "pasos": "POST /asn/from-purchase-order; GET /asn/labels?codigo=<payload QR>; GET /asn/{folio}/labels-pdf",
+    "esperado": "201 EN_TRANSITO con etiqueta FTL; firma_valida=true; PDF de etiquetas descargable",
+    "obtenido": "ASN ASN-20261124-0005 201; etiqueta FTL-261124-3C4D77 firma_valida=True; PDF 200 19236 bytes",
+    "estado": "PASA",
+    "segundos": 0.09
+  },
+  {
+    "id": "PS-08",
+    "flujo": "Recepción por escaneo QR → lote en cola FEFO (idempotente)",
+    "precondiciones": "Etiqueta de PS-07; warehouse de la tienda 3",
+    "pasos": "POST /inventory/receive-scan con Idempotency-Key; repetir con la misma clave; repetir sin clave; GET /fefo-queue/9/3",
+    "esperado": "201 lote creado; repetición con la misma clave devuelve el mismo lote (idempotente=true); sin clave 409; lote visible en FEFO",
+    "obtenido": "recepción 201 lote 6132c850…; misma clave 200 idempotente=True; sin clave 409 etiqueta_ya_recibida; en FEFO=True (5 lotes)",
+    "estado": "PASA",
+    "segundos": 0.11
+  },
+  {
+    "id": "PS-09",
+    "flujo": "Venta POS (Saga de checkout) con asignación FEFO",
+    "precondiciones": "Existencias SKU 9 en tienda 3",
+    "pasos": "GET cola FEFO; POST /commercial/checkout (2 pzas SKU 9); GET cola FEFO",
+    "esperado": "201 saga COMPLETADA; se descuenta el lote que caduca primero",
+    "obtenido": "checkout 201 COMPLETADA folio VT-3-20261124-000025; lote FEFO LP-PS07 73.0 → 71.0",
+    "estado": "PASA",
+    "segundos": 0.04
+  },
+  {
+    "id": "PS-10",
+    "flujo": "Merma con foto de evidencia",
+    "precondiciones": "gerente tienda 3; lote recibido en PS-08",
+    "pasos": "POST /commercial/evidence (JPEG); POST /commercial/shrinkage con id_evidencia; GET /evidence/{id}/url; GET a la URL firmada",
+    "esperado": "201 evidencia; 201 merma ligada; URL firmada que descarga la imagen (200) sin JWT",
+    "obtenido": "evidencia 201 (40000 B); merma 201 ligada=True; URL 200; descarga firmada 200 image/jpeg; sin firma 403",
+    "estado": "PASA",
+    "segundos": 0.06
+  },
+  {
+    "id": "PS-10b",
+    "flujo": "URL firmada de evidencia usable por un cliente externo (app/escritorio)",
+    "precondiciones": "URL de PS-10; stack local sin OBJECT_STORAGE_PUBLIC_ENDPOINT",
+    "pasos": "GET a la URL firmada exactamente como la devuelve la API, desde el host (fuera de la red Docker)",
+    "esperado": "200 con la imagen (el host de la URL debe ser alcanzable por el cliente)",
+    "obtenido": "host de la URL = minio:9000; resultado sin respuesta ConnectionError: HTTPConnectionPool(host='minio', port=9000)",
+    "estado": "FALLA",
+    "segundos": 10.39
+  },
+  {
+    "id": "PS-11",
+    "flujo": "Conteo cíclico con reintento idempotente",
+    "precondiciones": "Lote de PS-08 en tienda 3",
+    "pasos": "POST /inventory/counts con Idempotency-Key (contado = disponible − 1); repetir igual; consultar existencia",
+    "esperado": "201 con ajuste −1; el reintento devuelve el mismo id_conteo y no ajusta otra vez",
+    "obtenido": "conteo 201, reintento 200 mismo id=True; existencia 49.0 → 48.0 (un solo ajuste)",
+    "estado": "PASA",
+    "segundos": 0.1
+  },
+  {
+    "id": "PS-12",
+    "flujo": "Transferencia solicitada → aprobada → ejecutada → desperdicio evitado",
+    "precondiciones": "Lote recibido en tienda 3 sin stock previo en tienda 4 con caducidad menor",
+    "pasos": "gerente POST /planning/transfers (3→4, 5 pzas); planner approve; warehouse execute; admin vende 2 pzas en tienda 4; GET /alerts/waste-measurement",
+    "esperado": "201 SUGERIDA → APROBADA → EJECUTADA; inventario movido; producto_recuperado sube con lo vendido del lote trasladado",
+    "obtenido": "estados ['SUGERIDA', 'APROBADA', 'EJECUTADA'] (201/200/200); inventario origen→destino 25.86/8.0; venta destino 201; recuperado 35.0 → 45.0 u (se reflejó en 10.1 s)",
+    "estado": "PASA",
+    "segundos": 10.38
+  },
+  {
+    "id": "PS-13",
+    "flujo": "Descuento preventivo: sugerir → aprobar",
+    "precondiciones": "Lotes próximos a caducar",
+    "pasos": "planner POST /planning/discounts/generate {dias_hasta: 5}; GET /discounts?estado=SUGERIDO; POST .../approve",
+    "esperado": "201/200 con sugerencias; aprobación 200 estado APROBADO",
+    "obtenido": "generar 201; 27 sugeridos; aprobar 200 estado APROBADO",
+    "estado": "PASA",
+    "segundos": 0.17
+  },
+  {
+    "id": "PS-14",
+    "flujo": "Pronóstico + recomendación de reabastecimiento",
+    "precondiciones": "Historial de ventas de la tienda 3",
+    "pasos": "planner POST /planning/forecast/run (AUTO, 7 días, tienda 3); GET /forecast/latest/9/3; POST /replenishment/generate; GET /replenishment/orders",
+    "esperado": "201 corrida con serie en MongoDB; 200 serie; 201 recomendaciones (PENDIENTE)",
+    "obtenido": "pronóstico 201 (158 ms); serie 200; reabastecimiento 201 total=0; órdenes 200",
+    "estado": "PASA",
+    "segundos": 2.23
+  },
+  {
+    "id": "PS-15",
+    "flujo": "Escaneo de alertas pre-merma",
+    "precondiciones": "Lotes por vencer en tienda 3",
+    "pasos": "gerente POST /alerts/scan?id_locacion=3&dias=5; GET /alerts/active",
+    "esperado": "200/201 con alertas emitidas o ya existentes; listado 200 desde MongoDB",
+    "obtenido": "scan 200; activas 200",
+    "estado": "PASA",
+    "segundos": 0.03
+  },
+  {
+    "id": "PS-16",
+    "flujo": "Importación de ventas (XML, JSON y CSV de escritorio) idempotente",
+    "precondiciones": "buyer; SKU 9 con existencia en tienda 3",
+    "pasos": "POST /commercial/sales/import en XML con 2 folios; repetir; JSON con 1 folio; CSV → XML con el parser de la app de escritorio",
+    "esperado": "1.ª vez importados=2; repetición duplicados=2 importados=0; JSON 1 importado; CSV importado",
+    "obtenido": "XML 200 importados=2; repetido duplicados=2 importados=0; JSON importados=1; CSV: 1 fila válida importada, 1 fila rechazada en la vista previa (200)",
+    "estado": "PASA",
+    "segundos": 0.3
+  },
+  {
+    "id": "PS-17",
+    "flujo": "Negociación de contenido XML y rechazo por XSD",
+    "precondiciones": "Tokens válidos",
+    "pasos": "GET /inventory/stock con Accept: application/xml; POST /commercial/sales/import con XML que viola el XSD; POST /checkout XML inválido en XML",
+    "esperado": "200 application/xml; 400 xml_no_cumple_contrato con motivos; error también en XML",
+    "obtenido": "stock 200 application/xml; charset=utf-8; XSD inválido 400 xml_no_cumple_contrato; checkout XML 400 application/xml; charset=utf-8",
+    "estado": "PASA",
+    "segundos": 0.04
+  },
+  {
+    "id": "PS-18",
+    "flujo": "Swagger/OpenAPI de los 8 servicios",
+    "precondiciones": "Servicios arriba",
+    "pasos": "GET /api/v1/docs y /api/v1/openapi.json en 5001..5008",
+    "esperado": "200 en los 16 recursos; OpenAPI 3 con rutas",
+    "obtenido": "8/8 servicios con Swagger UI y OpenAPI",
+    "estado": "PASA",
+    "segundos": 0.09
+  },
+  {
+    "id": "PS-19",
+    "flujo": "Panel de monitoreo oculto /ops/status",
+    "precondiciones": "Credenciales MONITOR_* del contenedor web",
+    "pasos": "GET /ops/status sin sesión; GET /ops/status/api/snapshot sin y con Basic Auth",
+    "esperado": "302 a /ops/status/login; 401 sin credenciales; 200 OPERATIVO con 8/8 sanos",
+    "obtenido": "sin sesión 302; sin auth 401; con auth 200 OPERATIVO sanos=8/8 disponibilidad 100.0%",
+    "estado": "PASA",
+    "segundos": 0.19
+  },
+  {
+    "id": "PS-20",
+    "flujo": "Pantallas de la web por rol (navegador real por HTTP)",
+    "precondiciones": "Cuentas demo",
+    "pasos": "Login por formulario con CSRF para 7 roles y GET a su pantalla inicial",
+    "esperado": "302 al destino del rol y 200 en esa pantalla",
+    "obtenido": "7/7 roles entran y ven su pantalla inicial",
+    "estado": "PASA",
+    "segundos": 1.2
+  },
+  {
+    "id": "PS-21",
+    "flujo": "Todas las pantallas del menú por rol (equivalente a smoke_rutas.py con CSRF)",
+    "precondiciones": "Cuentas demo; web en :5000",
+    "pasos": "Para cada rol: login por formulario con CSRF y GET a cada vista de VISTAS_POR_ROL contra la web real",
+    "esperado": "HTTP 200 en todas las pantallas permitidas",
+    "obtenido": "65/65 pantallas con 200",
+    "estado": "PASA",
+    "segundos": 4.25
+  }
+]

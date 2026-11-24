@@ -1,0 +1,106 @@
+Simulacro «redis» — inicio 2026-11-24 13:23:50 CST
+freshtrack_app	Up 26 minutes (healthy)
+freshtrack_svc_commercial	Up 26 minutes (healthy)
+freshtrack_svc_asn	Up 26 minutes (healthy)
+freshtrack_svc_inventory	Up 26 minutes (healthy)
+freshtrack_svc_planning	Up 11 seconds (healthy)
+freshtrack_svc_audit	Up 26 minutes (healthy)
+freshtrack_svc_alerts	Up 26 minutes (healthy)
+freshtrack_svc_catalog	Up 26 minutes (healthy)
+freshtrack_svc_auth	Up 26 minutes (healthy)
+freshtrack_mail	Up 23 hours (healthy)
+freshtrack_db	Up 23 hours (healthy)
+freshtrack_redis	Up 23 hours (healthy)
+freshtrack_mongo	Up 23 hours (healthy)
+freshtrack_minio	Up 23 hours (healthy)
+
+[2026-11-24 13:23:50 CST] ### Preparación: sesiones abiertas ANTES de la caída
+  - token A (planner) emitido; token L (buyer) emitido; sesión web gerente 302
+  - /health de los 9 componentes (antes):
+  web         HTTP 200 HEALTHY deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': True} 13 ms
+  auth        HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 19 ms
+  catalog     HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 17 ms
+  inventory   HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 13 ms
+  commercial  HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 19 ms
+  asn         HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 18 ms
+  planning    HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 17 ms
+  alerts      HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 15 ms
+  audit       HTTP 200 HEALTHY deps={'postgres': True, 'mongo': True, 'redis': True, 'bucket': True} 15 ms
+
+[2026-11-24 13:23:51 CST] ### docker stop freshtrack_redis
+freshtrack_redis
+
+[2026-11-24 13:23:51 CST] ### Autenticación con Redis caído
+  - token A (emitido antes) en svc-inventory: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 10648 ms cid=0a5e8ec9e2b341b2b2473a484e5d71d0 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e3ae8", "id_locacion": 3, "locacion": "Tienda San Pedro", "id_lote": "f8495272-4520-4d25-9505-a50745e… (+259 caracteres)
+  - token A en svc-planning: GET http://localhost:5006/api/v1/planning/transfers?por_pagina=1 → HTTP 200 en 6305 ms cid=aa9b032cfbbe44c2875af3e71b3a3bdc hdr={'X-Service': 'svc-planning'}
+      {"total": 26, "resumen": {"sugeridas": 23, "aprobadas": 0, "ejecutadas": 3, "rechazadas": 0, "unidades_movidas": 15.0}, "transferencias": [{"id_transferencia": "1aae3f9d-f66f-45a9-b7de-55e35a9c7577", "estado": "EJECUTADA", "cantidad": 5.0, "motivo": … (+28024 caracteres)
+  - login nuevo (warehouse) en svc-auth: POST http://localhost:5001/api/v1/auth/login → HTTP 200 en 7468 ms cid=ea169df71ab247d190420148318cd96a hdr={'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '10', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-auth'}
+      {"token": "***", "jti": "a97ce9747bf1464e9e10d6d2c75cae82", "token_type": "Bearer", "expira_en_segundos": 900, "refresh_token": "***", "refresh_expira_en_segundos": 28800, "usuario": {"id_usuario": "3aeab741-0f35-4939-b635-2a2b79ea1b17", "email": "almacen@freshtrack.mx", "nombre": "Pedro Vargas", "r… (+36 caracteres)
+  - token B (emitido durante la caída) en svc-inventory: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 20722 ms cid=99190b009c554e8597a7848f4860c1c9 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e3ae8", "id_locacion": 3, "locacion": "Tienda San Pedro", "id_lote": "f8495272-4520-4d25-9505-a50745e… (+259 caracteres)
+  - logout del token L durante la caída: POST http://localhost:5001/api/v1/auth/logout → HTTP 200 en 10943 ms cid=a9e4c4bef4ff41e1955b873263b979ca hdr={'X-Service': 'svc-auth'}
+      {"status": "LOGOUT_EXITOSO", "jti": "6f3daf69d48b4edabe48a9ce7911114b"}
+  - reuso del token L tras su logout: GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 401 en 5349 ms cid=1004e18f0d204692865fcd7b3eee2bc1 hdr={'X-Service': 'svc-inventory'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "1004e18f0d204692865fcd7b3eee2bc1"}
+
+[2026-11-24 13:24:52 CST] ### Rate limiting (login API limitado a 10/min por IP con Redis)
+  - 12 logins fallidos seguidos → [401, 401, 401, 401, 401, 401, 401, 401, 401, 401, 401, 401]; cabeceras del último: {'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': '10', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-auth'}
+
+[2026-11-24 13:25:35 CST] ### Caché, carrito, importación de ventas y saga
+  - catálogo (Cache-Aside): GET http://localhost:5002/api/v1/catalog/products?por_pagina=1 → HTTP 200 en 9956 ms cid=3858a45f31a74d83bb1d6c43756ddf38 hdr={'X-RateLimit-Limit': '120', 'X-RateLimit-Remaining': '120', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-catalog'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 14, "total_paginas": 14}, "productos": [{"id_sku": 12, "codigo_gtin": "07501234560126", "nombre": "Arroz 1kg", "categoria": "Abarrotes", "unidad_medida": "Paquete", "id_proveedor": 6, "stock_seguridad": 100.0, "punto_reorden": 180.0, "moq_lote":… (+137 caracteres)
+  - importación de ventas (idempotencia en Redis): POST http://localhost:5004/api/v1/commercial/sales/import → HTTP 503 en 18129 ms cid=53f422448d4a43a1b08b27b53bcfacd9 hdr={'X-RateLimit-Limit': '20', 'X-RateLimit-Remaining': '20', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"error": "redis_no_disponible", "mensaje": "Redis no disponible: importación interrumpida.", "status": 503, "correlation_id": "53f422448d4a43a1b08b27b53bcfacd9", "detalles": {"procesados": []}}
+  - carrito POS temporal (Redis): PUT http://localhost:5004/api/v1/commercial/cart/caja-redis → HTTP 503 en 9342 ms cid=671fc1a5108f4863a6d373649024b8be hdr={'X-Service': 'svc-commercial'}
+      {"error": "redis_no_disponible", "mensaje": "No se pudo almacenar el carrito temporal.", "status": 503, "correlation_id": "671fc1a5108f4863a6d373649024b8be"}
+  - checkout (reserva FEFO con lock Redis): POST http://localhost:5004/api/v1/commercial/checkout → HTTP 201 en 22560 ms cid=08915a534c31424aabfd745cc0fdeaa0 hdr={'X-RateLimit-Limit': '60', 'X-RateLimit-Remaining': '60', 'X-RateLimit-Reset': '60', 'X-Service': 'svc-commercial'}
+      {"saga_id": "817277aac52944769c9796f2b6c04c10", "id_venta": "751dd7ac-4941-498f-8956-f24bd10757df", "folio": "VT-3-20261124-000032", "total": 38.0, "lineas": [{"id_sku": 9, "producto": "Crema Ácida 450g", "codigo_lote": "LP-PS07", "cantidad": 1.0, "precio_unitario": 38.0, "subtotal": 38.0}], "estado… (+16 caracteres)
+  - escaneo de alertas (lock Redis): POST http://localhost:5007/api/v1/alerts/scan → HTTP 409 en 1110 ms cid=0ed5903c033949149cfa732d18ad1ab1 hdr={'X-Service': 'svc-alerts'}
+      {"error": "escaneo_en_curso", "mensaje": "Ya hay un escaneo en curso para esta locación.", "status": 409, "correlation_id": "0ed5903c033949149cfa732d18ad1ab1"}
+
+[2026-11-24 13:26:45 CST] ### Web
+  - sesión web abierta antes → GET /inventario: HTTP 200 en 10944 ms | título: FreshTrack — Inventario | fuga de detalles internos: no
+  - login web nuevo (planner): HTTP 302 en 1410 ms → /pronostico | título: Redirecting... | fuga de detalles internos: no
+
+[2026-11-24 13:26:58 CST] ### Monitoreo
+  - /health de los 9 componentes (con Redis detenido):
+  web         HTTP 200 DEGRADED deps={'bucket': True, 'mongo': True, 'postgres': True, 'redis': False} 308 ms
+  auth        HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 272 ms
+  catalog     HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 4017 ms
+  inventory   HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 347 ms
+  commercial  HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 342 ms
+  asn         HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 341 ms
+  planning    HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 294 ms
+  alerts      HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 335 ms
+  audit       HTTP 503 DEGRADED deps={'postgres': True, 'mongo': True, 'redis': False, 'bucket': True} 253 ms
+  - panel /ops/status: HTTP 200 en 12020 ms estado_global=CRITICO resumen={'sanos': 0, 'degradados': 2, 'caidos': 6, 'disponibilidad_actual_pct': 0.0} deps_caidas=['Redis']
+      servicios: {'svc-auth': 'DEGRADED(503)', 'svc-catalog': 'DOWN(0)', 'svc-inventory': 'DOWN(0)', 'svc-commercial': 'DEGRADED(503)', 'svc-asn': 'DOWN(0)', 'svc-planning': 'DOWN(0)', 'svc-alerts': 'DOWN(0)', 'svc-audit': 'DOWN(0)'}
+
+[2026-11-24 13:27:14 CST] ### docker start freshtrack_redis (restauración)
+freshtrack_redis
+  - Recuperación tras iniciar freshtrack_redis: /health 200 en 0.6 s; primera operación de negocio OK a los None s; todos los contenedores (healthy) a los 240.8 s
+freshtrack_app	Up 33 minutes (healthy)
+freshtrack_svc_commercial	Up 33 minutes (healthy)
+freshtrack_svc_asn	Up 33 minutes (healthy)
+freshtrack_svc_inventory	Up 33 minutes (healthy)
+freshtrack_svc_planning	Up 7 minutes (healthy)
+freshtrack_svc_audit	Up 33 minutes (healthy)
+freshtrack_svc_alerts	Up 33 minutes (healthy)
+freshtrack_svc_catalog	Up 33 minutes (healthy)
+freshtrack_svc_auth	Up 33 minutes (healthy)
+freshtrack_mail	Up 24 hours (healthy)
+freshtrack_db	Up 24 hours (healthy)
+freshtrack_redis	Up 4 minutes (healthy)
+freshtrack_mongo	Up 24 hours (healthy)
+freshtrack_minio	Up 24 hours (healthy)
+
+[2026-11-24 13:31:15 CST] ### Después de la recuperación: ¿siguen sirviendo los tokens?
+  - token A (emitido antes de la caída): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 200 en 40 ms cid=bb9afcf9cae94f019008a4a15b5e2771 hdr={'X-Service': 'svc-inventory'}
+      {"paginacion": {"pagina": 1, "por_pagina": 1, "total": 116, "total_paginas": 116}, "existencias": [{"id_existencia": "87e4d25b-f05d-430e-8685-19a0ca6e3ae8", "id_locacion": 3, "locacion": "Tienda San Pedro", "id_lote": "f8495272-4520-4d25-9505-a50745e… (+259 caracteres)
+  - token B (emitido DURANTE la caída): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 401 en 10 ms cid=eb0e6496b82f42ca8660bfbb3d8707ee hdr={'X-Service': 'svc-inventory'}
+      {"error": "sesion_inexistente", "mensaje": "La sesión no existe o expiró en Redis. Inicie sesión de nuevo.", "status": 401, "correlation_id": "eb0e6496b82f42ca8660bfbb3d8707ee"}
+  - token L (logout durante la caída): GET http://localhost:5003/api/v1/inventory/stock?por_pagina=1 → HTTP 401 en 8 ms cid=05248ddb326f41f7a8e307f8ba24d9c4 hdr={'X-Service': 'svc-inventory'}
+      {"error": "token_invalido", "mensaje": "Token inválido, expirado o manipulado.", "status": 401, "correlation_id": "05248ddb326f41f7a8e307f8ba24d9c4"}
+
+Fin 2026-11-24 13:31:16 CST

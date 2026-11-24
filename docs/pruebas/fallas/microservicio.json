@@ -1,0 +1,29 @@
+{
+  "directo": 0,
+  "gateway": 502,
+  "web_reabastecimiento": 200,
+  "web_pronostico": 200,
+  "flash": "No se generaron recomendaciones: El módulo solicitado no está disponible en este momento. Intenta de nuevo en unos segundos.",
+  "inventory": 200,
+  "checkout": 201,
+  "alerts": 200,
+  "health": {
+    "web": 200,
+    "auth": 200,
+    "catalog": 200,
+    "inventory": 200,
+    "commercial": 200,
+    "asn": 200,
+    "planning": 0,
+    "alerts": 200,
+    "audit": 200
+  },
+  "monitor": "DEGRADADO",
+  "caida_s": 5.5,
+  "recuperacion": {
+    "health_s": 1.9,
+    "negocio_s": 2.0,
+    "docker_healthy_s": 6.3
+  },
+  "monitor_despues": "OPERATIVO"
+}

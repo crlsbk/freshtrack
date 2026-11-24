@@ -10,7 +10,7 @@ Google Compute Engine: `https://34.51.41.80.nip.io`.
 | Arquitectura | MVVM (ViewModel + StateFlow) + Repository + Service Locator (`FreshTrackApp`) |
 | Red | Retrofit 2.11 + OkHttp 4.12 (interceptores JWT, correlation id, 401 global) |
 | Cámara / escaneo | CameraX 1.4 + ML Kit Barcode (QR FT1, GS1-128/DataMatrix, EAN-13/8, UPC) |
-| Segundo plano | WorkManager (sondeo de alertas cada 15 min → notificaciones) |
+| Segundo plano | WorkManager (sondeo de alertas cada 15 min → notificaciones; sincronización de lo capturado sin conexión) |
 | Seguridad local | JWT cifrado AES-256-GCM con llave del **Android Keystore**; sin backup en la nube |
 | SDK | minSdk 26 · target/compile 36 · AGP 9.2.1 · Gradle 9.4.1 · JDK 17+ |
 
@@ -45,6 +45,9 @@ El botón **Comprador** existe a propósito: demuestra que un perfil que no es d
 | Aplicar descuento autorizado | `DiscountsActivity` | svc-planning `GET /planning/discounts`, `POST …/{id}/approve` |
 | Tomar evidencia | `EvidenceActivity`, adjunto en Recepción y Merma | svc-commercial `POST /commercial/evidence` **(nuevo)** → Cloud Storage; `GET …/{id}/url` (URL firmada) |
 | Recibir alertas | pestaña *Alertas* + notificaciones (`AlertWorker`) | svc-alerts `GET /alerts/active`, `POST /alerts/scan`, `PATCH /alerts/{id}/resolve` |
+| Trabajo temporal sin conexión | `ShrinkageActivity`, `CountActivity` → *Guardado sin conexión*; badge en **Más** y renglón *Pendientes sin conexión* | Cola local cifrada (`data/offline/OfflineQueue`, archivo privado + Keystore) con la Idempotency-Key generada al capturar |
+| Sincronización posterior | `work/SyncWorker` (WorkManager, `NetworkType.CONNECTED`; también al abrir la app e iniciar sesión) | Reenvía en orden: 2xx o 4xx no reintentable → sale de la cola (el 4xx queda en *No se pudieron enviar*); sin red/5xx → se conserva. svc-commercial `POST /commercial/shrinkage` y svc-inventory `POST /inventory/counts` son idempotentes |
+| Registro seguro del dispositivo | Tras el login (`FreshTrackRepository.login`) | svc-auth `POST /auth/devices` **(nuevo)**: UUID aleatorio del teléfono (no IMEI), modelo, versión de Android y de la app; `GET /auth/devices`; el admin revoca con `POST /auth/devices/{id}/revoke` y ese teléfono ya no puede entrar. Cabecera `X-Device-Id` en cada petición |
 | Monitoreo (extra) | `ServiceStatusActivity` | `/health` + sondeo de los 8 servicios vía gateway |
 
 ## Procesos integrales que pasan por la app
@@ -59,7 +62,8 @@ El botón **Comprador** existe a propósito: demuestra que un perfil que no es d
 - **401 global:** si cualquier servicio responde `token_revocado`/`sesion_inexistente`, el `UnauthorizedInterceptor` borra la sesión y todas las pantallas regresan al login con el motivo. *(Demo: revocar el token desde la web → la app se cierra sola.)*
 - **Roles:** la app solo admite `store_manager`, `warehouse` y `admin`, y oculta acciones no permitidas; la autorización real la hace el backend (403). Gerente/almacén están **acotados a su sucursal** (`sucursal_no_autorizada`).
 - **HTTPS obligatorio** (`network_security_config`: sin tráfico en claro salvo `10.0.2.2` para desarrollo).
-- **Idempotency-Key** en recepción y conteo: reintentar por mala señal no duplica inventario.
+- **Idempotency-Key** en recepción, conteo y merma: reintentar por mala señal o sincronizar lo guardado sin conexión no duplica inventario.
+- **Cola sin conexión cifrada** (AES-GCM con la llave del Keystore, en el almacenamiento privado de la app); solo se reenvía con la sesión del mismo usuario que la capturó.
 - **Errores seguros:** en 5xx no se muestra el mensaje interno; sí el `correlation_id` para buscarlo en los logs.
 - **URLs firmadas:** la imagen se descarga con un cliente HTTP **sin** el JWT; la firma V4 (15 min) es la única autorización.
 - Fotos comprimidas en el dispositivo (≤1600 px, JPEG 82 %); el backend valida el tipo real por *magic bytes* y el tamaño (≤ 8 MB).
@@ -75,11 +79,11 @@ El botón **Comprador** existe a propósito: demuestra que un perfil que no es d
 | Petición > tiempo máximo | OkHttp corta a los 20 s (5 s en el monitor) → *"La petición excedió el tiempo máximo"* |
 | Token revocado | Diálogo *"Tu sesión fue revocada por un administrador"* |
 | Rol sin permiso | Comprador no entra; un almacenista no ve *Autorizar descuento*; si se fuerza, 403 con detalle |
-| Sin red | *"Sin conexión con el servidor"* + botón *Reintentar* |
+| Sin red | *"Sin conexión con el servidor"* + botón *Reintentar*; merma y conteo se guardan: *"Guardado sin conexión; se enviará al recuperar la red"* |
 
 ## Pruebas
 
-- `./gradlew testDebugUnitTest` — 20 pruebas JVM: parser de etiquetas (FT1/GS1/GTIN), semáforo de caducidad
+- `./gradlew testDebugUnitTest` — 33 pruebas JVM: cola sin conexión y sincronización (orden, reintento, 4xx descartado, por usuario), parser de etiquetas (FT1/GS1/GTIN), semáforo de caducidad
   (igual a `fn_clasificar_riesgo`), permisos por rol y manejo de errores HTTP con **MockWebServer**
   (403/409/429/500/502/timeout/respuesta no JSON).
 - Backend: `tests/unit/test_app_movil.py` — 21 pruebas de los endpoints nuevos (validación por magic bytes,
@@ -97,5 +101,6 @@ app/src/main/java/mx/freshtrack/mobile/
 ├── ui/login · main · home · inventory · scan · receive · shrink · count
 ├── ui/transfer · discount · alerts · evidence · settings · common
 ├── util/                       LabelParser (QR FT1/GS1/GTIN), Expiry (riesgo), formato
-└── work/AlertWorker.kt         WorkManager + notificaciones
+├── data/offline/              cola de trabajo sin conexión (cifrada) + OfflineSync
+└── work/                      AlertWorker (notificaciones) · SyncWorker (sincronización posterior)
 ```

@@ -10,6 +10,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commitNow
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import mx.freshtrack.mobile.R
 import mx.freshtrack.mobile.databinding.ActivityMainBinding
 import mx.freshtrack.mobile.ui.alerts.AlertsFragment
@@ -56,6 +58,16 @@ class MainActivity : BaseActivity() {
             show(item.itemId); true
         }
         b.fabScan.setOnClickListener { openScanner() }
+
+        // Badge en «Más» con lo capturado sin conexión que falta sincronizar.
+        lifecycleScope.launch {
+            repo.offlineQueue.count.collect { n ->
+                b.bottomNav.getOrCreateBadge(R.id.nav_more).apply {
+                    isVisible = n > 0
+                    number = n
+                }
+            }
+        }
 
         if (savedInstanceState == null) {
             val tab = intent.getIntExtra(EXTRA_TAB, R.id.nav_home)

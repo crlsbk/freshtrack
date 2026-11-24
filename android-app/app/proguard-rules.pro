@@ -17,3 +17,6 @@
 -keep class * implements androidx.startup.Initializer { <init>(); }
 # ML Kit descubre sus componentes por reflexión.
 -keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }
+
+# Cola de trabajo sin conexión (se guarda como JSON con Gson).
+-keep class mx.freshtrack.mobile.data.offline.** { *; }

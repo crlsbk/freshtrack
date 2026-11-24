@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 import mx.freshtrack.mobile.R
 import mx.freshtrack.mobile.data.model.ConteoLinea
 import mx.freshtrack.mobile.data.model.LoteFefo
+import mx.freshtrack.mobile.data.offline.OfflineQueue
+import mx.freshtrack.mobile.data.offline.SendOutcome
 import mx.freshtrack.mobile.data.repo.ApiResult
 import mx.freshtrack.mobile.databinding.ActivityCountBinding
 import mx.freshtrack.mobile.databinding.ItemCountLotBinding
@@ -101,7 +103,20 @@ class CountActivity : BaseActivity() {
         b.btnSubmit.isEnabled = false
         lifecycleScope.launch {
             val obs = b.inputNotes.text?.toString()?.takeIf { it.isNotBlank() }
-            when (val r = repo.cycleCount(sku, lines, obs, idempotencyKey)) {
+            val req = repo.countRequest(sku, lines, obs)
+            when (val r = repo.cycleCount(req, idempotencyKey)) {
+                is ApiResult.Fail -> if (SendOutcome.isOffline(r.error)) {
+                    // Misma Idempotency-Key que se generó al cargar el producto: reenviar no ajusta dos veces.
+                    repo.saveOffline(
+                        OfflineQueue.Type.CONTEO, req, idempotencyKey,
+                        "Conteo de ${lines.size} lote(s)${sku?.let { " · SKU $it" } ?: ""}",
+                    )
+                    MaterialAlertDialogBuilder(this@CountActivity)
+                        .setTitle("Guardado sin conexión")
+                        .setMessage("Guardado sin conexión; se enviará al recuperar la red.")
+                        .setPositiveButton("Entendido") { _, _ -> finish() }
+                        .setCancelable(false).show()
+                } else { b.btnSubmit.isEnabled = true; b.root.showError(r.error) }
                 is ApiResult.Ok -> {
                     val c = r.data
                     MaterialAlertDialogBuilder(this@CountActivity)
@@ -116,7 +131,6 @@ class CountActivity : BaseActivity() {
                         )
                         .setPositiveButton("Listo") { _, _ -> load() }.show()
                 }
-                is ApiResult.Fail -> { b.btnSubmit.isEnabled = true; b.root.showError(r.error) }
             }
             b.progress.isVisible = false
         }

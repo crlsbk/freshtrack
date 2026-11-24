@@ -10,6 +10,8 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 import mx.freshtrack.mobile.data.model.LoteFefo
+import mx.freshtrack.mobile.data.offline.OfflineQueue
+import mx.freshtrack.mobile.data.offline.SendOutcome
 import mx.freshtrack.mobile.data.repo.ApiResult
 import mx.freshtrack.mobile.databinding.ActivityShrinkageBinding
 import mx.freshtrack.mobile.ui.common.BaseActivity
@@ -34,6 +36,7 @@ class ShrinkageActivity : BaseActivity() {
     private var lot: LoteFefo? = null
     private var unit: String? = null
     private var photo: File? = null
+    private var idempotencyKey: String? = null
 
     private val causes = linkedMapOf(
         "CADUCIDAD" to "Caducidad", "DANO" to "Daño", "CALIDAD" to "Calidad",
@@ -140,17 +143,48 @@ class ShrinkageActivity : BaseActivity() {
     private fun send(l: LoteFefo, qty: Double, causa: String) {
         b.btnSubmit.isEnabled = false
         b.progress.isVisible = true
+        // La Idempotency-Key nace al capturar: reintentar desde esta pantalla o reenviar
+        // lo guardado sin conexión nunca registra la merma dos veces.
+        val key = idempotencyKey ?: repo.newIdempotencyKey().also { idempotencyKey = it }
         lifecycleScope.launch {
             var evidenceId: String? = null
+            var photoSkipped = false
             photo?.let { f ->
                 when (val up = repo.uploadEvidence(f, "MERMA", "LOTE", l.idLote, "Merma $causa")) {
                     is ApiResult.Ok -> evidenceId = up.data.idEvidencia
-                    is ApiResult.Fail -> b.root.showError(up.error)
+                    is ApiResult.Fail -> {
+                        if (SendOutcome.isOffline(up.error)) {
+                            photoSkipped = true
+                        } else {
+                            b.root.showError(up.error)
+                        }
+                    }
                 }
             }
             val obs = b.inputNotes.text?.toString()?.takeIf { it.isNotBlank() }
-            when (val r = repo.shrinkage(l.idLote, qty, causa, obs, evidenceId)) {
+            val req = repo.shrinkageRequest(l.idLote, qty, causa, obs, evidenceId)
+            when (val r = repo.shrinkage(req, key)) {
+                is ApiResult.Fail -> if (SendOutcome.isOffline(r.error)) {
+                    repo.saveOffline(
+                        OfflineQueue.Type.MERMA, req, key,
+                        "Merma ${Fmt.qty(qty, unit)} · lote ${l.codigoLote ?: l.idLote.take(8)} (${causes[causa]})",
+                    )
+                    MaterialAlertDialogBuilder(this@ShrinkageActivity)
+                        .setTitle("Guardado sin conexión")
+                        .setMessage(
+                            "Guardado sin conexión; se enviará al recuperar la red." +
+                                (if (photoSkipped) "\n\nLa foto no se pudo subir sin conexión; la merma se enviará sin evidencia." else "")
+                        )
+                        .setPositiveButton("Entendido") { _, _ -> finish() }
+                        .setCancelable(false).show()
+                } else {
+                    // El servidor respondió (400/409/…): no se registró; la próxima captura lleva llave nueva.
+                    idempotencyKey = null
+                    b.btnSubmit.isEnabled = true
+                    b.root.showError(r.error)
+                }
                 is ApiResult.Ok -> {
+                    idempotencyKey = null
                     val m = r.data
                     MaterialAlertDialogBuilder(this@ShrinkageActivity)
                         .setTitle("Merma registrada")
@@ -163,7 +197,6 @@ class ShrinkageActivity : BaseActivity() {
                         .setPositiveButton("Listo") { _, _ -> finish() }
                         .setCancelable(false).show()
                 }
-                is ApiResult.Fail -> { b.btnSubmit.isEnabled = true; b.root.showError(r.error) }
             }
             b.progress.isVisible = false
         }

@@ -89,6 +89,18 @@ class SessionManager(context: Context) : TokenStore {
 
     val jti: String? get() = prefs.getString(KEY_JTI, null)
 
+    /**
+     * Identificador aleatorio del teléfono para el registro seguro del dispositivo
+     * (POST /auth/devices). Se genera una sola vez y sobrevive al cierre de sesión;
+     * no usa IMEI ni ANDROID_ID (no identifica al hardware fuera de FreshTrack).
+     */
+    val deviceId: String
+        get() = prefs.getString(KEY_DEVICE_ID, null) ?: synchronized(this) {
+            prefs.getString(KEY_DEVICE_ID, null) ?: java.util.UUID.randomUUID().toString().also {
+                prefs.edit(commit = true) { putString(KEY_DEVICE_ID, it) }
+            }
+        }
+
     override fun save(login: LoginResponse) {
         val ahora = System.currentTimeMillis()
         val ttl = (login.expiraEnSegundos ?: 8 * 3600L).coerceAtLeast(30)
@@ -139,5 +151,6 @@ class SessionManager(context: Context) : TokenStore {
         private const val KEY_NOTIF = "notif"
         private const val KEY_LAST_EMAIL = "last_email"
         private const val KEY_STORE_NAME = "store_name"
+        private const val KEY_DEVICE_ID = "device_id"
     }
 }

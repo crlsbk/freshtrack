@@ -27,6 +27,7 @@ import mx.freshtrack.mobile.ui.settings.SettingsActivity
 import mx.freshtrack.mobile.ui.shrink.ShrinkageActivity
 import mx.freshtrack.mobile.ui.transfer.TransfersActivity
 import mx.freshtrack.mobile.work.AlertWorker
+import mx.freshtrack.mobile.work.SyncWorker
 import java.text.DateFormat
 import java.util.Date
 
@@ -59,6 +60,10 @@ class MoreFragment : Fragment() {
         item(b.mTransfers, R.drawable.ic_transfer, "Transferencias", "Solicitar, aprobar y ejecutar") { start(Intent(requireContext(), TransfersActivity::class.java)) }
         item(b.mDiscounts, R.drawable.ic_discount, "Descuentos por vencimiento", "Autorizar rebajas sugeridas") { start(Intent(requireContext(), DiscountsActivity::class.java)) }
         item(b.mEvidence, R.drawable.ic_image, "Evidencias", "Fotos en Cloud Storage (URL firmada)") { start(Intent(requireContext(), EvidenceActivity::class.java)) }
+        item(b.mSync, R.drawable.ic_refresh, "Pendientes sin conexión", "") { showOffline() }
+        viewLifecycleOwner.lifecycleScope.launch {
+            app.repository.offlineQueue.count.collect { renderSync() }
+        }
         item(b.mStatus, R.drawable.ic_server, "Estado de servicios", "Salud de los 8 microservicios") { start(Intent(requireContext(), ServiceStatusActivity::class.java)) }
         item(b.mRefresh, R.drawable.ic_refresh, "Renovar sesión", "Rota access y refresh token") { refresh() }
         item(b.mSettings, R.drawable.ic_tune, "Ajustes", "Servidor, notificaciones") { start(Intent(requireContext(), SettingsActivity::class.java)) }
@@ -73,6 +78,44 @@ class MoreFragment : Fragment() {
         v.menuTitle.text = title
         v.menuSubtitle.text = sub
         v.root.setOnClickListener { onClick() }
+    }
+
+    /** Subtítulo del renglón «Pendientes sin conexión» (por enviar / rechazadas por el servidor). */
+    private fun renderSync() {
+        val q = app.repository.offlineQueue
+        val pend = q.count.value
+        val fail = q.failures().size
+        _b?.mSync?.menuSubtitle?.text = when {
+            pend == 0 && fail == 0 -> "Todo sincronizado"
+            fail == 0 -> "$pend por enviar al recuperar la red"
+            else -> "$pend por enviar · $fail no se pudieron enviar"
+        }
+    }
+
+    private fun showOffline() {
+        val q = app.repository.offlineQueue
+        val fmt = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+        val pend = q.pending()
+        val fail = q.failures()
+        val texto = buildString {
+            if (pend.isEmpty()) append("No hay operaciones pendientes.\n")
+            pend.forEach { op ->
+                append("• ${op.summary}\n   Capturada ${fmt.format(Date(op.createdAt))}")
+                if (op.attempts > 0) append(" · ${op.attempts} intento(s)")
+                append("\n")
+            }
+            if (fail.isNotEmpty()) {
+                append("\nNo se pudieron enviar (revísalas y captúralas de nuevo si aplica):\n")
+                fail.forEach { f -> append("• ${f.op.summary}\n   ${f.message}\n") }
+            }
+        }
+        val dlg = MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Trabajo sin conexión")
+            .setMessage(texto.trim())
+            .setPositiveButton("Sincronizar ahora") { _, _ -> SyncWorker.enqueue(requireContext()) }
+            .setNegativeButton("Cerrar", null)
+        if (fail.isNotEmpty()) dlg.setNeutralButton("Borrar avisos") { _, _ -> q.clearFailures(); renderSync() }
+        dlg.show()
     }
 
     private fun renderSession() {

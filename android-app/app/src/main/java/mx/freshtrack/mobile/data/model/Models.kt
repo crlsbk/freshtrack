@@ -199,6 +199,21 @@ data class ConteoResponse(
     val ajustes: List<ConteoAjuste>?,
 )
 
+/** Registro seguro del dispositivo: POST /api/v1/auth/devices */
+data class DispositivoRequest(
+    @SerializedName("id_dispositivo") val idDispositivo: String,
+    val modelo: String?,
+    @SerializedName("version_so") val versionSo: String?,
+    @SerializedName("version_app") val versionApp: String?,
+)
+
+data class DispositivoResponse(
+    @SerializedName("id_registro") val idRegistro: String?,
+    @SerializedName("id_dispositivo") val idDispositivo: String?,
+    val nuevo: Boolean?,
+    val estado: String?,
+)
+
 // ---------------------------------------------------------------- svc-commercial
 data class MermaRequest(
     @SerializedName("id_lote") val idLote: String,

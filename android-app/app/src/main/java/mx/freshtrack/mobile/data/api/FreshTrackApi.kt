@@ -33,6 +33,9 @@ interface FreshTrackApi {
     @GET("api/v1/auth/me")
     suspend fun me(): Response<Usuario>
 
+    @POST("api/v1/auth/devices")
+    suspend fun registerDevice(@Body body: DispositivoRequest): Response<DispositivoResponse>
+
     // ---------- svc-catalog
     @GET("api/v1/catalog/locations")
     suspend fun locations(): Response<LocacionesResponse>
@@ -77,7 +80,10 @@ interface FreshTrackApi {
 
     // ---------- svc-commercial
     @POST("api/v1/commercial/shrinkage")
-    suspend fun shrinkage(@Body body: MermaRequest): Response<MermaResponse>
+    suspend fun shrinkage(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: MermaRequest,
+    ): Response<MermaResponse>
 
     @Multipart
     @POST("api/v1/commercial/evidence")

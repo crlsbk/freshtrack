@@ -1,7 +1,11 @@
 package mx.freshtrack.mobile.data.repo
 
+import android.os.Build
+import mx.freshtrack.mobile.BuildConfig
 import mx.freshtrack.mobile.data.api.ApiClient
 import mx.freshtrack.mobile.data.model.*
+import mx.freshtrack.mobile.data.offline.OfflineQueue
+import mx.freshtrack.mobile.data.offline.SendOutcome
 import mx.freshtrack.mobile.session.SessionManager
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -11,7 +15,12 @@ import java.io.File
 import java.util.UUID
 
 /** Único punto de acceso a los microservicios desde los ViewModels. */
-class FreshTrackRepository(private val client: ApiClient, private val session: SessionManager) {
+class FreshTrackRepository(
+    private val client: ApiClient,
+    private val session: SessionManager,
+    val offlineQueue: OfflineQueue,
+    private val onQueued: () -> Unit = {},
+) {
 
     private val api get() = client.api
     private val store get() = session.storeId
@@ -19,8 +28,36 @@ class FreshTrackRepository(private val client: ApiClient, private val session: S
     // ---------------- auth
     suspend fun login(email: String, password: String): ApiResult<LoginResponse> {
         val r = safeCall { api.login(LoginRequest(email.trim(), password)) }
-        if (r is ApiResult.Ok) session.save(r.data)
+        if (r is ApiResult.Ok) {
+            session.save(r.data)
+            // Registro seguro del dispositivo: si el administrador lo revocó, no se entra.
+            val d = registerDevice()
+            if (d is ApiResult.Fail && d.error.code == "dispositivo_revocado") {
+                safeCall { api.logout() }
+                session.clear()
+                return ApiResult.Fail(
+                    d.error.copy(message = "Este dispositivo fue revocado por un administrador. Pide que lo habiliten de nuevo.")
+                )
+            }
+            // Lo que este usuario dejó pendiente sin conexión se envía en cuanto haya red.
+            if (offlineQueue.pendingFor(r.data.usuario.idUsuario).isNotEmpty()) onQueued()
+        }
         return r
+    }
+
+    /**
+     * POST /auth/devices con el UUID del teléfono, modelo y versiones. Cualquier otro
+     * fallo (sin red, backend anterior sin el endpoint) no impide trabajar.
+     */
+    suspend fun registerDevice(): ApiResult<DispositivoResponse> = safeCall {
+        api.registerDevice(
+            DispositivoRequest(
+                idDispositivo = session.deviceId,
+                modelo = "${Build.MANUFACTURER} ${Build.MODEL}".trim().take(120),
+                versionSo = "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+                versionApp = BuildConfig.VERSION_NAME,
+            )
+        )
     }
 
     /** Revoca el jti en el backend (denylist Redis + PostgreSQL) y limpia la sesión local siempre. */
@@ -57,12 +94,37 @@ class FreshTrackRepository(private val client: ApiClient, private val session: S
     suspend fun changeBatchStatus(idLote: String, estado: String, motivo: String?) =
         safeCall { api.batchStatus(idLote, BatchStatusRequest(estado, motivo, store)) }
 
-    suspend fun cycleCount(idSku: Int?, lineas: List<ConteoLinea>, observacion: String?, idempotencyKey: String) =
-        safeCall { api.cycleCount(idempotencyKey, ConteoRequest(store ?: 0, idSku, lineas, observacion)) }
+    fun countRequest(idSku: Int?, lineas: List<ConteoLinea>, observacion: String?) =
+        ConteoRequest(store ?: 0, idSku, lineas, observacion)
+
+    suspend fun cycleCount(req: ConteoRequest, idempotencyKey: String) =
+        safeCall { api.cycleCount(idempotencyKey, req) }
 
     // ---------------- comercial
-    suspend fun shrinkage(idLote: String, cantidad: Double, causa: String, obs: String?, idEvidencia: String?) =
-        safeCall { api.shrinkage(MermaRequest(idLote, store ?: 0, cantidad, causa, obs, idEvidencia)) }
+    fun shrinkageRequest(idLote: String, cantidad: Double, causa: String, obs: String?, idEvidencia: String?) =
+        MermaRequest(idLote, store ?: 0, cantidad, causa, obs, idEvidencia)
+
+    suspend fun shrinkage(req: MermaRequest, idempotencyKey: String) =
+        safeCall { api.shrinkage(idempotencyKey, req) }
+
+    // ---------------- trabajo sin conexión
+    /** Guarda la operación para la sincronización posterior y programa el envío al volver la red. */
+    fun saveOffline(type: OfflineQueue.Type, payload: Any, idempotencyKey: String, summary: String) {
+        offlineQueue.enqueue(type, payload, idempotencyKey, session.user?.idUsuario, summary)
+        onQueued()
+    }
+
+    /** Reenvía una operación guardada con su Idempotency-Key original. */
+    suspend fun replay(op: OfflineQueue.PendingOp): SendOutcome {
+        val r: ApiResult<*> = when (op.type) {
+            OfflineQueue.Type.MERMA -> shrinkage(client.gson.fromJson(op.payloadJson, MermaRequest::class.java), op.id)
+            OfflineQueue.Type.CONTEO -> cycleCount(client.gson.fromJson(op.payloadJson, ConteoRequest::class.java), op.id)
+        }
+        return when (r) {
+            is ApiResult.Ok -> SendOutcome.Sent
+            is ApiResult.Fail -> SendOutcome.from(r.error)
+        }
+    }
 
     suspend fun uploadEvidence(
         file: File, tipo: String, refTipo: String?, refId: String?, descripcion: String?,

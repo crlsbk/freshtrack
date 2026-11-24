@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
  * Construye Retrofit/OkHttp. Se reconstruye cuando cambia la URL del servidor en Ajustes.
  *
  * Cadena de interceptores:
- *  1. [AuthInterceptor]   → Authorization: Bearer, X-Correlation-Id, X-Location-Id, User-Agent
+ *  1. [AuthInterceptor]   → Authorization: Bearer, X-Correlation-Id, X-Location-Id, X-Device-Id, User-Agent
  *  2. [UnauthorizedInterceptor] → si el gateway responde 401 se limpia la sesión y se avisa a la UI
  *  3. HttpLoggingInterceptor (solo debug; el header Authorization se redacta)
  */
@@ -88,6 +88,8 @@ class AuthInterceptor(private val session: SessionManager, private val refresher
             // Mismo correlation_id viaja por todos los microservicios y queda en la bitácora.
             .header("X-Correlation-Id", UUID.randomUUID().toString().replace("-", ""))
         session.storeId?.let { b.header("X-Location-Id", it.toString()) }
+        // Identificador del dispositivo registrado (POST /auth/devices): trazabilidad en los logs.
+        b.header("X-Device-Id", session.deviceId)
         val isLogin = original.url.encodedPath.endsWith("/auth/login")
         if (!isLogin) session.token?.let { b.header("Authorization", "Bearer $it") }
         return chain.proceed(b.build())

@@ -34,8 +34,14 @@ def get_engine() -> Engine:
         _engine = create_engine(
             Config.DATABASE_URL,
             pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
+            # Por PROCESO. En producción hay 13 procesos Gunicorn (web + 8
+            # servicios, algunos con 2 workers) × 4 hilos: con 5+10 se podían
+            # abrir hasta 195 conexiones contra max_connections=100. Con 4+2
+            # el techo es 78 y cada hilo sigue teniendo su conexión.
+            pool_size=int(os.getenv("DB_POOL_SIZE", "4")),
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "2")),
+            pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
+            pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "1800")),
             future=True,
             # Sin esto, si no hay nada escuchando en el puerto, la conexión se
             # queda colgada hasta el timeout del sistema operativo (minutos) en

@@ -14,6 +14,8 @@
 
 x-entorno-prod: &entorno-prod
   TRUST_PROXY: "true"
+  DB_POOL_SIZE: "4"
+  DB_MAX_OVERFLOW: "2"
   SESSION_COOKIE_SECURE: "true"
   SVC_PUBLIC_HOST: ${PUBLIC_DOMAIN:-localhost}
   OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-https://storage.googleapis.com}
@@ -38,13 +40,29 @@ services:
       - "checkpoint_completion_target=0.9"
       - "-c"
       - "wal_buffers=16MB"
+      # 13 procesos Gunicorn × pool 4+2 = 78 conexiones como máximo (app/db.py).
+      - "-c"
+      - "max_connections=120"
+      # Disco SSD/PD balanceado de GCP: lecturas concurrentes baratas.
+      - "-c"
+      - "effective_io_concurrency=200"
+      # Consultas OLTP cortas: compilar JIT cuesta más de lo que ahorra en 2 vCPU.
+      - "-c"
+      - "jit=off"
+      # Registrar consultas lentas para encontrar lo que falte optimizar
+      # (docker compose logs postgres | grep duration).
+      - "-c"
+      - "log_min_duration_statement=500ms"
+    mem_limit: 3g
 
   mongo:
     ports: !reset []
     command: ["mongod", "--wiredTigerCacheSizeGB", "1"]
+    mem_limit: 2g
 
   redis:
     ports: !reset []
+    mem_limit: 512m
 
   minio:
     profiles: ["local-s3"]
@@ -62,37 +80,43 @@ services:
       svc_planning: { condition: service_healthy }
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "90", "--access-logfile", "-", "run:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "90", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "run:app"]
+    mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_auth:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.auth_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.auth_service.app:app"]
+    mem_limit: 512m
 
   svc_catalog:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5002", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.catalog_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5002", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.catalog_service.app:app"]
+    mem_limit: 512m
 
   svc_inventory:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5003", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.inventory_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5003", "--workers", "2", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.inventory_service.app:app"]
+    mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_commercial:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5004", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.commercial_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5004", "--workers", "2", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.commercial_service.app:app"]
+    mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_asn:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.asn_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.asn_service.app:app"]
+    mem_limit: 512m
 
   svc_planning:
     ports: !reset []
@@ -102,19 +126,22 @@ services:
       mongo: { condition: service_healthy }
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5006", "--workers", "2", "--threads", "4", "--timeout", "120", "--access-logfile", "-", "app.services.planning_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5006", "--workers", "2", "--threads", "4", "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.planning_service.app:app"]
+    mem_limit: 768m  # 2 workers × ~150-250 MB + margen
 
   svc_alerts:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5007", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.alerts_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5007", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.alerts_service.app:app"]
+    mem_limit: 512m
 
   svc_audit:
     ports: !reset []
     environment:
       <<: *entorno-prod
-    command: ["gunicorn", "--bind", "0.0.0.0:5008", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "app.services.audit_service.app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:5008", "--workers", "1", "--threads", "4", "--timeout", "60", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "app.services.audit_service.app:app"]
+    mem_limit: 512m
 
   caddy:
     image: caddy:2-alpine

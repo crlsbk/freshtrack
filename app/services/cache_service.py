@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 from datetime import datetime, timezone
 import json
+import os
 import logging
 import time
 import uuid
@@ -53,6 +54,8 @@ def get_redis_client() -> redis.Redis | None:
                 password=Config.REDIS_PASSWORD,
                 db=Config.REDIS_DB,
                 socket_connect_timeout=2.0,
+                # Sin esto, un Redis colgado bloquea la petición indefinidamente.
+                socket_timeout=float(os.getenv("REDIS_SOCKET_TIMEOUT", "2.0")),
                 decode_responses=True,
             )
         else:
@@ -61,6 +64,8 @@ def get_redis_client() -> redis.Redis | None:
                 port=Config.REDIS_PORT,
                 db=Config.REDIS_DB,
                 socket_connect_timeout=2.0,
+                # Sin esto, un Redis colgado bloquea la petición indefinidamente.
+                socket_timeout=float(os.getenv("REDIS_SOCKET_TIMEOUT", "2.0")),
                 decode_responses=True,
             )
         cliente = redis.Redis(connection_pool=_pool)

@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from flask import g, request
 from redis.exceptions import RedisError
 
+from app.domain.cache_web import contar_cacheado
 from app.db import a_float, query
 from app.domain import mermas as dom_mermas
 from app.domain import saga_venta
@@ -308,10 +309,11 @@ def historial_ventas():
             params[campo] = fecha + timedelta(days=1) if campo == "hasta" else fecha
             condiciones.append(f"v.fecha_venta {op} :{campo}")
     where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
+    total = contar_cacheado(f"FROM operacion.venta v {where}", params)
     filas = query(
         f"""
         SELECT v.id_venta::text AS id_venta, v.folio, v.id_locacion, loc.nombre AS locacion,
-               v.canal, v.total, v.fecha_venta, COUNT(*) OVER () AS _total
+               v.canal, v.total, v.fecha_venta
         FROM operacion.venta v
         JOIN operacion.locacion loc ON loc.id_locacion = v.id_locacion
         {where}
@@ -320,9 +322,7 @@ def historial_ventas():
         """,
         **params,
     )
-    total = filas[0]["_total"] if filas else 0
     for v in filas:
-        v.pop("_total", None)
         v["total"] = a_float(v["total"])
     return render_response(
         {"paginacion": meta_paginacion(pagina, por_pagina, total), "ventas": filas},

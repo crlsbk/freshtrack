@@ -126,7 +126,18 @@ def asegurar_indices(db: Database | None = None) -> dict[str, list[str]]:
             name="idx_asn_etiqueta",
             sparse=True,
         )
-        indices_creados["avisos_asn"].extend([r4, r5, r6, r6b, r6c])
+        # Listado general ordenado por fecha (sin filtro de proveedor) y
+        # escaneo de etiquetas RFID desde la app móvil de almacén.
+        r6d = db.avisos_asn.create_index(
+            [("fecha_embarque", pymongo.DESCENDING)],
+            name="idx_asn_fecha",
+        )
+        r6e = db.avisos_asn.create_index(
+            [("etiquetas.codigo_rfid_epc", pymongo.ASCENDING)],
+            name="idx_asn_rfid",
+            sparse=True,
+        )
+        indices_creados["avisos_asn"].extend([r4, r5, r6, r6b, r6c, r6d, r6e])
 
         # 3. alertas_operativas
         r7 = db.alertas_operativas.create_index(
@@ -142,7 +153,17 @@ def asegurar_indices(db: Database | None = None) -> dict[str, list[str]]:
             name="idx_alerta_retencion_ttl",
             expireAfterSeconds=DIAS_RETENCION_ALERTAS * 86400,
         )
-        indices_creados["alertas_operativas"].extend([r7, r8, r9])
+        # Alertas abiertas por fecha (sin filtrar criticidad) y por tienda:
+        # el índice de criticidad no sirve para ordenar si no se filtra por ella.
+        r10 = db.alertas_operativas.create_index(
+            [("atendida", pymongo.ASCENDING), ("generada_en", pymongo.DESCENDING)],
+            name="idx_alerta_abierta_fecha",
+        )
+        r11 = db.alertas_operativas.create_index(
+            [("atendida", pymongo.ASCENDING), ("id_locacion", pymongo.ASCENDING), ("generada_en", pymongo.DESCENDING)],
+            name="idx_alerta_abierta_locacion_fecha",
+        )
+        indices_creados["alertas_operativas"].extend([r7, r8, r9, r10, r11])
 
     except Exception as exc:
         logger.warning("Aviso al asegurar índices en MongoDB: %s", exc)

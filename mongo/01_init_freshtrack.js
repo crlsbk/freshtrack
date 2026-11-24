@@ -143,6 +143,8 @@ db.avisos_asn.createIndex(
 db.avisos_asn.createIndex({ estado: 1 }, { name: "idx_asn_estado" });
 db.avisos_asn.createIndex({ folio_oc: 1 }, { name: "idx_asn_folio_oc", sparse: true });
 db.avisos_asn.createIndex({ "etiquetas.codigo_etiqueta": 1 }, { name: "idx_asn_etiqueta", sparse: true });
+db.avisos_asn.createIndex({ fecha_embarque: -1 }, { name: "idx_asn_fecha" });
+db.avisos_asn.createIndex({ "etiquetas.codigo_rfid_epc": 1 }, { name: "idx_asn_rfid", sparse: true });
 
 // --- alertas_operativas ------------------------------------------------------
 db.createCollection("alertas_operativas", {
@@ -184,6 +186,14 @@ db.alertas_operativas.createIndex(
 db.alertas_operativas.createIndex(
   { id_locacion: 1, tipo: 1, generada_en: -1 },
   { name: "idx_alerta_locacion_tipo" }
+);
+db.alertas_operativas.createIndex(
+  { atendida: 1, generada_en: -1 },
+  { name: "idx_alerta_abierta_fecha" }
+);
+db.alertas_operativas.createIndex(
+  { atendida: 1, id_locacion: 1, generada_en: -1 },
+  { name: "idx_alerta_abierta_locacion_fecha" }
 );
 // Estrategia de crecimiento: las alertas atendidas caducan solas a los 180 días.
 db.alertas_operativas.createIndex(

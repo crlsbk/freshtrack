@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from flask import Response, g, request
 
+from app.domain.cache_web import contar_cacheado
 from app.db import a_float, one, query
 from app.domain import compras as dom_compras
 from app.domain import descuentos as dom_desc
@@ -153,8 +154,7 @@ def listar_ordenes():
         f"""
         SELECT o.id_orden::text AS id_orden, o.id_sku, p.nombre AS producto, o.id_locacion,
                loc.nombre AS locacion, o.id_proveedor, o.cantidad_sugerida, o.cantidad_aprobada,
-               o.prioridad, o.estado, o.explicacion, o.fecha_creacion, o.fecha_decision,
-               COUNT(*) OVER () AS _total
+               o.prioridad, o.estado, o.explicacion, o.fecha_creacion, o.fecha_decision
         FROM analitica.orden_reabastecimiento o
         JOIN operacion.producto p ON p.id_sku = o.id_sku
         JOIN operacion.locacion loc ON loc.id_locacion = o.id_locacion
@@ -164,9 +164,8 @@ def listar_ordenes():
         """,
         **params,
     )
-    total = filas[0]["_total"] if filas else 0
+    total = contar_cacheado(f"FROM analitica.orden_reabastecimiento o {where}", params, ttl=30)
     for d in filas:
-        d.pop("_total", None)
         d["cantidad_sugerida"] = a_float(d["cantidad_sugerida"])
         d["cantidad_aprobada"] = a_float(d["cantidad_aprobada"]) if d["cantidad_aprobada"] is not None else None
     return render_response(

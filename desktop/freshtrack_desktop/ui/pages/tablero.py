@@ -53,6 +53,28 @@ def _dic(valor) -> dict:
     return valor if isinstance(valor, dict) else {}
 
 
+def productos_todos(api, por_pagina: int = 100, max_paginas: int = 50) -> list[dict]:
+    """
+    Recorre todas las páginas de /api/v1/catalog/products.
+
+    El servicio limita por_pagina a 100; pedir solo la primera página dejaba
+    fuera de los combos a los SKUs 101+ (el catálogo masivo tiene 200). Cada
+    página la cachea svc-catalog en Redis, así que recorrerlas es barato.
+    """
+    productos: list[dict] = []
+    pagina = 1
+    while pagina <= max_paginas:
+        resp = _dic(api.call("catalog", "GET", "/api/v1/catalog/products",
+                             params={"por_pagina": por_pagina, "pagina": pagina}))
+        lote = _lista(resp.get("productos"))
+        productos.extend(lote)
+        total_paginas = int(_num(_dic(resp.get("paginacion")).get("total_paginas"), 1) or 1)
+        if not lote or pagina >= total_paginas:
+            break
+        pagina += 1
+    return productos
+
+
 class TableroPage(BasePage):
     title = "Tablero"
     subtitle = "Resumen de pronósticos, alertas y desperdicio con las alertas abiertas"

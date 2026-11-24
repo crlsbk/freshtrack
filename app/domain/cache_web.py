@@ -107,3 +107,25 @@ def invalida(*patrones: str):
         return envoltura
 
     return deco
+
+
+def contar_cacheado(sql_desde: str, params: dict, ttl: int = 60) -> int:
+    """
+    `SELECT COUNT(*) <sql_desde>` cacheado por (SQL, filtros).
+
+    Sustituye a `COUNT(*) OVER ()` en los listados paginados de los
+    microservicios: esa ventana obliga a leer TODAS las filas filtradas antes
+    del LIMIT en cada página. El total para la paginación tolera ~1 min de
+    desfase. `lim`/`off` se ignoran (no cambian el total).
+    """
+    import hashlib
+
+    from app.db import escalar
+
+    filtros = {k: v for k, v in params.items() if k not in ("lim", "off", "limite", "offset")}
+    huella = hashlib.sha1(
+        (" ".join(sql_desde.split()) + repr(sorted(filtros.items(), key=lambda kv: kv[0]))).encode("utf-8")
+    ).hexdigest()
+    return int(
+        con_cache_web(f"web:count:{huella}", ttl, lambda: escalar(f"SELECT COUNT(*) {sql_desde}", **filtros) or 0)
+    )

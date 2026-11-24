@@ -293,7 +293,7 @@ def api_venta_saga():
 @rol_en_token("admin", "auditor")
 def api_eventos_recientes():
     """Consulta los últimos eventos de dominio emitidos en Redis Streams."""
-    cantidad = a_int(request.args.get("n"), 20)
+    cantidad = max(1, min(a_int(request.args.get("n"), 20), 200))
     eventos = leer_ultimos_eventos(cantidad=cantidad)
     return jsonify({"total": len(eventos), "eventos": eventos})
 
@@ -307,7 +307,7 @@ def api_alertas_documentos():
     alertas = doc_store.listar_alertas_operativas(
         id_locacion=id_locacion,
         criticidad=criticidad,
-        limite=a_int(request.args.get("limite"), 50),
+        limite=max(1, min(a_int(request.args.get("limite"), 50), 200)),
     )
     return jsonify({"total": len(alertas), "alertas": alertas})
 

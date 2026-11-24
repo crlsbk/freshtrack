@@ -15,7 +15,7 @@ from ...core.errors import ApiError
 from .. import theme
 from ..widgets import DataTable, KpiCard, button, secondary_label
 from .base import BasePage
-from .tablero import _dic, _lista, _num, etiqueta_metodo  # noqa: F401 - etiqueta_metodo se reexporta
+from .tablero import _dic, _lista, _num, productos_todos, etiqueta_metodo  # noqa: F401 - etiqueta_metodo se reexporta
 
 METODOS = (("AUTO", "Automático (mejor modelo por serie)"), ("MEDIA_MOVIL", "Media móvil"),
            ("MEDIA_MOVIL_PONDERADA", "Media móvil ponderada"),
@@ -466,8 +466,7 @@ class PronosticosPage(BasePage):
 
     def _cargar_catalogos(self) -> tuple[list, list]:
         locs = self.ctx.api.call("catalog", "GET", "/api/v1/catalog/locations")
-        prods = self.ctx.api.call("catalog", "GET", "/api/v1/catalog/products", params={"por_pagina": 100})
-        return _lista(_dic(locs).get("locaciones")), _lista(_dic(prods).get("productos"))
+        return _lista(_dic(locs).get("locaciones")), productos_todos(self.ctx.api)
 
     def _llenar_catalogos(self, res) -> None:
         locs, prods = res

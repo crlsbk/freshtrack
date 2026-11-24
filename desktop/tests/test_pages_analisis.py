@@ -114,7 +114,11 @@ def test_pronosticos_refresh_llena_catalogos(ctx, qtbot, fake_http):
     page.refresh()
     _esperar(ctx, qtbot)
     assert page.cmb_tienda.count() == 8  # todas + 7 locaciones
-    assert page.cmb_sku.count() == 6
+    # El fixture declara total_paginas=3: se recorren las 3 páginas (antes solo
+    # la primera, y los SKUs 101+ del catálogo masivo no aparecían). El doble
+    # HTTP repite la misma página de 5 productos en cada llamada.
+    assert len(fake_http.calls_to("GET", "/api/v1/catalog/products")) == 3
+    assert page.cmb_sku.count() == 1 + 5 * 3
     assert page.cmb_tienda.itemData(1) == 1
 
 

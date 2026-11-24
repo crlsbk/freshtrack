@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from flask import g, request
 from sqlalchemy import text
 
+from app.domain.cache_web import contar_cacheado
 from app.db import a_float, one, query, transaccion
 from app.domain import inventario as dom_inv
 from app.domain import recepcion as dom_recepcion
@@ -85,9 +86,14 @@ def consultar_stock():
         condiciones.append("l.id_sku = :sku")
         params["sku"] = id_sku
     if dias_max is not None:
-        condiciones.append("(l.fecha_caducidad - CURRENT_DATE) <= :dmax")
+        condiciones.append("l.fecha_caducidad <= CURRENT_DATE + CAST(:dmax AS integer)")  # sargable
         params["dmax"] = dias_max
 
+    total = contar_cacheado(
+        f"""FROM operacion.existencia e JOIN operacion.lote l ON l.id_lote = e.id_lote
+            WHERE {" AND ".join(condiciones)}""",
+        params,
+    )
     filas = query(
         f"""
         SELECT e.id_existencia::text AS id_existencia, e.id_locacion, loc.nombre AS locacion,
@@ -95,8 +101,7 @@ def consultar_stock():
                l.estado AS estado_lote,
                l.fecha_caducidad, (l.fecha_caducidad - CURRENT_DATE) AS dias_restantes,
                e.cantidad_disponible, e.cantidad_reservada,
-               (e.cantidad_disponible - e.cantidad_reservada) AS disponible_neto,
-               COUNT(*) OVER () AS _total
+               (e.cantidad_disponible - e.cantidad_reservada) AS disponible_neto
         FROM operacion.existencia e
         JOIN operacion.lote l ON l.id_lote = e.id_lote
         JOIN operacion.producto p ON p.id_sku = l.id_sku
@@ -107,9 +112,7 @@ def consultar_stock():
         """,
         **params,
     )
-    total = filas[0]["_total"] if filas else 0
     for d in filas:
-        d.pop("_total", None)
         for campo in ("cantidad_disponible", "cantidad_reservada", "disponible_neto"):
             d[campo] = a_float(d[campo])
 

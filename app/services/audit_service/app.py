@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from flask import g, request
 
 from app import auditoria
+from app.domain.cache_web import contar_cacheado
 from app.db import a_float, one, query
 from app.events.dispatcher import leer_ultimos_eventos
 from app.services.common.auth import requiere_auth
@@ -77,10 +78,11 @@ def listar_eventos():
             params[campo] = fecha + timedelta(days=1) if campo == "hasta" else fecha
             condiciones.append(f"fecha_evento {op} :{campo}")
     where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
+    total = contar_cacheado(f"FROM auditoria.bitacora_eventos {where}", params)
     filas = query(
         f"""
         SELECT id_evento::text AS id_evento, fecha_evento, accion, nombre_tabla,
-               id_registro, descripcion, usuario_email, ip::text AS ip, COUNT(*) OVER () AS _total
+               id_registro, descripcion, usuario_email, ip::text AS ip
         FROM auditoria.bitacora_eventos
         {where}
         ORDER BY fecha_evento DESC
@@ -88,9 +90,6 @@ def listar_eventos():
         """,
         **params,
     )
-    total = filas[0]["_total"] if filas else 0
-    for f in filas:
-        f.pop("_total", None)
     return render_response(
         {"paginacion": meta_paginacion(pagina, por_pagina, total), "bitacora": filas},
         status=200,

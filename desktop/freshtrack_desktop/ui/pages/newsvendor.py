@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QComboBox, QFormLayout, QHBoxLayout, QLabel, QSpin
 
 from ..widgets import DataTable, KpiCard, button, secondary_label, set_tone
 from .base import BasePage
-from .tablero import _dic, _lista, _num
+from .tablero import _dic, _lista, _num, productos_todos
 
 HORIZONTE_MAX = 365
 
@@ -92,8 +92,7 @@ class NewsvendorPage(BasePage):
 
     def _cargar(self) -> tuple[list, list]:
         locs = self.ctx.api.call("catalog", "GET", "/api/v1/catalog/locations")
-        prods = self.ctx.api.call("catalog", "GET", "/api/v1/catalog/products", params={"por_pagina": 100})
-        return _lista(_dic(locs).get("locaciones")), _lista(_dic(prods).get("productos"))
+        return _lista(_dic(locs).get("locaciones")), productos_todos(self.ctx.api)
 
     def _llenar(self, res) -> None:
         locs, prods = res

@@ -291,10 +291,14 @@ def validar_uuid(valor: str, campo: str = "id") -> str:
 # =============================================================================
 # Paginación
 # =============================================================================
+PAGINA_MAXIMA = 1000
+
+
 def paginacion() -> tuple[int, int, int]:
     """Lee ?pagina y ?por_pagina (o ?limite por compatibilidad). Devuelve (pagina, por_pagina, offset)."""
     args = request.args
-    pagina = entero(args, "pagina", minimo=1, defecto=1)
+    # Tope: un OFFSET de cientos de miles de filas cuesta tanto como leerlas.
+    pagina = min(entero(args, "pagina", minimo=1, defecto=1), PAGINA_MAXIMA)
     por_pagina = entero(args, "por_pagina", minimo=1, defecto=None)
     if por_pagina is None:
         por_pagina = entero(args, "limite", minimo=1, defecto=POR_PAGINA_DEFECTO)

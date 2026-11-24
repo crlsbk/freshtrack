@@ -1,0 +1,18 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,[web] POST /login,CatchResponseError('login web admin: 500 '),2,2026-11-24T08:45:35Z,2026-11-24T08:46:33Z
+GET,[web] /lotes,CatchResponseError('sesión perdida (redirige a /login)'),1,2026-11-24T08:47:18Z,2026-11-24T08:47:18Z
+GET,[web] /ventas,CatchResponseError('sesión perdida (redirige a /login)'),1,2026-11-24T08:47:25Z,2026-11-24T08:47:25Z
+GET,[web] /productos,CatchResponseError('500'),4,2026-11-24T08:47:07Z,2026-11-24T08:47:25Z
+GET,[web] /lotes,CatchResponseError('500'),3,2026-11-24T08:46:33Z,2026-11-24T08:47:16Z
+GET,[web] /panel,CatchResponseError('500'),1,2026-11-24T08:47:11Z,2026-11-24T08:47:11Z
+GET,[web] /triaje,CatchResponseError('500'),2,2026-11-24T08:46:34Z,2026-11-24T08:47:21Z
+GET,[web] /inventario,CatchResponseError('sesión perdida (redirige a /login)'),2,2026-11-24T08:45:14Z,2026-11-24T08:47:19Z
+GET,[web] /productos,CatchResponseError('sesión perdida (redirige a /login)'),1,2026-11-24T08:47:19Z,2026-11-24T08:47:19Z
+POST,[web] POST lectura sensor (Mongo),CatchResponseError('401 token vencido/revocado'),21,2026-11-24T08:45:18Z,2026-11-24T08:48:00Z
+GET,[web] /auditoria,CatchResponseError('sesión perdida (redirige a /login)'),1,2026-11-24T08:46:33Z,2026-11-24T08:46:33Z
+POST,[web] POST /login,CatchResponseError('login web gerente: 500 '),5,2026-11-24T08:45:03Z,2026-11-24T08:47:01Z
+GET,[web] /desperdicio-evitado,CatchResponseError('sesión perdida (redirige a /login)'),1,2026-11-24T08:43:59Z,2026-11-24T08:43:59Z
+GET,[web] /alertas,CatchResponseError('500'),8,2026-11-24T08:45:40Z,2026-11-24T08:47:52Z
+GET,[web] /panel,CatchResponseError('sesión perdida (redirige a /login)'),6,2026-11-24T08:41:54Z,2026-11-24T08:48:50Z
+GET,[web] /inventario,CatchResponseError('500'),7,2026-11-24T08:45:39Z,2026-11-24T08:47:30Z
+GET,[web] /usuarios,CatchResponseError('sesión perdida (redirige a /login)'),1,2026-11-24T08:39:45Z,2026-11-24T08:39:45Z

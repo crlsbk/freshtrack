@@ -33,6 +33,9 @@ x-entorno-servicio: &entorno-servicio
   OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
   APP_VERSION: ${APP_VERSION:-1.0.0}
   LOG_LEVEL: INFO
+  # Multiplica todos los límites de @limite_tasa (1 = normal). Solo para pruebas de carga
+  # locales: RATE_LIMIT_FACTOR=1000 docker compose up -d  (ver tests/carga/README.md).
+  RATE_LIMIT_FACTOR: ${RATE_LIMIT_FACTOR:-1}
   # Correo saliente: los servicios entregan siempre a Mailpit (servicio "mail"), que guarda
   # una copia visible en http://localhost:8025 y la reenvía al destinatario real si hay
   # credenciales MAIL_RELAY_* en .env. Para mandar directo a otro SMTP, define SMTP_HOST, etc.

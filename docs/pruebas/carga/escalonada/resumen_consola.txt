@@ -1,0 +1,60 @@
+GET      [alerts] GET waste-measurement                                                      26000  28000  29000  31000  33000  34000  34000  34000  34000  34000  34000     15
+POST     [alerts] POST alerts/scan                                                            2500   2700   3400   3400   4000   4300   4300   4300   4300   4300   4300     11
+GET      [asn] GET asn analytics summary                                                        78     89    110    130    220    260    260    260    260    260    260     14
+GET      [asn] GET asn en tránsito                                                              31     46     56     62     82    110    170    230    230    230    230     62
+GET      [audit] GET events                                                                  55000  64000  64000 107000 107000 107000 107000 107000 107000 107000 107000      5
+POST     [audit] POST ubicación conductor                                                       61     85    110    130    200    260    340    410    690    690    690    285
+GET      [auth] GET counters                                                                    40     57     69     69     92    350    350    350    350    350    350     11
+POST     [auth] POST login                                                                     200    220    240    250    390    400    500    500    500    500    500     25
+GET      [catalog] GET products (cache Redis)                                                   11     14     19     24     50     70    180    310    320    320    320    162
+GET      [commercial] GET cart (Redis)                                                          28     39     48     55     82    130    190    250    400    400    400    355
+GET      [commercial] GET sales                                                                590    760    840    910   1100   1500   2000   2400   2400   2400   2400    191
+POST     [commercial] POST checkout (Saga FEFO)                                                410    540    650    730   1000   1500   1800   2300   3100   3100   3100    512
+POST     [commercial] POST shrinkage (merma)                                                   180    260    310    360    520    630    700    850   2100   2100   2100    106
+PUT      [commercial] PUT cart (Redis)                                                          31     41     50     57     86    180    510    650   1500   1500   1500    637
+GET      [inventory] GET fefo-queue                                                             94    130    150    170    250    330    440    480    510    510    510    298
+GET      [inventory] GET stock (XML)                                                          1000   1100   1400   1400   1700   1700   1700   1700   1700   1700   1700      8
+GET      [inventory] GET stock (precarga)                                                      150    150    150    150    150    150    150    150    150    150    150      3
+GET      [inventory] GET stock?id_sku                                                          120    170    210    240    320    390    570    680    970    970    970    457
+POST     [inventory] POST expiration/scan                                                    46000  48000  56000  56000  74000  74000  74000  74000  74000  74000  74000      8
+GET      [planning] GET forecast backtest                                                    60000  62000  64000  64000  65000  65000  65000  65000  65000  65000  65000      7
+GET      [planning] GET forecast kpis                                                           94    140    210    210    280    400   1300   1300   1300   1300   1300     22
+GET      [planning] GET replenishment orders                                                   300    410    660    790    920   2200   2200   2200   2200   2200   2200     19
+GET      [web] /alertas                                                                        870   3900  10000  15000  25000  39000  42000  50000  50000  50000  50000     97
+GET      [web] /auditoria                                                                     1400   1400   2000   2000   2000   2000   2000   2000   2000   2000   2000      4
+GET      [web] /desperdicio-evitado                                                           6500   6500   7300   7300   7800   7800   7800   7800   7800   7800   7800      6
+GET      [web] /inventario                                                                    6000  10000  14000  18000  40000  46000  65000  78000  78000  78000  78000     98
+GET      [web] /lotes                                                                        22000  37000  42000  50000  61000  73000  75000  84000  84000  84000  84000     54
+GET      [web] /mapa                                                                           180   7100  14000  20000  57000  93000 103000 103000 103000 103000 103000     31
+GET      [web] /panel                                                                         2100   7400  23000  30000  69000  75000  75000  75000  75000  75000  75000     14
+GET      [web] /productos                                                                    30000  42000  49000  51000  58000  61000  64000  65000  65000  65000  65000     88
+GET      [web] /triaje                                                                       47000  55000  55000  87000  95000  95000  95000  95000  95000  95000  95000      9
+GET      [web] /usuarios                                                                       240    240  42000  42000  42000  42000  42000  42000  42000  42000  42000      3
+GET      [web] /ventas                                                                       16000  22000  26000  28000  36000  48000  48000  52000  52000  52000  52000     57
+POST     [web] POST /login                                                                    4300   6800  10000  19000  30000  30000  31000  31000  31000  31000  31000     67
+POST     [web] POST lectura sensor (Mongo)                                                    1600   4400   7600   9400  15000  22000  30000  30000  30000  30000  30000    845
+--------|--------------------------------------------------------------------------------|--------|------|------|------|------|------|------|------|------|------|------|------
+         Aggregated                                                                            140    350    720   1400   8400  21000  41000  54000  87000 107000 107000   4586
+
+Error report
+# occurrences      Error                                                                                               
+------------------|---------------------------------------------------------------------------------------------------------------------------------------------
+1                  GET [web] /usuarios: sesión perdida (redirige a /login)                                             
+6                  GET [web] /panel: sesión perdida (redirige a /login)                                                
+1                  GET [web] /desperdicio-evitado: sesión perdida (redirige a /login)                                  
+5                  POST [web] POST /login: login web gerente: 500                                                      
+2                  GET [web] /inventario: sesión perdida (redirige a /login)                                           
+21                 POST [web] POST lectura sensor (Mongo): 401 token vencido/revocado                                  
+2                  POST [web] POST /login: login web admin: 500                                                        
+7                  GET [web] /inventario: 500                                                                          
+8                  GET [web] /alertas: 500                                                                             
+3                  GET [web] /lotes: 500                                                                               
+1                  GET [web] /auditoria: sesión perdida (redirige a /login)                                            
+2                  GET [web] /triaje: 500                                                                              
+4                  GET [web] /productos: 500                                                                           
+1                  GET [web] /panel: 500                                                                               
+1                  GET [web] /lotes: sesión perdida (redirige a /login)                                                
+1                  GET [web] /productos: sesión perdida (redirige a /login)                                            
+1                  GET [web] /ventas: sesión perdida (redirige a /login)                                               
+------------------|---------------------------------------------------------------------------------------------------------------------------------------------
+

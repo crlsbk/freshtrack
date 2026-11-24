@@ -13,6 +13,7 @@ Devuelve cabeceras estándar RFC:
 from __future__ import annotations
 
 import functools
+import os
 from typing import Any, Callable
 
 from flask import g, make_response, request
@@ -47,6 +48,18 @@ def _extraer_identificador_cliente(por_ip: bool = True, por_usuario: bool = True
     return ":".join(partes)
 
 
+def _factor_limite() -> float:
+    """
+    RATE_LIMIT_FACTOR multiplica todos los límites (por defecto 1 = sin cambio).
+    Existe para pruebas de carga locales (tests/carga), donde se quiere medir la
+    capacidad real de los servicios y no el tope del limitador.
+    """
+    try:
+        return max(1.0, float(os.getenv("RATE_LIMIT_FACTOR") or 1))
+    except ValueError:
+        return 1.0
+
+
 def limite_tasa(
     limite: int = 60,
     ventana_segundos: int = 60,
@@ -63,10 +76,13 @@ def limite_tasa(
         def login():
             ...
     """
+    limite_base = limite
+
     def decorador(fn: Callable) -> Callable:
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             identificador = clave_func() if clave_func else _extraer_identificador_cliente(por_ip, por_usuario)
+            limite = int(limite_base * _factor_limite())
 
             permitido, restantes, ttl_reset = verificar_rate_limit(
                 identificador, limite=limite, ventana_segundos=ventana_segundos

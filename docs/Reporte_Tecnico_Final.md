@@ -16,7 +16,7 @@
   - Juan Nicolás Núñez Mendoza (613622)
   - Fabián Azaed Orta Singlaterry (613504)
 - **Fecha de Entrega:** 24 de noviembre de 2026
-- **Versión del Sistema:** FreshTrack v3.0 (commit `e40dd4a`, rama `avance2-postgresql-real`)
+- **Versión del Sistema:** FreshTrack v3.0 (commit `1c213e4`, rama `avance2-postgresql-real`)
 - **Despliegue:** Google Compute Engine + Cloud Storage · `https://34.51.41.80.nip.io`
 - **Tecnologías Centrales:** Python 3.14 · Flask · PostgreSQL 17 · MongoDB 7 · Redis 7 · Google Cloud Storage · Docker Compose · Caddy (HTTPS) · PySide6 (escritorio) · Kotlin (Android) · Locust
 
@@ -72,7 +72,7 @@
 | Integrantes | Santiago López Cervantes (612956) · Juan Nicolás Núñez Mendoza (613622) · Fabián Azaed Orta Singlaterry (613504) |
 | Repositorio | [github.com/crlsbk/freshtrack](https://github.com/crlsbk/freshtrack), rama `avance2-postgresql-real` |
 | Despliegue | Google Compute Engine — `https://34.51.41.80.nip.io` |
-| Versión documentada | Commit `e40dd4a` del 24 de noviembre de 2026 (rama `avance2-postgresql-real`) |
+| Versión documentada | Commit `1c213e4` del 24 de noviembre de 2026 (rama `avance2-postgresql-real`) |
 
 ---
 
@@ -85,13 +85,13 @@ La solución integra tres clientes (sistema web, app de escritorio para comprado
 | Indicador | Valor |
 | --- | --- |
 | Microservicios | 8 (`svc-auth`, `svc-catalog`, `svc-inventory`, `svc-commercial`, `svc-asn`, `svc-planning`, `svc-alerts`, `svc-audit`) |
-| Operaciones REST de negocio | 86, documentadas en OpenAPI 3 con Swagger UI, JSON y XML |
+| Operaciones REST de negocio | 94, documentadas en OpenAPI 3 con Swagger UI, JSON y XML |
 | Clientes | Web (Flask), escritorio (PySide6, instalable con PyInstaller), Android (Kotlin, APK) |
 | Despliegue | Google Compute Engine + Cloud Storage, gateway Caddy con HTTPS (Let's Encrypt) |
 | Datos en la nube (24/nov/2026) | 52 locaciones, 212 productos, 3,301 lotes con existencia, 194,425 ventas, 1,200 usuarios generados |
 | Algoritmos | Pronóstico (media móvil, suavización exponencial, backtest WMAPE), newsvendor, FEFO, triaje descuento/traslado/merma, detección de riesgo |
-| Pruebas | 116 pruebas de backend documentadas en el reporte automático, más suites de escritorio y Android; Locust escalonado hasta 150 usuarios |
-| Seguridad | JWT + refresh con rotación, denylist en Redis, RBAC por rol y sucursal, rate limiting, XSD, auditoría inmutable |
+| Pruebas | 374 unitarias de backend, 27 de integración, 171 de escritorio y 38 de Android (todas aprobadas el 24/nov/2026); 22 casos de sistema de punta a punta (21 aprueban); 8 simulacros de fallas; Locust escalonado hasta 150 usuarios |
+| Seguridad | JWT + refresh con rotación, denylist en Redis, RBAC por rol y sucursal, rate limiting, XSD, recuperación de contraseña por correo, registro de dispositivos, auditoría inmutable |
 
 El punto débil medido es el rendimiento bajo carga en una VM de 2 núcleos: con 30 usuarios el p95 ya llega a 9.1 s y la base de datos consume la mayor parte del CPU (sección 25).
 
@@ -179,7 +179,11 @@ Las contraseñas de demostración están en `sql/07_seed_base.sql` y en el READM
 | RF-10 | Transferencias y descuentos preventivos con aprobación humana | `svc-planning`, Android |
 | RF-11 | Alertas de riesgo de vencimiento y reporte ESG de desperdicio evitado | `svc-alerts`, Android |
 | RF-12 | Bitácora de auditoría inmutable y trazabilidad por lote | `svc-audit` |
-| RF-13 | Panel central de monitoreo de los servicios | Web `/monitoreo` |
+| RF-13 | Panel central de monitoreo de los servicios con último error registrado | Web `/ops/status` |
+| RF-14 | Recuperación de contraseña por correo con enlace de un solo uso | Web, `svc-auth` |
+| RF-15 | Centro de notificaciones por rol y sucursal | Web `/notificaciones` |
+| RF-16 | Conteo cíclico, evidencia fotográfica con URL firmada y solicitud manual de transferencias | `svc-inventory`, `svc-commercial`, `svc-planning`, Android |
+| RF-17 | Trabajo sin conexión con sincronización posterior y registro seguro del dispositivo | Android, `svc-auth` |
 
 **No funcionales**
 
@@ -298,19 +302,19 @@ La arquitectura de despliegue está en la sección 9; el modelo de datos, en las
 
 ## **11. Modelo relacional**
 
-PostgreSQL 17 es la única fuente de verdad transaccional: 26 tablas en tres esquemas, 7 vistas, funciones de negocio en PL/pgSQL y una bitácora inmutable protegida por disparador.
+PostgreSQL 17 es la única fuente de verdad transaccional: 30 tablas en tres esquemas de negocio (más el esquema `pruebas`, con 5 tablas para los resultados de Locust), 7 vistas, funciones de negocio en PL/pgSQL y una bitácora inmutable protegida por disparador.
 
 | Esquema | Tablas | Propósito |
 | --- | --- | --- |
-| `operacion` | `rol`, `usuario`, `sesion_usuario`, `locacion`, `proveedor`, `producto`, `regla_riesgo`, `lote`, `existencia`, `movimiento_inventario`, `venta`, `venta_detalle`, `merma`, `orden_compra`, `orden_compra_detalle`, `recepcion_etiqueta`, `reporte_documento` | Catálogos y núcleo transaccional: inventario por lote y kardex |
-| `analitica` | `configuracion`, `forecast_run`, `forecast_result`, `orden_reabastecimiento`, `transferencia`, `descuento`, `alerta`, `desperdicio_evitado` | Decisiones del sistema y su seguimiento |
+| `operacion` | `rol`, `usuario`, `sesion_usuario`, `locacion`, `proveedor`, `producto`, `regla_riesgo`, `lote`, `existencia`, `movimiento_inventario`, `venta`, `venta_detalle`, `merma`, `orden_compra`, `orden_compra_detalle`, `recepcion_etiqueta`, `reporte_documento`, `evidencia`, `conteo_ciclico`, `dispositivo_movil` | Catálogos y núcleo transaccional: inventario por lote y kardex |
+| `analitica` | `configuracion`, `forecast_run`, `forecast_result`, `orden_reabastecimiento`, `transferencia`, `descuento`, `alerta`, `desperdicio_evitado`, `agregado_refresco` | Decisiones del sistema y su seguimiento |
 | `auditoria` | `bitacora_eventos` | Bitácora inmutable (UPDATE/DELETE bloqueados por `fn_bloquear_modificacion_auditoria`) |
 
 **Relaciones clave.** `producto` pertenece a un `proveedor`; un `lote` es de un producto y tiene `fecha_caducidad`; `existencia` es la cantidad de un lote en una `locacion` (disponible y reservada); todo cambio de existencia escribe un renglón en `movimiento_inventario` (RECEPCION, VENTA, MERMA, TRANSFERENCIA\_SALIDA/ENTRADA, AJUSTE, VENCIMIENTO). `venta` → `venta_detalle` → lote consumido; `merma` → lote y locación; `orden_compra` → `orden_compra_detalle` → `recepcion_etiqueta`.
 
 **Funciones y vistas.** `fn_vida_util_pct` y `fn_clasificar_riesgo` calculan la vida útil restante y el riesgo; `fn_generar_folio_venta` da folios únicos con ventas concurrentes; `fn_registrar_accion` escribe la bitácora. Vistas: `v_inventario_lote`, `v_lote_riesgo`, `v_demanda_diaria`, `v_merma_agregada`, `v_alerta_abierta`, `v_trazabilidad_lote`, `v_bitacora`.
 
-**Optimización para volumen.** `08_optimizacion.sql` agrega 13 índices para los patrones de consulta reales, materializa la demanda diaria histórica (`mv_demanda_diaria_hist`, refresco CONCURRENTLY) y ejecuta `ANALYZE`. `10_refresh_token.sql` agrega a `sesion_usuario` el hash SHA-256 del refresh token, su expiración absoluta y la familia de rotación.
+**Optimización para volumen.** `08_optimizacion.sql` agrega 13 índices para los patrones de consulta reales, materializa la demanda diaria histórica (`mv_demanda_diaria_hist`, refresco CONCURRENTLY) y ejecuta `ANALYZE`. `10_refresh_token.sql` agrega a `sesion_usuario` el hash SHA-256 del refresh token, su expiración absoluta y la familia de rotación. `12_app_movil.sql` crea `evidencia` y `conteo_ciclico` y liga la merma con su foto; `13_dispositivos_idempotencia.sql` crea `dispositivo_movil` y la llave de idempotencia de la merma.
 
 **Roles de base de datos.** `app_backend` (lectura/escritura de la aplicación), `app_etl` (carga) y `app_auditor` (solo lectura de auditoría); sus contraseñas vienen del entorno.
 
@@ -347,7 +351,9 @@ Redis 7 solo guarda datos efímeros o de coordinación: si se pierde, el sistema
 | `lock:{recurso}` | String (token) | 5–10 s | Bloqueo distribuido (`SET NX EX` + liberación con Lua) en reservas FEFO y escaneo de alertas |
 | `freshtrack:events` | Stream | `MAXLEN ~10000` | Bus de eventos de dominio con `correlation_id`, consumido por la auditoría |
 
-**Caída de Redis.** La validación de sesión cae a PostgreSQL (`sesion_usuario`); si tampoco puede verificarse, se rechaza con 401 `sesion_no_verificable` (*fail-closed*). La caché se omite y se lee de PostgreSQL; el cliente de Redis no reintenta en cada llamada para no pagar el timeout una y otra vez.
+**Caída de Redis.** La validación de sesión cae a PostgreSQL (`sesion_usuario`); si tampoco puede verificarse, se rechaza (*fail-closed*). La caché se omite y se lee de PostgreSQL. El cliente de Redis se verifica con PING cada 5 s y, si Redis cayó, se descarta durante 10 s para no pagar el timeout en cada petición (medido: el catálogo pasó de 28 s a 0.0 s con Redis caído; ver `docs/pruebas/FALLAS_Y_RECUPERACION.md`).
+
+**Otras claves agregadas en la entrega final:** `pwdreset:{sha256}` (30 min, recuperación de contraseña de un solo uso), `notif:leidas:{id_usuario}` (30 días, notificaciones leídas) y `errores:{servicio}` (lista de los últimos 20 errores, 7 días, para el «último error registrado»).
 
 ---
 
@@ -364,22 +370,22 @@ Los archivos viven en Google Cloud Storage y la base de datos solo guarda sus me
 
 **Acceso a archivos.** El cliente nunca recibe credenciales ni una ruta pública: pide el archivo al microservicio autenticado (por ejemplo `GET /api/v1/planning/purchase-orders/{id}/pdf`), que lo lee del bucket con firma AWS SigV4 y lo entrega. Si el bucket no responde, el PDF se regenera o se usa la copia local (`local_fallback`) y queda registrado.
 
-**URLs firmadas y evidencias (integrado en git, pendiente de despliegue):** el commit `1926a17` añade `app/domain/movil.py` (conteo cíclico, solicitud manual de transferencias, guardado de evidencias y liga evidencia–merma), `object_storage.subir_objeto` / `url_firmada` (URLs firmadas V4 de 15 minutos), la migración `sql/12_app_movil.sql` (`operacion.evidencia` con hash SHA-256, tamaño y llave del objeto; `operacion.conteo_ciclico`; `merma.id_evidencia`), los XSD `count_request` y `transfer_request` y sus pruebas `tests/unit/test_app_movil.py`. Falta desplegarlo en la VM: hoy esas rutas responden 404/405 en GCP.
+**URLs firmadas y evidencias:** el commit `1926a17` añade `app/domain/movil.py` (conteo cíclico, solicitud manual de transferencias, guardado de evidencias y liga evidencia–merma), `object_storage.subir_objeto` / `url_firmada` (URLs firmadas V4 de 15 minutos), la migración `sql/12_app_movil.sql` (`operacion.evidencia` con hash SHA-256, tamaño y llave del objeto; `operacion.conteo_ciclico`; `merma.id_evidencia`), los XSD `count_request` y `transfer_request` y sus pruebas `tests/unit/test_app_movil.py`. El límite por foto es de 8 MB (el tipo real se valida por *magic bytes*); si el bucket no responde, se devuelve 503 `almacenamiento_no_disponible` y la merma puede registrarse sin foto.
 
 ---
 
 ## **15. Microservicios**
 
-Ocho servicios Flask independientes exponen 86 operaciones de negocio bajo `/api/v1/`; cada uno tiene su contenedor, su `/health`, su Swagger y su contador de operaciones en Redis.
+Ocho servicios Flask independientes exponen 94 operaciones de negocio bajo `/api/v1/`; cada uno tiene su contenedor, su `/health`, su Swagger y su contador de operaciones en Redis.
 
 | Servicio | Puerto | Responsabilidad | Ops. | Endpoints representativos |
 | --- | --- | --- | --- | --- |
-| `svc-auth` | 5001 | Identidad, sesiones, tokens | 10 | `POST /auth/login`, `/auth/refresh`, `/auth/logout`, `GET /auth/me`, `DELETE /auth/sessions/{id}` |
+| `svc-auth` | 5001 | Identidad, sesiones, tokens, dispositivos | 13 | `POST /auth/login`, `/auth/refresh`, `/auth/logout`, `GET /auth/me`, `DELETE /auth/sessions/{id}`, `POST/GET /auth/devices` |
 | `svc-catalog` | 5002 | Productos, tiendas, proveedores | 11 | CRUD `/catalog/products` (GET, POST, PUT, PATCH, DELETE), `/catalog/locations`, `/catalog/suppliers` |
-| `svc-inventory` | 5003 | Existencias por lote y FEFO | 7 | `GET /inventory/stock`, `/inventory/fefo-queue/{sku}/{loc}`, `POST /inventory/reserve-fefo`, `/inventory/receive-scan` |
-| `svc-commercial` | 5004 | Venta POS, carritos, mermas | 7 | `POST /commercial/checkout` (Saga), `/commercial/shrinkage`, `/commercial/sales/import` |
+| `svc-inventory` | 5003 | Existencias por lote, FEFO y conteo | 8 | `GET /inventory/stock`, `/inventory/fefo-queue/{sku}/{loc}`, `POST /inventory/reserve-fefo`, `/inventory/receive-scan`, `/inventory/counts` |
+| `svc-commercial` | 5004 | Venta POS, carritos, mermas, evidencias | 10 | `POST /commercial/checkout` (Saga), `/commercial/shrinkage`, `/commercial/sales/import`, `/commercial/evidence`, `GET /commercial/evidence/{id}/url` |
 | `svc-asn` | 5005 | Avisos de embarque y etiquetas | 11 | `POST /asn`, `/asn/from-purchase-order`, `GET /asn/labels`, `/asn/{folio}/labels-pdf`, `/asn/{folio}/send-email` |
-| `svc-planning` | 5006 | Pronóstico, reabastecimiento, compras, transferencias, descuentos, triaje | 30 | `POST /planning/forecast/run`, `/planning/newsvendor/evaluate`, `GET /planning/forecast/backtest`, `/planning/purchase-orders/{id}/pdf` |
+| `svc-planning` | 5006 | Pronóstico, reabastecimiento, compras, transferencias, descuentos, triaje | 31 | `POST /planning/forecast/run`, `/planning/newsvendor/evaluate`, `GET /planning/forecast/backtest`, `/planning/purchase-orders/{id}/pdf` |
 | `svc-alerts` | 5007 | Alertas pre-merma y ESG | 6 | `POST /alerts/scan`, `GET /alerts/active`, `/alerts/esg/carbon-avoided`, `/alerts/waste-measurement` |
 | `svc-audit` | 5008 | Bitácora y trazabilidad | 4 | `GET /audit/events`, `/audit/traceability/{id_lote}`, `/audit/stream/recent` |
 
@@ -401,7 +407,7 @@ JSON es el formato por omisión de todos los endpoints y sigue reglas comunes de
 | Decimales | Números JSON (no cadenas) |
 | Paginación | `?pagina=1&por_pagina=20` (máx. 100) → `"paginacion": {"pagina", "por_pagina", "total", "total_paginas"}` |
 | Trazabilidad | `X-Correlation-Id` aceptado o generado; vuelve en cabecera y en los errores |
-| Idempotencia | `Idempotency-Key` en recepción por escaneo e importación de ventas |
+| Idempotencia | `Idempotency-Key` en recepción por escaneo, conteo cíclico, merma e importación de ventas |
 
 **Error único** para 400, 401, 403, 404, 409, 413, 415, 429, 500 y 503:
 
@@ -433,17 +439,17 @@ JSON es el formato por omisión de todos los endpoints y sigue reglas comunes de
 }
 ```
 
-Los 86 contratos con sus ejemplos de cuerpo y respuesta están en el Swagger de cada servicio y en `docs/evidencias/EVIDENCIAS_REQUEST_RESPONSE.md` (peticiones reales contra los contenedores).
+Los 94 contratos con sus ejemplos de cuerpo y respuesta están en el Swagger de cada servicio y en `docs/pruebas/sistema/EVIDENCIAS_REQUEST_RESPONSE.md` (peticiones reales contra los contenedores).
 
 ---
 
 ## **17. Contratos XML**
 
-Todo endpoint responde en XML con `Accept: application/xml` (o `?formato=xml`) y acepta cuerpos XML; 41 esquemas XSD en `contracts/xsd/` validan las peticiones antes de llegar a la lógica de negocio y las respuestas que consume la app de escritorio.
+Todo endpoint responde en XML con `Accept: application/xml` (o `?formato=xml`) y acepta cuerpos XML; 44 esquemas XSD en `contracts/xsd/` validan las peticiones antes de llegar a la lógica de negocio y las respuestas que consume la app de escritorio.
 
 | Grupo | Esquemas XSD |
 | --- | --- |
-| Peticiones | `login_request`, `refresh_request`, `producto_request`, `checkout_request`, `reserva_request`, `merma_request`, `asn_request`, `forecast_request`, `replenishment_request`, `newsvendor_request`, `purchase_order_request`, `sales_import_request`, `send_email_request`, `transfers_detect_request`, `discounts_generate_request`, `planning_cycle_request`, `rechazo_request`, `audit_log_request` |
+| Peticiones | `login_request`, `refresh_request`, `producto_request`, `checkout_request`, `reserva_request`, `merma_request`, `asn_request`, `forecast_request`, `replenishment_request`, `newsvendor_request`, `purchase_order_request`, `sales_import_request`, `send_email_request`, `transfers_detect_request`, `discounts_generate_request`, `planning_cycle_request`, `rechazo_request`, `audit_log_request`, `count_request`, `transfer_request`, `device_register_request` |
 | Respuestas | `auth_response`, `catalogo_productos`, `catalogo_locaciones`, `alertas_activas`, `kpis_alertas`, `kpis_pronosticos`, `forecast_run_result`, `forecast_backtest`, `forecast_drift`, `replenishment_orders`, `newsvendor_evaluation`, `purchase_orders_list`, `procurement_suppliers`, `supplier_procurement_catalog`, `transfers_list`, `discounts_list`, `triage_evaluation`, `medicion_desperdicio`, `reporte_esg_sostenibilidad`, `sales_import_result`, `planning_cycle_result`, `service_health` |
 | Comunes | `error_response` |
 
@@ -492,15 +498,18 @@ La seguridad es común a los 8 servicios: un mismo decorador (`requiere_auth`) v
 | Roles y permisos por recurso | Lista de roles por endpoint (403 `acceso_denegado` con los roles permitidos); `admin` pasa siempre; gerente y almacén acotados a su sucursal (403 `sucursal_no_autorizada`) |
 | Rate limiting | Ventana fija en Redis: 10/min en login, 300/min en refresh, límites por endpoint; 429 con `Retry-After` y `X-RateLimit-*` |
 | Protección de endpoints | Todo `/api/v1/*` exige `Authorization: Bearer` salvo login, refresh, verify, catálogo público y health |
-| Validación de archivos | PDF generados por el sistema con SHA-256 y etag registrados; carga de ventas validada por contrato |
-| Validación XML / JSON | XSD por contrato (41 esquemas); JSON con campos requeridos, tipos, rangos y reglas de negocio (409) |
+| Validación de archivos | PDF generados por el sistema con SHA-256 y etag registrados; fotos de evidencia validadas por *magic bytes* (JPEG/PNG/WebP) y tamaño (≤ 8 MB, 413 si se excede); carga de ventas validada por contrato |
+| Validación XML / JSON | XSD por contrato (44 esquemas); JSON con campos requeridos, tipos, rangos y reglas de negocio (409) |
 | Intentos fallidos | `LOGIN_FALLIDO` en la bitácora; tras `max_intentos_login` (5) la cuenta se bloquea temporalmente |
+| Recuperación de contraseña | Enlace por correo de un solo uso (30 min); en Redis solo se guarda el SHA-256 del token; respuesta neutra que no revela si la cuenta existe; al cambiarla se revocan todas las sesiones |
+| Dispositivos móviles | Cada teléfono se registra ligado al usuario (`POST /auth/devices`); el administrador puede revocarlo y la app cierra sesión |
+| Dependencias caídas | Si PostgreSQL no responde, un token válido recibe 503 `sesion_no_verificable` (no 401), así el cliente reintenta en vez de cerrar la sesión |
 | Auditoría | `auditoria.bitacora_eventos` inmutable (disparador bloquea UPDATE/DELETE) con usuario, IP, user agent y `correlation_id` |
 | Secretos protegidos | Solo en `.env` (fuera de git); la app no arranca sin `SECRET_KEY`; contraseñas con `crypt()`/bcrypt en PostgreSQL; llaves HMAC del bucket con privilegio mínimo |
 | Manejo seguro de errores | 500 genérico `error_interno` sin traza ni mensaje interno; el detalle queda en el log con el `correlation_id` |
 | Transporte | HTTPS con certificado Let's Encrypt, HSTS, `X-Content-Type-Options`, `X-Frame-Options`; firewall solo 80/443 |
 
-**Clientes.** La app Android guarda el token cifrado con una llave del Android Keystore, excluye la sesión de respaldos y vuelve al login en cualquier 401; la app de escritorio enmascara el token en su inspector XML.
+**Clientes.** La app Android guarda el token y la cola sin conexión cifrados con una llave del Android Keystore, excluye la sesión de respaldos y vuelve al login en cualquier 401; la app de escritorio enmascara el token en su inspector XML.
 
 ---
 
@@ -585,7 +594,7 @@ La plataforma corre en una sola VM de Compute Engine con Docker Compose, detrás
 | Certificado HTTPS | Caddy obtiene y renueva Let's Encrypt para `34.51.41.80.nip.io`; HSTS activo |
 | Registro de logs | Cada servicio escribe en stdout método, ruta, estado, duración, usuario y `correlation_id` (`docker compose logs`); bitácora de auditoría en PostgreSQL; contadores en Redis |
 
-**Distribución de componentes.** Sistema web y microservicios: contenedores `freshtrack_app` y `freshtrack_svc_*`. PostgreSQL, MongoDB y Redis: contenedores con volúmenes persistentes en la misma VM (justificación: latencia mínima, costo cero adicional, control total de extensiones como `pgcrypto`; contra: sin alta disponibilidad). Archivos: Cloud Storage. Monitoreo: panel `/monitoreo` del sistema web y health checks por servicio.
+**Distribución de componentes.** Sistema web y microservicios: contenedores `freshtrack_app` y `freshtrack_svc_*`. PostgreSQL, MongoDB y Redis: contenedores con volúmenes persistentes en la misma VM (justificación: latencia mínima, costo cero adicional, control total de extensiones como `pgcrypto`; contra: sin alta disponibilidad). Archivos: Cloud Storage. Monitoreo: panel `/ops/status` del sistema web y health checks por servicio.
 
 **Respaldos.** `deploy/backup_db.sh` vuelca PostgreSQL y MongoDB a `/var/backups/freshtrack` cada noche (cron a las 03:00) y opcionalmente al bucket de respaldos.
 
@@ -617,7 +626,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 ## **23. Monitoreo**
 
-Cada microservicio reporta su propia salud en `/health` y un panel central (`/monitoreo` en el sistema web) los consulta en paralelo, guarda el historial en Redis y muestra qué está degradado y por qué.
+Cada microservicio reporta su propia salud en `/health` y un panel central (`/ops/status` en el sistema web) los consulta en paralelo, guarda el historial en Redis y muestra qué está degradado y por qué.
 
 **Health check por servicio** (`app/services/common/servicio.py`), consultado también por Docker:
 
@@ -640,8 +649,9 @@ Cada microservicio reporta su propia salud en `/health` y un panel central (`/mo
 | Historial de disponibilidad | Últimas 60 verificaciones en Redis (`monitor:health:history`, 7 días), con respaldo en memoria si Redis cae |
 | Servicios degradados | Lista de los que responden DEGRADED o no responden |
 | Dependencias caídas | Qué dependencia falla y en cuántos servicios |
+| Último error registrado | Hora, origen, código, mensaje seguro y `correlation_id` del último error de cada servicio (últimos 20 en Redis; «sin datos» si Redis no responde) |
 
-El panel se actualiza con `GET /monitoreo/api/snapshot`. Las apps de escritorio (*Estado*) y Android (*Estado de servicios*) tienen su propia vista: la de Android sondea un endpoint real de cada servicio a través del gateway y clasifica cada uno como arriba, degradado (503), caído (502/504) o timeout (5 s).
+El panel se actualiza con su *snapshot* JSON (`/ops/status`). Las apps de escritorio (*Estado*) y Android (*Estado de servicios*) tienen su propia vista: la de Android sondea un endpoint real de cada servicio a través del gateway y clasifica cada uno como arriba, degradado (503), caído (502/504) o timeout (5 s).
 
 ---
 
@@ -651,12 +661,14 @@ El plan combina suites automatizadas por componente con pruebas de carga y de fa
 
 | Suite | Ubicación | Casos en git | Ejecución |
 | --- | --- | --- | --- |
-| Backend unitarias | `tests/unit` | 171 funciones (225 casos con parametrización) | `make test-unit`; sin bases de datos (fakeredis, mongomock) |
+| Backend unitarias | `tests/unit` | 374 casos | `make test-unit`; sin bases de datos (fakeredis, mongomock) |
 | Backend integración | `tests/integration` | 27 | `make test-integration`; PostgreSQL real con seed y los 8 servicios |
-| Escritorio | `desktop/tests` | 156 | `pytest` en `desktop/`; valida peticiones y respuestas contra XSD |
-| Android | `android-app/app/src/test` | 25 | `./gradlew testDebugUnitTest`; MockWebServer |
+| Escritorio | `desktop/tests` | 171 | `pytest` en `desktop/`; valida peticiones y respuestas contra XSD |
+| Android | `android-app/app/src/test` | 38 | `./gradlew testDebugUnitTest`; MockWebServer |
 | Carga y estrés | `tests/carga/locustfile.py` | 8 perfiles, 6 escalones | `tests/carga/correr.sh` (sección 25) |
 | Rendimiento y datos masivos | `scripts/benchmark_plataforma.py` | 8 indicadores | Contra el sistema cargado (sección 26) |
+| Sistema | `docs/pruebas/scripts/pruebas_sistema.py` | 22 casos | Con el stack completo levantado (`docs/pruebas/REPORTE_PRUEBAS_SISTEMA.md`) |
+| Fallas y recuperación | `docs/pruebas/scripts/simulacro_fallas.py` | 8 escenarios | Detiene y restaura cada dependencia (`docs/pruebas/FALLAS_Y_RECUPERACION.md`) |
 
 **Cobertura de los tipos de prueba exigidos**
 
@@ -664,18 +676,18 @@ El plan combina suites automatizadas por componente con pruebas de carga y de fa
 | --- | --- |
 | Unitarias | Reglas FEFO, pronóstico y métricas, JSON/XML, Redis, JWT, rate limit (PU-01 a PU-54 y siguientes) |
 | Integración | CRUD con XML y caché, Saga de venta y compensación, ASN en MongoDB, alertas, auditoría (PI-55 a PI-81) |
-| Sistema | Recorridos de punta a punta con la plataforma levantada: `scripts/smoke_http.py`, `check_servicios.py`, `verify_all_microservices.py` |
+| Sistema | 22 casos de punta a punta con la plataforma levantada (login y revocación, OC → ASN → recepción QR → FEFO → venta, merma con foto, conteo, transferencia, descuento, pronóstico, importación, XML/XSD, Swagger, monitoreo): 21 aprueban; el que falla es de configuración del endpoint público del bucket en local (`REPORTE_PRUEBAS_SISTEMA.md`) |
 | Regresión | Las tres suites corren completas en cada cambio (`make test`, GitHub Actions) |
 | Seguridad | Token ausente, manipulado, expirado, revocado; RBAC entre servicios; logout global; fuerza bruta (PU-42 a PU-53, PI-72 a PI-81) |
 | Carga y estrés | Locust de 10 a 150 usuarios hasta saturar |
-| Recuperación | Escalón de recuperación de Locust (18 s) y demostración de fallos (sección 26) |
-| Usabilidad | Recorridos guiados por perfil (`docs/LIVE_DEMO_*`, `RUN_OF_SHOW_EN.md`) y prueba en dispositivo físico de la app Android |
+| Recuperación | Escalón de recuperación de Locust (18 s) y simulacros de caída de cada dependencia con tiempos de recuperación de 0.6 a 16 s sin reiniciar servicios (sección 26) |
+| Usabilidad | Recorridos guiados por perfil documentados en `docs/manuales/MANUAL_USUARIO.md` y en las 65 pantallas por rol verificadas en PS-21; no se hizo una prueba formal con usuarios externos (pendiente) |
 | Contratos | XSD de peticiones y respuestas compilan y validan; OpenAPI con ejemplos JSON y XML en los 8 servicios |
 | Roles | Matriz por rol en web, servicios (403) y app móvil (perfiles no de tienda rechazados) |
-| Archivos | PDF de OC en el bucket con SHA-256; fallback local cuando el bucket no responde |
+| Archivos | PDF de OC en el bucket con SHA-256; fallback local cuando el bucket no responde; fotos de 1 KB a 10 MB, tipos inválidos (415) y vacíos (400) |
 | Datos masivos | Generador `generar_dataset_masivo.py` y benchmark de inserción, consulta e índices |
 
-**Resultado registrado.** Reporte automático del 23/oct/2026: 116 de 116 pruebas de backend aprobadas (89 unitarias y 27 de integración). Corrida local del 24/nov/2026 sobre la versión actual: 224 de 225 casos unitarios aprobados; el que falla (`test_benchmark_parsear_niveles_concurrencia`) importa el módulo `resource`, que solo existe en Linux, y pasa en el contenedor.
+**Resultado registrado (24/nov/2026, commit `1c213e4`).** Backend: 374 de 374 pruebas unitarias aprobadas. Escritorio: 171 de 171. Android: 38 de 38 (`testDebugUnitTest`) y APK de depuración compilado. Sistema: 21 de 22 casos. El reporte automático anterior (23/oct/2026) registró 116 de 116 (89 unitarias y 27 de integración).
 
 ---
 
@@ -720,7 +732,7 @@ La corrida es la línea base **antes** de las optimizaciones posteriores (índic
 
 ## **26. Resultados de rendimiento**
 
-El sistema en GCP opera con el volumen del modo «rúbrica» del generador masivo, y ante la caída de cualquier dependencia responde con errores controlados sin corromper datos; falta anexar el reporte del benchmark de 8 indicadores, que no está en git.
+El sistema en GCP opera con el volumen del modo «rúbrica» del generador masivo, y ante la caída de cualquier dependencia responde con errores controlados y se recupera solo; los simulacros se documentan en `docs/pruebas/FALLAS_Y_RECUPERACION.md`. Falta anexar el reporte del benchmark de 8 indicadores, que no está en git.
 
 **Volumen de datos.** `scripts/generar_dataset_masivo.py` genera datos coherentes por *streaming* con `COPY` de PostgreSQL (< 150 MB de RAM en la VM), consumo FEFO diario y cuatro perfiles de demanda (50 % estable-estacional, 20 % con *drift*, 20 % intermitente, 10 % con quiebres de stock) para que los modelos se distingan entre sí.
 
@@ -734,19 +746,22 @@ Verificado en GCP el 24/nov/2026 vía API: 52 locaciones, 212 productos, 3,301 l
 
 **Benchmark** (`scripts/benchmark_plataforma.py`, salida `docs/REPORTE_BENCHMARK.md`): mide tiempo de inserción (`COPY` vs `INSERT`, `insert_many`, pipeline de Redis), tiempo de consulta p50/p95/p99, uso de índices (`EXPLAIN ANALYZE`, `pg_stat_user_indexes`, IXSCAN), caché Redis (miss vs hit, memoria), tiempo de procesamiento analítico, consumo de recursos, comportamiento con y sin Redis, y escalabilidad con 1, 5, 15 y 30 hilos con verificación de integridad FEFO. **Pendiente:** ejecutarlo en la VM y anexar sus resultados; la corrida de Locust (sección 25) ya mide saturación y recuperación.
 
-**Pruebas de fallos**
+**Pruebas de fallos** (simulacros del 24/nov/2026 en el stack local; detalle, bitácoras y script reproducible en `docs/pruebas/FALLAS_Y_RECUPERACION.md`)
 
-| Falla provocada | Comportamiento | Evidencia |
+| Falla provocada | Comportamiento medido | Recuperación sin reiniciar servicios |
 | --- | --- | --- |
-| Un microservicio se detiene | El gateway responde 502 solo en ese prefijo; el resto opera. La web, el escritorio y Android lo muestran como caído o degradado | Panel `/monitoreo`; «Estado de servicios» en Android |
-| Redis no responde | Sesión verificada contra PostgreSQL (*fail-closed* si no se puede); caché omitida; sin reintentar en cada llamada | PU-32; `common/auth.py` |
-| MongoDB no responde | ASN, alertas y pronósticos devuelven 503 `mongo_no_disponible`; inventario, ventas y mermas siguen | `svc-alerts`, `svc-asn` |
-| PostgreSQL no responde | `/health` en DEGRADED (503) en todos los servicios; las escrituras fallan sin efectos parciales (transacciones) | Health checks |
-| Archivos no disponibles | El PDF se regenera o se sirve la copia local (`local_fallback`) y se registra | `object_storage.py` |
-| Petición excede el tiempo máximo | Los clientes cortan (Android 20 s, monitor 5 s) y muestran «la petición excedió el tiempo máximo»; en el servidor el pool espera 30 s y responde 500 controlado | Locust (sección 25); pruebas de la app Android |
-| Token revocado | 401 `token_revocado` en todos los servicios; las apps regresan al login con el motivo | PI-79 |
-| Intento sin permisos | 403 `acceso_denegado` con los roles permitidos | PI-77 |
-| Respuesta o XML inválido | 400 `xml_no_cumple_contrato` o `json_mal_formado` con detalle | PU-07, PU-09 |
+| Se detiene un microservicio (`svc-planning`) | El gateway responde 502 `servicio_no_disponible` solo en ese prefijo; inventario, ventas y alertas siguen; la web muestra «El módulo solicitado no está disponible…»; el panel lo marca caído | /health 1.9 s; contenedor sano 6.3 s |
+| Redis no responde | Sesiones previas validadas contra PostgreSQL; un token revocado sigue rechazado (*fail-closed*); importación y carrito 503; catálogo desde PostgreSQL en 0.0 s tras la corrección (antes 28 s) | 0.6 s |
+| MongoDB no responde | Alertas y ASN 503 `mongo_no_disponible` tras la corrección (antes 200 vacío y 500); inventario, FEFO, venta y login siguen | 4.3 s |
+| PostgreSQL no responde | /health 503 en los 9 componentes; 500 `error_interno` sin trazas y con `correlation_id`; un token válido recibe 503 `sesion_no_verificable` tras la corrección (antes 401) | 0.9 s; contenedores sanos 10.9 s |
+| Archivos (bucket) no disponibles | Evidencia 503 `almacenamiento_no_disponible` y merma sin foto 201; PDF de OC y ASN servidos desde la copia local | 0.6 s |
+| Petición excede el tiempo máximo | Con un servicio congelado: el cliente corta a los 20 s y el gateway responde 502 a los 30 s; el panel lo marca caído en 4 s | Inmediata al reanudar |
+| Archivos grandes | Foto de 6 MB → 201; más de 9 MB → 413 en español; PDF renombrado → 415; vacío → 400 | n/a |
+| Token revocado | 401 `token_revocado` en todos los servicios; las apps regresan al login con el motivo | PI-79, PS-04 |
+| Intento sin permisos | 403 `acceso_denegado` con los roles permitidos | PI-77, PS-03 |
+| Respuesta o XML inválido | 400 `xml_no_cumple_contrato` o `json_mal_formado` con detalle | PU-07, PU-09, PS-17 |
+
+Los simulacros encontraron tres fallas de severidad alta (límite real de fotos de 4 MB, clientes de Redis y MongoDB que no detectaban la caída, y 401 con PostgreSQL caído); se corrigieron el mismo día (commit `5a99079`), con pruebas de regresión, y se re-verificaron en vivo. Los hallazgos de severidad media se listan en la sección 30.
 
 En todos los casos el error queda en el log con su `correlation_id`, que el cliente puede mostrar para rastrearlo, y el servicio se recupera solo al restablecer la dependencia (reconexión y *health checks* de Docker).
 
@@ -775,10 +790,12 @@ Web en `http://localhost:5000`; Swagger en `http://localhost:5001/api/v1/docs` �
 2. En la VM por SSH: `sudo bash deploy/gcp_bootstrap.sh` (instala Docker y genera `.env` con contraseñas aleatorias).
 3. Completar en `.env`: `PUBLIC_DOMAIN=<IP>.nip.io`, `OBJECT_STORAGE_*` con las llaves HMAC, `SESSION_COOKIE_SECURE=true`, `TRUST_PROXY=true`.
 4. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait`.
-5. Cargar datos y aplicar migraciones en caliente (`08_optimizacion.sql`, `10_refresh_token.sql`) con `psql` dentro del contenedor.
+5. Cargar datos y aplicar migraciones en caliente (`08_optimizacion.sql` a `13_dispositivos_idempotencia.sql`) con `psql` dentro del contenedor.
 6. Programar el respaldo nocturno: `0 3 * * * deploy/backup_db.sh`.
 
 **3. App de escritorio** — Python 3.11+: `pip install -r desktop/requirements.txt` y `python desktop/run_desktop.py`; ejecutable con `make desktop-build` (PyInstaller). En «Servidores…» se captura el gateway.
+
+La guía completa, con la explicación de cada variable de `.env`, el correo (Mailpit/Gmail) y la solución de problemas, está en `docs/manuales/MANUAL_INSTALACION.md`.
 
 **4. App Android** — Android 8.0 o superior: instalar `app-release.apk` (permitir apps de origen desconocido) o abrir `android-app/` en Android Studio y ejecutar; compilar con `./gradlew assembleRelease`. La URL del servidor viene configurada y se cambia en Ajustes.
 
@@ -809,22 +826,25 @@ El código está organizado por capas y por componente desplegable; quien manten
 
 **Variables de entorno principales.** `SECRET_KEY`, `JWT_SECRET_KEY`, `JWT_HORAS_VIGENCIA`, `JWT_MINUTOS_ACCESO`, `DATABASE_URL`, `APP_BACKEND_PASSWORD`, `APP_AUDITOR_PASSWORD`, `MONGO_USER`/`MONGO_PASSWORD`, `REDIS_PASSWORD`, `OBJECT_STORAGE_*`, `PUBLIC_DOMAIN`, `TRUST_PROXY`, `SESSION_COOKIE_SECURE`, `APP_VERSION`, `MONITOR_USER`/`MONITOR_PASSWORD`, `SMTP_*` (opcional) y `RATE_LIMIT_FACTOR` (solo pruebas de carga).
 
-**Diagnóstico.** `docker compose ps` (estado), `docker compose logs <servicio>` (buscar por `cid=<correlation_id>`), panel `/monitoreo`, `GET /api/v1/auth/counters` (contadores), `scripts/check_servicios.py` (barrido HTTP de los 8 servicios).
+El manual técnico completo (diagramas, catálogo de endpoints por servicio, claves Redis, caché e invalidación, algoritmos con fórmulas) está en `docs/manuales/MANUAL_TECNICO.md`.
+
+**Diagnóstico.** `docker compose ps` (estado), `docker compose logs <servicio>` (buscar por `cid=<correlation_id>`), panel `/ops/status`, `GET /api/v1/auth/counters` (contadores), `scripts/check_servicios.py` (barrido HTTP de los 8 servicios).
 
 ---
 
 ## **29. Manual de usuario**
 
-Cada perfil usa el cliente pensado para su trabajo; los tres comparten cuentas y datos, así que lo que registra la tienda en el móvil aparece al momento en la web y en el escritorio.
+Cada perfil usa el cliente pensado para su trabajo; los tres comparten cuentas y datos, así que lo que registra la tienda en el móvil aparece al momento en la web y en el escritorio. La guía paso a paso por rol y por pantalla está en `docs/manuales/MANUAL_USUARIO.md`.
 
 ### Sistema web (`https://34.51.41.80.nip.io`)
 
-1. Iniciar sesión con correo y contraseña (la pantalla ofrece botones de cuentas de demostración). El menú muestra solo las vistas del rol.
-2. **Catálogo:** productos, proveedores (lead time, MOQ) y tiendas.
-3. **Operación:** lotes con riesgo de caducidad, inventario FEFO, ventas, mermas, recepción.
-4. **Analítica:** pronóstico, reabastecimiento, transferencias, descuentos, triaje, desperdicio evitado, mapa de tiendas.
-5. **Administración:** usuarios y sesiones, bitácora (auditor), panel de microservicios y `/monitoreo`.
-6. **Proveedor:** crea ASN, descarga y envía por correo la hoja de etiquetas QR.
+1. Iniciar sesión con correo y contraseña (la pantalla ofrece botones de cuentas de demostración). El menú muestra solo las vistas del rol. «¿Olvidaste tu contraseña?» envía un enlace de recuperación por correo.
+2. **Notificaciones:** la campana de la barra superior muestra las alertas y eventos de tu rol y tienda sin leer; `/notificaciones` permite marcarlas como leídas.
+3. **Catálogo:** productos, proveedores (lead time, MOQ) y tiendas.
+4. **Operación:** lotes con riesgo de caducidad, inventario FEFO, ventas, mermas, recepción.
+5. **Analítica:** pronóstico, reabastecimiento, transferencias, descuentos, triaje, desperdicio evitado, mapa de tiendas.
+6. **Administración:** usuarios y sesiones, bitácora (auditor), panel de microservicios y `/ops/status`.
+7. **Proveedor:** crea ASN, descarga y envía por correo la hoja de etiquetas QR.
 
 ### App de escritorio (comprador y planeador)
 
@@ -850,8 +870,9 @@ Cada perfil usa el cliente pensado para su trabajo; los tres comparten cuentas y
 | Solicitar transferencia | Tocar un lote → Solicitar transferencia → tienda destino y cantidad |
 | Aplicar descuento autorizado | Descuentos → Autorizar (solo gerente) y cambiar la etiqueta en anaquel |
 | Recibir alertas | Notificaciones del teléfono y pestaña Alertas («Escanear ahora», «Atendida») |
+| Trabajar sin conexión | Si no hay red, la merma o el conteo se guardan cifrados en el teléfono («Guardado sin conexión») y se envían solos al volver la red; «Más → Pendientes sin conexión → Sincronizar ahora» |
 
-Conteo, evidencias fotográficas y solicitud manual de transferencias usan los endpoints que ya están en git (commit `1926a17`, sección 14); funcionarán en GCP en cuanto se despliegue esa versión. El resto funciona hoy contra GCP.
+Al iniciar sesión, el teléfono se registra como dispositivo del usuario; si un administrador lo revoca, la app cierra la sesión.
 
 ---
 
@@ -865,7 +886,8 @@ Las limitaciones principales son de capacidad y de modelo, no de funcionalidad.
 | Pool de conexiones de la web (5 + 10) | Errores 500 y sesiones perdidas en el pico de 150 usuarios | Pantallas web pesadas que consultan PostgreSQL directamente |
 | Pantallas y reportes analíticos lentos | Bitácora completa, triaje y mapa tardan decenas de segundos bajo carga | Recalculan sobre miles de lotes en cada carga |
 | Pronóstico estadístico | Sin clima, promociones ni Prophet/XGBoost/LSTM; WMAPE de 21–23 % en series sintéticas | Se priorizó un modelo explicable y auditable |
-| URLs firmadas, evidencias, conteo y transferencia manual | En git, aún no desplegados en la VM | Integrados en `avance2-postgresql-real` (commit `1926a17`, migración `sql/12_app_movil.sql`); falta desplegar |
+| Hallazgos de severidad media de los simulacros | Con un archivo o MongoDB caídos, los 8 `/health` responden 503 y Docker los marca no sanos aunque funcionen; sin `statement_timeout` en PostgreSQL, un /health puede colgarse con la base congelada; un token emitido con Redis caído se invalida al volver Redis | Documentados en `docs/pruebas/FALLAS_Y_RECUPERACION.md`; corrección planeada en trabajo futuro |
+| App Android sin conexión | Las fotos no se guardan sin red (la merma se envía después sin evidencia); la revocación del dispositivo se detecta en el siguiente login | Alcance acotado a la entrega |
 | Swagger no expuesto por el gateway | Se consulta solo dentro de la VM o en local | El Caddyfile solo publica `/api/v1/*` |
 | Sin endpoints de telemetría ni GPS | Sensores y conductores se simulan con documentos y bitácora | Fuera del alcance funcional |
 | Datos sintéticos | Los resultados de modelos y ahorro no son de una tienda real | Se generó el volumen con `generar_dataset_masivo.py` |
@@ -876,12 +898,19 @@ Las limitaciones principales son de capacidad y de modelo, no de funcionalidad.
 
 El siguiente paso es cerrar lo pendiente para la entrega y después escalar la capacidad.
 
-**Antes de la entrega**
+**Completado en la entrega final (24/nov/2026)**
 
-- [ ] Desplegar en la VM las URLs firmadas, evidencias fotográficas, conteo cíclico y solicitud manual de transferencias (ya integrados en git, commit `1926a17`) y aplicar `sql/12_app_movil.sql`.
-- [ ] Hecho el 24/nov: la app Android usa el nuevo refresh token (cuerpo `refresh_token`, access de 15 min).
+- [x] URLs firmadas, evidencias fotográficas, conteo cíclico y solicitud manual de transferencias (commit `1926a17`, `sql/12_app_movil.sql`).
+- [x] Recuperación de contraseña, centro de notificaciones, «último error registrado» en el monitoreo, y trabajo sin conexión, sincronización y registro de dispositivos en Android (`sql/13_dispositivos_idempotencia.sql`).
+- [x] La app Android usa el refresh token rotatorio (access de 15 min).
+- [x] Pruebas de sistema (22 casos) y simulacros de fallas con correcciones verificadas en vivo (commit `5a99079`).
+- [x] Manuales de instalación, técnico y de usuario (`docs/manuales/`).
+
+**Pendiente inmediato**
+
+- [ ] Reconstruir los contenedores en la VM con la versión `1c213e4` y aplicar `12_app_movil.sql` y `13_dispositivos_idempotencia.sql`.
 - [ ] Ejecutar `scripts/benchmark_plataforma.py` en la VM y anexar `docs/REPORTE_BENCHMARK.md`.
-- [ ] Repetir Locust con el *overlay* de producción (Gunicorn, índices, demanda materializada) para medir la mejora.
+- [ ] Repetir Locust con el *overlay* de producción (Gunicorn, índices, demanda materializada, caché) para medir la mejora contra la línea base de la sección 25.
 
 **Después**
 
@@ -890,6 +919,7 @@ El siguiente paso es cerrar lo pendiente para la entrega y después escalar la c
 - Modelos de pronóstico con variables exógenas (clima, promociones) y pronóstico jerárquico tienda → región.
 - Endpoints de telemetría de temperatura y ubicación de transporte con Pub/Sub.
 - Publicar Swagger detrás del gateway con autenticación.
+- Separar en `/health` las dependencias críticas de las opcionales (bucket, MongoDB) y agregar `statement_timeout` a PostgreSQL.
 
 ---
 
@@ -903,4 +933,6 @@ FreshTrack cumple el objetivo del proyecto: una plataforma desplegada en GCP que
 - **Algoritmos.** El pronóstico con selección automática mejora entre 13 y 18 % al ingenuo estacional, y el newsvendor con tope de caducidad evita pedir lo que se va a tirar.
 - **Lo que aprendimos de la carga.** La mediana de 140 ms ocultaba un p95 de 21 s: el cuello de botella no fueron los microservicios sino las pantallas analíticas sobre una base compartida en 2 vCPU. Medir con percentiles cambió las prioridades de optimización.
 
-El trabajo pendiente para la entrega está acotado (sección 31) y no requiere módulos nuevos, solo integrar, desplegar y volver a medir.
+- **Lo que aprendimos de las fallas.** Provocar cada caída a propósito encontró tres errores que las pruebas unitarias no veían (clientes de Redis y MongoDB que no detectaban la caída, un 401 que sacaba al usuario cuando el problema era la base de datos y un límite de archivos mal configurado); se corrigieron y quedaron con pruebas de regresión.
+
+Lo pendiente (sección 31) es operativo: desplegar la última versión en la VM y volver a medir el rendimiento.

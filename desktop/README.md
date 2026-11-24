@@ -3,7 +3,7 @@
 App de escritorio (PySide6 / Qt) para **compradores y planeadores**. Es un cliente de los 8 microservicios
 de FreshTrack que habla **solo XML** (`Accept: application/xml`, cuerpos `application/xml`), valida cada
 mensaje contra los XSD de `contracts/xsd/` y está desacoplada de la web: no importa `app/` ni toca
-PostgreSQL, MongoDB ni Redis. Diseño: [`docs/superpowers/specs/2026-11-22-app-escritorio-design.md`](../docs/superpowers/specs/2026-11-22-app-escritorio-design.md).
+PostgreSQL, MongoDB ni Redis. Arquitectura completa: [`docs/manuales/MANUAL_TECNICO.md`](../docs/manuales/MANUAL_TECNICO.md).
 
 ## 1. Instalación y ejecución
 

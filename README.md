@@ -5,9 +5,10 @@ REST, cada uno en su contenedor, sobre **PostgreSQL** (fuente de verdad transacc
 **MongoDB** (pronósticos, avisos ASN y alertas como documentos) y **Redis** (sesiones,
 revocación de JWT, caché, contadores, rate limiting, bloqueos distribuidos y eventos).
 
-> **Segundo parcial · Equipo 05 · Proyecto IAC**
-> Presentación de la entrega: [`segundaEntrega/`](segundaEntrega/) · Video: https://youtu.be/vGuDwYUnJJA
-> Reporte de pruebas: [`docs/pruebas/REPORTE_PRUEBAS.md`](docs/pruebas/REPORTE_PRUEBAS.md).
+> **Entrega final · Equipo 05 · Proyecto 12 · IAC**
+> Reporte técnico final: [`docs/Reporte_Tecnico_Final.md`](docs/Reporte_Tecnico_Final.md) ·
+> Manuales: [`docs/manuales/`](docs/manuales/) · Presentación: [`docs/presentacion/`](docs/presentacion/) ·
+> Pruebas: [`docs/pruebas/`](docs/pruebas/) (sistema, fallas y recuperación, carga con Locust).
 
 
 ## App de escritorio
@@ -48,7 +49,7 @@ Detener: `docker compose down` (conserva datos) · `docker compose down -v` (bor
 
 Pruebas: `make test-unit` (sin bases de datos) y `make test-integration` (con la
 arquitectura levantada). Evidencias request/response reales:
-`python scripts/generar_evidencias.py` → `docs/evidencias/EVIDENCIAS_REQUEST_RESPONSE.md`.
+`python scripts/generar_evidencias.py` → `docs/pruebas/sistema/EVIDENCIAS_REQUEST_RESPONSE.md`.
 
 ### 1.2 Sin Docker (para desarrollo)
 

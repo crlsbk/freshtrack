@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Genera docs/evidencias/EVIDENCIAS_REQUEST_RESPONSE.md ejecutando peticiones HTTP REALES
+Genera docs/pruebas/sistema/EVIDENCIAS_REQUEST_RESPONSE.md ejecutando peticiones HTTP REALES
 contra los microservicios desplegados (docker compose o servidor en la nube).
 
 Por cada operación se registra: URL completa, método, headers (token abreviado),
@@ -307,7 +307,7 @@ def a_markdown(ev: Evidencias) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--salida", default=str(RAIZ / "docs" / "evidencias" / "EVIDENCIAS_REQUEST_RESPONSE.md"))
+    ap.add_argument("--salida", default=str(RAIZ / "docs" / "pruebas" / "sistema" / "EVIDENCIAS_REQUEST_RESPONSE.md"))
     args = ap.parse_args()
     ev = Evidencias(args.host)
     ejecutar(ev)

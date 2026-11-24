@@ -296,7 +296,7 @@ flowchart LR
     AU2 --> VIS[Paneles web, reportes de escritorio y alertas en Android]
 ```
 
-La arquitectura de despliegue está en la sección 9; el modelo de datos, en las secciones 11 a 14. Diagramas adicionales de componentes, contenedores y secuencia (Saga de venta, login con revocación) están en la sección 7 de `docs/Reporte_Tecnico_Integral.md`.
+La arquitectura de despliegue está en la sección 9; el modelo de datos, en las secciones 11 a 14. Diagramas adicionales de componentes, despliegue y secuencia (login con JWT y Redis, recepción por QR) están en `docs/manuales/MANUAL_TECNICO.md`.
 
 ---
 

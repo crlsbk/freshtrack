@@ -797,7 +797,7 @@ def indicadores_desperdicio_completo(dias: int = 30) -> dict:
 
 def _indicadores_desperdicio_completo_db(dias: int = 30) -> dict:
     """
-    Devuelve los 6 indicadores diferenciados requeridos en instructions.md:
+    Devuelve los 6 indicadores diferenciados requeridos por la medición de desperdicio:
       1. Producto en riesgo
       2. Desperdicio proyectado
       3. Producto recuperado

@@ -35,6 +35,7 @@ from app.domain import compras as dom_compras
 from app.domain import etiquetas_qr
 from app.domain import inventario as dom_inv
 from app.domain import mermas as dom_mermas
+from app.domain import por_recibir as dom_por_recibir
 from app.domain import recepcion as dom_recepcion
 from app.domain import ventas as dom_ventas
 from app.security import (
@@ -556,6 +557,38 @@ def _asn_de_otro_proveedor(folio_asn: str) -> bool:
     db = get_mongo_db()
     doc = db.avisos_asn.find_one({"folio_asn": folio_asn}, {"id_proveedor": 1}) if db is not None else None
     return recurso_de_otro_proveedor(doc.get("id_proveedor") if doc else None)
+
+
+@bp.get("/por-recibir")
+@login_required
+@requiere_vista("incoming")
+def por_recibir():
+    """Mercancía en camino a la tienda: fecha estimada, embarque y avance de recepción."""
+    usuario = usuario_actual()
+    propia = usuario.get("rol_clave") in ("store_manager", "warehouse") and usuario.get("id_locacion")
+    if propia:
+        id_loc = int(usuario["id_locacion"])
+        tiendas = []
+    else:
+        tienda = request.args.get("tienda", "")
+        id_loc = int(tienda) if tienda.isdigit() else None
+        tiendas = query(
+            "SELECT id_locacion, nombre FROM operacion.locacion "
+            "WHERE activo = true ORDER BY tipo_locacion DESC, nombre"
+        )
+    try:
+        datos = dom_por_recibir.listar_por_recibir(id_locacion=id_loc)
+    except SQLAlchemyError as exc:
+        flash(f"No se pudo consultar la mercancía por recibir: {sql_error(exc)}", "error")
+        datos = {"envios": [], "conteo": {}, "proxima_llegada": None, "hoy": date.today()}
+    return render_template(
+        "operacion/por_recibir.html",
+        datos=datos,
+        tiendas=tiendas,
+        id_loc=id_loc,
+        tienda_propia=bool(propia),
+        hoy=datos["hoy"],
+    )
 
 
 @bp.route("/despachos", methods=["GET", "POST"])

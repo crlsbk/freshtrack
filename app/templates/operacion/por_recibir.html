@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block titulo %}Mercancía por Recibir{% endblock %}
+{% block breadcrumb %}Operación › Mercancía por Recibir{% endblock %}
+
+{% set SIT = {
+  'ATRASADO':   {'txt': 'Atrasado',            'badge': 'danger',  'color': '#dc2626'},
+  'PARCIAL':    {'txt': 'Recibido parcial',    'badge': 'warning', 'color': '#d97706'},
+  'EN_CAMINO':  {'txt': 'En camino',           'badge': 'info',    'color': '#2563eb'},
+  'POR_ENVIAR': {'txt': 'Por enviar',          'badge': 'neutral', 'color': '#6b7280'},
+  'RECIBIDO':   {'txt': 'Recibido',            'badge': 'success', 'color': '#16a34a'},
+} %}
+
+{% block content %}
+{{ ui.encabezado('Logística de entrada',
+                 'Mercancía por Recibir' ~ (' · ' ~ datos.envios[0].locacion if tienda_propia and datos.envios else ''),
+                 'Qué pidió compras para ' ~ ('tu tienda' if tienda_propia else 'cada tienda') ~
+                 ', cuándo debería llegar, si el proveedor ya lo embarcó y cuánto se ha recibido al escanear el QR.') }}
+
+{% set c = datos.conteo %}
+<div class="stat-grid-4">
+  {{ ui.kpi('Atrasados', c.get('ATRASADO', 0), 'Pasó la fecha estimada y no ha llegado completo',
+            '#dc2626' if c.get('ATRASADO', 0) else '#6b7280', icono='reloj') }}
+  {{ ui.kpi('En camino', c.get('EN_CAMINO', 0) + c.get('PARCIAL', 0),
+            'Embarcados por el proveedor (' ~ c.get('PARCIAL', 0) ~ ' con recepción parcial)', '#2563eb', icono='camion') }}
+  {{ ui.kpi('Por enviar', c.get('POR_ENVIAR', 0), 'Pedido hecho; el proveedor aún no embarca', '#6b7280', icono='carrito') }}
+  {{ ui.kpi('Próxima llegada', datos.proxima_llegada | fecha_hora if datos.proxima_llegada else '—',
+            'Recibidos en los últimos 14 días: ' ~ c.get('RECIBIDO', 0), '#16a34a', icono='check') }}
+</div>
+
+{% if not tienda_propia %}
+  <form method="get" class="form-card" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+    <div style="min-width:260px;">
+      <label class="form-label">Tienda destino</label>
+      <select class="input" name="tienda" onchange="this.form.submit()">
+        <option value="">Todas las tiendas</option>
+        {% for t in tiendas %}
+          <option value="{{ t.id_locacion }}" {% if id_loc == t.id_locacion %}selected{% endif %}>{{ t.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+{% endif %}
+
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-header-title">Envíos ({{ datos.envios | length }})</div>
+    <div class="text-muted" style="font-size:12px;">Lo atrasado primero · se actualiza solo cuando el almacén escanea</div>
+  </div>
+  <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>Situación</th>
+          <th>Orden de compra</th>
+          {% if not tienda_propia %}<th>Tienda destino</th>{% endif %}
+          <th>Entrega estimada</th>
+          <th>Embarque</th>
+          <th style="min-width:180px;">Recibido</th>
+          <th>Productos</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in datos.envios %}
+          {% set s = SIT[e.situacion] %}
+          <tr>
+            <td><span class="badge badge-{{ s.badge }}">{{ s.txt }}</span></td>
+            <td>
+              <div class="mono" style="font-weight:700;">{{ e.folio }}</div>
+              <div class="text-muted" style="font-size:12px;">{{ e.proveedor }}</div>
+            </td>
+            {% if not tienda_propia %}<td>{{ e.locacion }}</td>{% endif %}
+            <td>
+              {% if e.fecha_entrega_estimada %}
+                <div>{{ e.fecha_entrega_estimada | fecha_hora }}</div>
+                {% if e.situacion != 'RECIBIDO' and e.dias_para_llegar is not none %}
+                  <div style="font-size:12px;color:{{ s.color }};font-weight:600;">
+                    {% if e.dias_para_llegar < 0 %}{{ -e.dias_para_llegar }} día{{ '' if e.dias_para_llegar == -1 else 's' }} de atraso
+                    {% elif e.dias_para_llegar == 0 %}Llega hoy
+                    {% elif e.dias_para_llegar == 1 %}Llega mañana
+                    {% else %}En {{ e.dias_para_llegar }} días{% endif %}
+                  </div>
+                {% endif %}
+              {% else %}
+                <span class="text-muted">Sin fecha</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if e.folio_asn %}
+                <div class="mono" style="font-size:12px;">{{ e.folio_asn }}</div>
+                <div class="text-muted" style="font-size:12px;">Embarcado {{ e.fecha_embarque | fecha_hora }}</div>
+              {% else %}
+                <span class="text-muted">Aún no embarca</span>
+              {% endif %}
+            </td>
+            <td>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+                <span>{{ e.recibido | cantidad(0) }} / {{ e.pedido | cantidad(0) }} u</span>
+                <strong>{{ e.avance_pct | cantidad(0) }} %</strong>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:{{ e.avance_pct }}%;background:{{ s.color }};"></div></div>
+            </td>
+            <td>
+              <details>
+                <summary style="cursor:pointer;">{{ e.productos | length }} producto{{ '' if e.productos | length == 1 else 's' }}</summary>
+                <ul style="margin:6px 0 0 16px;padding:0;font-size:12.5px;">
+                  {% for p in e.productos %}
+                    <li>{{ p.producto }}: {{ p.recibido | cantidad(0) }} / {{ p.pedido | cantidad(0) }} {{ p.unidad_medida }}</li>
+                  {% endfor %}
+                </ul>
+              </details>
+            </td>
+          </tr>
+        {% else %}
+          {{ ui.vacio('No hay mercancía pendiente por recibir' ~ (' en tu tienda' if tienda_propia else '') ~ '.', 7) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{ ui.explicacion('«Por enviar»: compras ya hizo el pedido pero el proveedor no ha registrado el embarque. «En camino»: el proveedor embarcó y la mercancía trae etiquetas QR. El avance sube cuando el almacén escanea cada etiqueta en la app Android; si la fecha estimada pasa y no llegó todo, el envío se marca como atrasado.') }}
+{% endblock %}

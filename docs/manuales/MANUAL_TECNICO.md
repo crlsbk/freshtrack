@@ -714,9 +714,8 @@ App nativa para gerentes de tienda y almacenistas (`android-app/`). Detalle: [`a
 | `android-app/app/src/test` | Parser de etiquetas, semáforo de caducidad, permisos, errores HTTP |
 | `scripts/smoke_rutas.py`, `verify_*.py`, `check_*.py` | Humo de pantallas por rol y verificación de la arquitectura levantada |
 
-Último reporte generado (`docs/pruebas/REPORTE_PRUEBAS.md`, 23 oct 2026): 116 pruebas (89 unitarias + 27
-integración), todas pasaron. Se han agregado pruebas desde entonces (refresh, CSRF, proveedor, app móvil,
-Locust); para el conteo vigente ejecutar `make test` o `make reporte-pruebas`.
+Último reporte generado (`docs/pruebas/REPORTE_PRUEBAS.md`, 24 nov 2026): 407 pruebas (380 unitarias + 27
+integración), todas pasaron. Para regenerarlo: `make reporte-pruebas`.
 
 ### 14.2 Resultados de carga (`docs/pruebas/REPORTE_CARGA_LOCUST.md`)
 
